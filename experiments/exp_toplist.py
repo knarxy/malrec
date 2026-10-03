@@ -75,6 +75,22 @@ N0, CAP, DIAL_N0 = 150.0, 0.5, 80.0
 MIX, POP_PRIOR, GEMS_NOVELTY = 0.5, 0.5, 2.2
 NOEV = 0.05                  # evidence below this counts as "none"
 NON_GENRE = {"Shounen", "Seinen", "Shoujo", "Josei", "Kids"}
+# MAL's genres proper (round 9); everything else in mal_genres is a theme
+# (Medical, Showbiz, Childcare, ...) or a demographic. "Award Winning" is
+# listed as a genre by MAL but says nothing about the content.
+GENRES = {"Action", "Adventure", "Avant Garde", "Boys Love", "Comedy", "Drama", "Ecchi",
+          "Erotica", "Fantasy", "Girls Love", "Gourmet", "Hentai", "Horror", "Mystery",
+          "Romance", "Sci-Fi", "Slice of Life", "Sports", "Supernatural", "Suspense"}
+
+
+def unfamiliar(pool, store, seen, genre_only: bool) -> np.ndarray:
+    """1 for a title with a category absent from the user's list: any genre
+    or theme (as shipped), or genres proper only."""
+    def counts(g):
+        return g in GENRES if genre_only else g not in NON_GENRE
+    return np.array([float(any(counts(g) and seen[g] == 0
+                               for g in (store.rows[m].get("mal_genres") or [])))
+                     for m in pool])
 
 # name: penalties (all scaled by trust, i.e. personal share / cap)
 #   dis    k * max(pop - personal, 0) in display points (order only)
@@ -142,6 +158,16 @@ ROUND8 = {
     "A.6 e.05": {**PROD, "acc": 0.6, "acce": 0.05}, "A.6 e.2": {**PROD, "acc": 0.6, "acce": 0.2},
     "A1 e.05": {**PROD, "acc": 1.0, "acce": 0.05}, "A1 e.2": {**PROD, "acc": 1.0, "acce": 0.2},
 }
+# round 9: the unfamiliar rule on genres proper instead of genres + themes
+# (the reference profile's highest prediction, The Apothecary Diaries 8.08,
+# sat at #16 for the theme "Medical"; [Oshi no Ko] at #58 for "Showbiz")
+ROUND9 = {
+    "PROD": SHIPPED7,
+    "UG .3": {**SHIPPED7, "ugen": True},
+    "UG .5": {**SHIPPED7, "ugen": True, "unfam": 0.5},
+    "U off": {**SHIPPED7, "unfam": 0.0},
+}
+WATCH = {58514: "Apothecary", 52034: "Oshi no Ko", 50265: "Spy x Family", 6547: "Angel Beats"}
 CONFIGS = ROUND1
 
 
@@ -256,7 +282,8 @@ def key_for(short, long_, k, z_s, z_l, popz, cfg, cal, unfam, longs, longx=None)
     return out, shown
 
 
-def top_metrics(key, pool, k_idx, short, liked, disliked, prop, store, unfam, M, tag):
+def top_metrics(key, pool, k_idx, short, liked, disliked, prop, store, unfam, M, tag,
+                unfam_g=None):
     s = np.where(np.isfinite(key), key, -np.inf)
     order = np.argsort(-s)
     top10 = order[:10]
@@ -265,6 +292,8 @@ def top_metrics(key, pool, k_idx, short, liked, disliked, prop, store, unfam, M,
     M[f"{tag}bad10"].append(len(set(t10) & disliked) / 10)
     M[f"{tag}noev"].append(float(np.mean(short.ev[k_idx[top10]] < NOEV)))
     M[f"{tag}unf"].append(float(np.mean(unfam[top10] > 0)))
+    if unfam_g is not None:
+        M[f"{tag}unfg"].append(float(np.mean(unfam_g[top10] > 0)))
     M[f"{tag}long"].append(float(np.mean([is_long(store.rows[m], True) for m in t10])))
     M[f"{tag}old"].append(float(np.mean([(store.rows[m].get("season_year") or 2100) < 2005
                                          for m in t10])))
@@ -289,25 +318,25 @@ def score_user(short, long_, ids, items, truth, pools, liked, disliked, prop, po
             if tag:
                 cfg = {x: v for x, v in cfg.items() if x != "floor"}
             k = np.array([at[m] for m in pool])
-            unfam = np.array([float(any(g not in NON_GENRE and seen_genres[g] == 0
-                                        for g in (store.rows[m].get("mal_genres") or [])))
-                              for m in pool])
+            unfam = unfamiliar(pool, store, seen_genres, False)
+            unfam_g = unfamiliar(pool, store, seen_genres, True)
             popz = zs(np.array([-math.log10(popul.get(m, 99999)) for m in pool]))
             longs = np.array([float(is_long(store.rows[m], False)) for m in pool])
             longx = np.array([float(is_long(store.rows[m], True)) for m in pool])
             key, shown = key_for(short, long_, k, short.relevance(pool), long_.relevance(pool),
-                                 popz, cfg, cal, unfam, longs, longx)
+                                 popz, cfg, cal, unfam_g if cfg.get("ugen") else unfam,
+                                 longs, longx)
             if nov_w:
                 sd = float(np.nanstd(shown))
                 key = key + nov_w * min(1.0, sd / CFG.novelty_ref_sd) * np.array(
                     [novelty(popul.get(m)) for m in pool])
             top_metrics(key, pool, k, short, liked & set(pool), disliked, prop, store,
-                        unfam, M, tag)
+                        unfam, M, tag, unfam_g)
 
 
 def report(title, R):
     print(f"\n== {title} ==", flush=True)
-    cols = ["rho", "rmse", "r50", "ips", "hit10", "bad10", "noev", "unf", "long", "old"]
+    cols = ["rho", "rmse", "r50", "ips", "hit10", "bad10", "noev", "unf", "unfg", "long", "old"]
     print(f"{'Safe Bets':<13}" + "".join(f"{c:>7}" for c in cols)
           + "   | Hidden Gems" + "".join(f"{c:>7}" for c in ("hit10", "bad10", "noev", "unf",
                                                              "long", "old")))
@@ -456,16 +485,19 @@ def main(max_eval: int, seed: int, budgets: tuple[int, ...]):
     long_ = Parts(G, store, scL, imL, user_listed(uid, None, float("inf")), ids, n_real)
     k = np.arange(len(pool))
     g = genres_of(listed)
-    unfam = np.array([float(any(x not in NON_GENRE and g[x] == 0
-                                for x in (store.rows[m].get("mal_genres") or []))) for m in pool])
+    unfam = unfamiliar(pool, store, g, False)
+    unfam_g = unfamiliar(pool, store, g, True)
     popz = zs(np.array([-math.log10(popul.get(m, 99999)) for m in pool]))
     longs = np.array([float((store.rows[m].get("num_episodes") or 0) >= 50) for m in pool])
     longx = np.array([float(is_long(store.rows[m], True)) for m in pool])
     for name, cfg in CONFIGS.items():
         key, _ = key_for(short, long_, k, short.relevance(pool), long_.relevance(pool), popz,
-                         cfg, cal, unfam, longs, longx)
-        top = np.argsort(-np.where(np.isfinite(key), key, -np.inf))[:10]
+                         cfg, cal, unfam_g if cfg.get("ugen") else unfam, longs, longx)
+        order = np.argsort(-np.where(np.isfinite(key), key, -np.inf))
+        top = order[:10]
         print(f"  {name:<12} " + " | ".join(store.rows[pool[i]]["title"][:20] for i in top))
+        pos = {pool[i]: r + 1 for r, i in enumerate(order)}
+        print(f"  {'':<12} " + ", ".join(f"{lbl} #{pos[m]}" for m, lbl in WATCH.items() if m in pos))
     print(f"\n[{time.time() - t0:.0f}s]")
 
 
@@ -477,5 +509,5 @@ if __name__ == "__main__":
     ap.add_argument("--budgets", default=",".join(map(str, BUDGETS)))
     a = ap.parse_args()
     CONFIGS = {1: ROUND1, 2: ROUND2, 3: ROUND3, 4: ROUND4, 5: ROUND5, 6: ROUND6,
-               7: ROUND7, 8: ROUND8}[a.round]
+               7: ROUND7, 8: ROUND8, 9: ROUND9}[a.round]
     main(a.max_eval, a.seed, tuple(int(x) for x in a.budgets.split(",")))

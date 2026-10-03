@@ -356,6 +356,14 @@ penalties (1.0, 1.5) and faster or slower evidence fades (e0 0.05, 0.2): all
 within noise of 0.6 / 0.1 on the second split, and 1.5 adds bad picks, so the
 setting stays.
 
+Round 9 tried counting only MAL's genres proper (Action, Sports, ...) as
+"unfamiliar", not themes (Medical, Showbiz, Childcare): The Apothecary
+Diaries, the reference profile's highest prediction, was held back by the
+theme "Medical". Genres-only behaved like switching the rule off - nearly no
+list lacks a whole genre - and cost the reference profile top-10 hits
+(.412 -> .375 and .450 -> .375 on the two splits), with held-out users level.
+Themes new to a list do predict misses, so the rule stays as it is.
+
 Safe Bets' long-memory adjustment is capped at +-0.15 points
 (`safe_bets_memory_cap`): uncapped, it carried Mahouka (predicted 6.90,
 the user's mean 7.51) to #8 on +0.65 alone. Two user splits: reference
