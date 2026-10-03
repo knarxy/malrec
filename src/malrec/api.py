@@ -14,10 +14,10 @@ from __future__ import annotations
 import logging
 
 import numpy as np
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from . import admin, auth, onboarding, together
+from . import admin, auth, onboarding, tasks, together
 from . import feedback as fb
 from .access import Approved, rate_limit, target_user
 from .auth import require_csrf
@@ -25,7 +25,7 @@ from .config import settings
 from .db import one, query, scalar
 from .model import cached_model, feature_importance, load_latest
 from .rank import familiar_genres, relevance_bonus
-from .surfaces import SPECS, SURFACES, Filters, _Share, build_all, build_surface, read_ranked
+from .surfaces import SPECS, SURFACES, Filters, _Share, build_surface, read_ranked
 
 log = logging.getLogger(__name__)
 
@@ -64,6 +64,10 @@ def onboard_status(username: str, v: Approved) -> dict:
     name = one("SELECT mal_username FROM app_user WHERE id=%s", (uid,))["mal_username"]
     job = onboarding.current(name)
     has_recs = bool(scalar("SELECT count(*) FROM recommendation WHERE user_id=%s", (uid,)))
+    if (not job or job["state"] != "running") and tasks.pending(uid, "onboard"):
+        # queued for the worker: report it as starting, not as a past result
+        return {"state": "running", "step": "queued", "step_index": 0, "step_total": 6,
+                "error": None, "ready": has_recs, "username": name}
     if not job:
         return {"state": "absent", "ready": has_recs, "username": name}
     return {"state": job["state"], "step": job["step"], "step_index": job["step_index"],
@@ -173,9 +177,9 @@ def genres(v: Approved) -> list[str]:
 
 
 @app.post("/recommendations/rebuild", dependencies=CSRF + [rate_limit("rebuild", 6, 600)])
-def rebuild(background: BackgroundTasks, v: Approved) -> dict:
+def rebuild(v: Approved) -> dict:
     """Rebuild the caller's own lists."""
-    background.add_task(build_all, v.user_id, 60)
+    tasks.enqueue("rebuild", v.user_id)
     return {"status": "rebuilding"}
 
 

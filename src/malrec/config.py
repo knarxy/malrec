@@ -30,6 +30,14 @@ class Settings(BaseSettings):
     # Comma-separated MAL usernames with admin rights (approve users, admin
     # panel, viewing any profile). Config, not a database flag, on purpose.
     admin_users: str = ""
+    # Background work (rebuilds, syncs, onboarding) runs in `malrec worker`.
+    # tasks_inline runs it in a thread of the API instead, for local
+    # development without a worker; worker_threads > 1 runs several users'
+    # tasks at once (one per user at a time either way).
+    tasks_inline: bool = False
+    worker_threads: int = 1
+    # Users whose loaded model the API keeps in memory (~20 MB each).
+    scorer_cache_size: int = 16
     # Fernet key for MAL tokens at rest (malrec.tokenbox); generate with
     # python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     token_key: str = ""

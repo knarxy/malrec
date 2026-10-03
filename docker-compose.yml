@@ -56,11 +56,13 @@ services:
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
       MALREC_USER: ${MALREC_USER:-}
-      MODEL_MODE: ${MODEL_MODE:-personal}
-      RELEVANCE_WEIGHT_PERSONAL: ${RELEVANCE_WEIGHT_PERSONAL:-0}
+      # the production model: population + personal blend (falls back to
+      # personal-only until `malrec population fit` has run)
+      MODEL_MODE: ${MODEL_MODE:-sized}
+      RELEVANCE_WEIGHT_PERSONAL: ${RELEVANCE_WEIGHT_PERSONAL:-0.5}
       ADMIN_USERS: ${ADMIN_USERS:-}
       TOKEN_KEY: ${TOKEN_KEY:-}
-      SAFE_BETS_MEMORY_MIX: ${SAFE_BETS_MEMORY_MIX:-0}
+      SAFE_BETS_MEMORY_MIX: ${SAFE_BETS_MEMORY_MIX:-0.5}
       SAFE_BETS_POPULARITY: ${SAFE_BETS_POPULARITY:-0.5}
       SAFE_BETS_MEMORY_CAP: ${SAFE_BETS_MEMORY_CAP:-0.15}
       SAFE_BETS_FLOOR: ${SAFE_BETS_FLOOR:--99}
@@ -86,7 +88,33 @@ services:
     command: >
       sh -c "malrec init && uvicorn malrec.api:app --host 0.0.0.0 --port 8000"
     cpus: ${API_CPUS:-2}
-    mem_limit: ${API_MEM:-2g}
+    mem_limit: ${API_MEM:-4g}
+
+  # Rebuilds, list syncs and onboarding (malrec.tasks), so they never slow
+  # the API. One task per user at a time; WORKER_THREADS users at once.
+  worker:
+    build: .
+    container_name: malrec-worker
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy     # the API runs the migrations
+    environment:
+      <<: *env
+      WORKER_THREADS: ${WORKER_THREADS:-1}
+      OMP_NUM_THREADS: ${WORKER_BLAS_THREADS:-2}
+      OPENBLAS_NUM_THREADS: ${WORKER_BLAS_THREADS:-2}
+      MKL_NUM_THREADS: ${WORKER_BLAS_THREADS:-2}
+    command: ["malrec", "worker"]
+    stop_grace_period: 2m               # a task in progress is finished first
+    healthcheck:
+      # the loop touches this file at least once a task
+      test: ["CMD", "python", "-c", "import os,time,sys;sys.exit(time.time()-os.path.getmtime('/tmp/malrec-worker-alive')>900)"]
+      interval: 60s
+      timeout: 5s
+      start_period: 60s
+    cpus: ${WORKER_CPUS:-2}
+    mem_limit: ${WORKER_MEM:-2g}
 
   app:
     build: ./app

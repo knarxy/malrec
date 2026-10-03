@@ -10,6 +10,8 @@ from __future__ import annotations
 import io
 import logging
 import pickle
+import threading
+from collections import OrderedDict
 from dataclasses import dataclass
 
 import numpy as np
@@ -290,23 +292,49 @@ def load_latest(user_id: int) -> tuple[TasteModel, int] | tuple[None, None]:
 
 
 _SCORER_TTL = 600.0
-_scorers: dict[int, tuple[float, object, int | None]] = {}
+_scorers: OrderedDict[int, tuple[float, tuple, object, int | None]] = OrderedDict()
+_scorer_lock = threading.Lock()
+
+_VERSION_SQL = """
+    SELECT (SELECT max(id) FROM model_run WHERE user_id = %(u)s) AS run,
+           (SELECT id FROM global_model WHERE active) AS pop,
+           (SELECT count(*) FROM list_entry WHERE user_id = %(u)s) AS n,
+           (SELECT max(updated_at) FROM list_entry WHERE user_id = %(u)s) AS at
+"""
 
 
 def cached_model(user_id: int) -> tuple[object, int | None]:
     """load_or_train, remembered for a few minutes - for per-request work such
-    as the "why this?" breakdown, where refitting on every click is waste."""
+    as the "why this?" breakdown, where refitting on every click is waste.
+
+    A cached model is used only while the user's list, latest model run and
+    the active population model are unchanged (the worker retrains in another
+    process), and at most `scorer_cache_size` users are kept, least recently
+    used first out: each costs ~20 MB, and the cache used to grow with every
+    user seen since the last restart."""
     import time
-    hit = _scorers.get(user_id)
-    if hit is not None and time.time() - hit[0] < _SCORER_TTL:
-        return hit[1], hit[2]
+    v = one(_VERSION_SQL, {"u": user_id})
+    key = (v["run"], v["pop"], v["n"], v["at"]) if v else None
+    now = time.time()
+    with _scorer_lock:
+        hit = _scorers.get(user_id)
+        if hit is not None and now - hit[0] < _SCORER_TTL and hit[1] == key:
+            _scorers.move_to_end(user_id)
+            return hit[2], hit[3]
     model, run_id = load_or_train(user_id)
-    _scorers[user_id] = (time.time(), model, run_id)
+    with _scorer_lock:
+        _scorers[user_id] = (now, key, model, run_id)
+        _scorers.move_to_end(user_id)
+        for uid in [u for u, h in _scorers.items() if now - h[0] >= _SCORER_TTL]:
+            del _scorers[uid]
+        while len(_scorers) > max(1, settings().scorer_cache_size):
+            _scorers.popitem(last=False)
     return model, run_id
 
 
 def invalidate_scorer(user_id: int) -> None:
-    _scorers.pop(user_id, None)
+    with _scorer_lock:
+        _scorers.pop(user_id, None)
 
 
 # The user model is refitted from the current list on every load, but what a

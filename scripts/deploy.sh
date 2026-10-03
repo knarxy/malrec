@@ -39,16 +39,17 @@ else
 fi
 
 echo "== keeping the running images as rollback"
-for s in api app; do
+for s in api app worker; do
     docker image inspect "malrec-$s" > /dev/null 2>&1 && docker tag "malrec-$s" "malrec-$s:rollback"
 done
 
 echo "== building and starting"
-docker compose up -d --build api app
+docker compose up -d --build api app worker
 
 healthy() {
     [ "$(docker inspect -f '{{.State.Health.Status}}' malrec-api 2>/dev/null)" = healthy ] &&
-    [ "$(docker inspect -f '{{.State.Health.Status}}' malrec-app 2>/dev/null)" = healthy ]
+    [ "$(docker inspect -f '{{.State.Health.Status}}' malrec-app 2>/dev/null)" = healthy ] &&
+    [ "$(docker inspect -f '{{.State.Status}}' malrec-worker 2>/dev/null)" = running ]
 }
 i=0
 while [ $i -lt $WAIT ]; do
@@ -66,8 +67,8 @@ done
 
 echo "== NOT healthy after ${WAIT}s - rolling back"
 docker logs --tail 30 malrec-api 2>&1 | tail -30
-for s in api app; do
+for s in api app worker; do
     docker image inspect "malrec-$s:rollback" > /dev/null 2>&1 && docker tag "malrec-$s:rollback" "malrec-$s"
 done
-docker compose up -d --no-build api app
+docker compose up -d --no-build api app worker
 exit 1

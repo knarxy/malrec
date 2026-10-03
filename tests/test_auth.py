@@ -62,8 +62,7 @@ def signed_in(monkeypatch):
         pytest.skip(f"database not reachable: {e}")
     monkeypatch.setattr(auth, "MalClient", FakeMal)
     # the rebuild after a rating/sync is not under test here
-    monkeypatch.setattr(auth.refresh, "rebuild", lambda uid: None)
-    monkeypatch.setattr(auth.refresh, "sync_and_rebuild", lambda *a: None)
+    monkeypatch.setattr(auth.tasks, "enqueue", lambda kind, uid: None)
     FakeMal.listed, FakeMal.calls = {}, []
     uid = get_or_create_user(SCRATCH)
     execute("UPDATE app_user SET status='approved' WHERE id=%s", (uid,))

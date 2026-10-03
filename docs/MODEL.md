@@ -10,6 +10,7 @@ the literature behind the choices in `RESEARCH.md`.
 |---|---|---|
 | `app` | 3000 | React + Vite, served by nginx, which also proxies `/api` |
 | `api` | 8000 | FastAPI; ingestion, model, ranking, sign-in |
+| `worker` | – | background tasks from a Postgres queue: rebuilds, list syncs, onboarding (`malrec.tasks`) |
 | `db` | 5433 | Postgres 17 + pgvector (loopback only) |
 | `lab` | – | profile `lab`: experiments and long jobs against the working tree |
 
@@ -44,7 +45,7 @@ Once signed in, on your own profile:
 - **Sync with MAL** re-reads your whole list and rebuilds. The API allows it
   once per 5 minutes per account (`SYNC_COOLDOWN`, hard-coded) and the button
   counts down; the app stops waiting on a sync after 3 minutes
-  (`refresh.SYNC_TIMEOUT_S`);
+  (`tasks.UI_TIMEOUT_S`);
 - **language (English / Deutsch) and filters** are saved
   to your account (`/me/prefs`) and follow you to any browser. Without
   signing in they are kept in the browser only.
@@ -610,6 +611,28 @@ environment variable. The values that matter:
   `myanimelist.net/apiconfig/references/api/v2` as `__redoc_state`.
 
 ## Operations
+
+### Local development
+
+```bash
+make db-up                    # just Postgres
+make install && make init     # venv + migrations
+make serve                    # API on :8000 (ENABLE_DOCS=true for /docs)
+make worker                   # background tasks - or TASKS_INLINE=true for `serve` alone
+make app-dev                  # Vite dev server on :5173, proxying to :8000
+```
+
+### Background work and memory
+
+The API only enqueues rebuilds, list syncs and onboarding; the `worker`
+container runs them, one task per user at a time (`WORKER_THREADS` users at
+once), so a rebuild never slows anyone else's requests. A request that
+arrives while the same task waits is absorbed by it; a task a dead worker
+left behind is requeued at its next start. The API keeps at most
+`SCORER_CACHE_SIZE` (16) users' loaded models in memory, ~20 MB each, and
+reloads one as soon as that user's list, model run or the population model
+changes. Measured on the reference profile: a warm rebuild of all eight lists
+took ~5 s once a quadratic lookup in the risk term was fixed (10.7 s before).
 
 `docker-compose.yml` defines everything; the `api` and `app` bind to
 `BIND_ADDR` (loopback by default), the database to loopback only. Services are

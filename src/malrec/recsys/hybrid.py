@@ -214,7 +214,8 @@ class UserModel:
         rows = src.rows(items)
         if not rows:
             return st, pe
-        pos = [{m: k for k, m in enumerate(items)}[r["mal_id"]] for r in rows]
+        at = {m: k for k, m in enumerate(items)}
+        pos = [at[r["mal_id"]] for r in rows]
         st[pos] = self.stack([r["mal_id"] for r in rows])
         if self.inner is not None and self.lam > 1e-3:
             pe[pos] = self.inner._predict_known(rows)

@@ -306,6 +306,15 @@ def recommend(user: str = typer.Option(None),
                    f"{' | '.join(why)[:52]}")
 
 
+@app.command("worker")
+def worker_cmd(threads: int = typer.Option(None, help="tasks at once (default WORKER_THREADS)")
+               ) -> None:
+    """Run background tasks (rebuilds, list syncs, onboarding) until stopped."""
+    _setup()
+    from .tasks import worker
+    worker(threads or settings().worker_threads)
+
+
 @app.command("build-all")
 def build_all_cmd(user: str = typer.Option(None), limit: int = typer.Option(50)) -> None:
     """Rebuild every surface and cache them."""

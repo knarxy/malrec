@@ -13,7 +13,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
-from . import onboarding, refresh
+from . import onboarding, tasks
 from .access import Admin
 from .auth import require_csrf
 from .config import settings
@@ -61,21 +61,13 @@ def users(v: Admin) -> list[dict]:
     return out
 
 
-def _onboard_after_approval(uid: int, username: str) -> None:
-    try:
-        onboarding.reset_stuck(username)
-        onboarding.run(username, token=refresh.token_for(uid))
-    except Exception:
-        log.exception("onboarding %s after approval failed", username)
-
-
 @router.post("/users/{uid}/approve", dependencies=CSRF)
-def approve(uid: int, v: Admin, background: BackgroundTasks) -> dict:
+def approve(uid: int, v: Admin) -> dict:
     u = _user(uid)
     execute("UPDATE app_user SET status='approved', approved_at=now() WHERE id=%s", (uid,))
     _audit(v, "approve", u["mal_username"])
     if not scalar("SELECT count(*) FROM recommendation WHERE user_id=%s", (uid,)):
-        background.add_task(_onboard_after_approval, uid, u["mal_username"])
+        tasks.enqueue("onboard", uid)
     return {"id": uid, "status": "approved"}
 
 
@@ -114,21 +106,21 @@ def end_sessions(uid: int, v: Admin) -> dict:
 
 
 @router.post("/users/{uid}/sync", dependencies=CSRF)
-def sync(uid: int, v: Admin, background: BackgroundTasks) -> dict:
+def sync(uid: int, v: Admin) -> dict:
     u = _user(uid)
     if u["status"] != "approved":
         raise HTTPException(409, "Only approved accounts are synced.")
-    background.add_task(refresh.sync_and_rebuild, u["mal_username"], uid, refresh.token_for(uid))
+    tasks.enqueue("sync", uid)
     _audit(v, "sync", u["mal_username"])
     return {"id": uid, "status": "syncing"}
 
 
 @router.post("/users/{uid}/rebuild", dependencies=CSRF)
-def rebuild(uid: int, v: Admin, background: BackgroundTasks) -> dict:
+def rebuild(uid: int, v: Admin) -> dict:
     u = _user(uid)
     if u["status"] != "approved":
         raise HTTPException(409, "Only approved accounts are rebuilt.")
-    background.add_task(refresh.rebuild, uid)
+    tasks.enqueue("rebuild", uid)
     _audit(v, "rebuild", u["mal_username"])
     return {"id": uid, "status": "rebuilding"}
 

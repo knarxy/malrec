@@ -114,7 +114,7 @@ def test_sign_in_creates_a_pending_account_and_fetches_nothing(accounts, monkeyp
         def __exit__(self, *e): pass
         def me(self): return {"name": NAMES["new"], "id": 99}
     monkeypatch.setattr(auth, "MalClient", Me)
-    monkeypatch.setattr(auth, "_onboard_quietly", lambda *a: started.append(a))
+    monkeypatch.setattr(auth.tasks, "enqueue", lambda kind, uid: started.append((kind, uid)))
 
     def callback():
         st = secrets.token_urlsafe(16)
@@ -138,6 +138,7 @@ def test_sign_in_creates_a_pending_account_and_fetches_nothing(accounts, monkeyp
     callback()
     assert one("SELECT status FROM app_user WHERE mal_username=%s", (NAMES["new"],))["status"] \
         == "approved"
+    assert [k for k, _ in started] == ["onboard"], "approved and new: onboarding is queued"
     execute("UPDATE app_user SET status='blocked' WHERE mal_username=%s", (NAMES["new"],))
     assert "auth_error=blocked" in callback().headers["location"]
 

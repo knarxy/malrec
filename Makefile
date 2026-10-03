@@ -2,7 +2,7 @@
 COMPOSE := $(shell docker info >/dev/null 2>&1 && echo "docker compose" || echo "podman-compose")
 PY := .venv/bin/python
 
-.PHONY: db-up db-down db-logs psql install init bootstrap train recommend serve test lint reset up down app-dev build logs
+.PHONY: db-up db-down db-logs psql install init bootstrap train recommend serve worker test lint reset up down app-dev build logs
 
 db-up:        ; $(COMPOSE) up -d db
 db-down:      ; $(COMPOSE) down
@@ -14,6 +14,7 @@ bootstrap:    ; $(PY) -m malrec.cli sync all
 train:        ; $(PY) -m malrec.cli train
 recommend:    ; $(PY) -m malrec.cli recommend
 serve:        ; $(PY) -m malrec.cli serve --reload
+worker:       ; $(PY) -m malrec.cli worker        # background tasks (or TASKS_INLINE=true)
 test:         ; .venv/bin/pytest -q
 lint:         ; .venv/bin/ruff check src tests
 

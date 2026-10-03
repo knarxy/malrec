@@ -36,12 +36,12 @@ from typing import Annotated
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field
 
-from . import onboarding, refresh
+from . import onboarding, refresh, tasks
 from .access import rate_limit
 from .clients.mal import MalApiError, MalClient
 from .config import settings
@@ -225,7 +225,7 @@ def _preflight(url: str) -> str | None:
 
 
 @router.get("/auth/callback")
-def callback(background: BackgroundTasks, code: str | None = None, state: str | None = None,
+def callback(code: str | None = None, state: str | None = None,
              error: str | None = None) -> RedirectResponse:
     cfg = settings()
     base = cfg.app_base_url.rstrip("/")
@@ -289,24 +289,13 @@ def callback(background: BackgroundTasks, code: str | None = None, state: str | 
     has_recs = scalar("SELECT count(*) FROM recommendation WHERE user_id=%s", (uid,))
     job = onboarding.current(username)
     if status == "approved" and not (job and job["state"] == "running"):
-        if has_recs:
-            from .ingest.jobs import sync_user_list
-            background.add_task(sync_user_list, username, True, access)
-        else:
-            background.add_task(_onboard_quietly, username, access)
+        tasks.enqueue("login_sync" if has_recs else "onboard", uid)
 
     resp = RedirectResponse(f"{base}{st['return_to']}", status_code=302)
     resp.set_cookie(COOKIE, session_token, httponly=True, samesite="lax",
                     secure=cfg.session_cookie_secure,
                     max_age=cfg.session_days * 86400, path="/")
     return resp
-
-
-def _onboard_quietly(username: str, token: str) -> None:
-    try:
-        onboarding.run(username, token=token)
-    except Exception:
-        log.exception("background onboarding for %s failed", username)
 
 
 @router.get("/auth/config")
@@ -408,8 +397,7 @@ class RateIn(BaseModel):
 
 
 @router.post("/me/rate/{mal_id}", dependencies=[Depends(require_csrf), rate_limit("mal_write", 120, 600)])
-def rate(mal_id: int, body: RateIn, s: ApprovedSession, background: BackgroundTasks,
-         source: str | None = None) -> dict:
+def rate(mal_id: int, body: RateIn, s: ApprovedSession, source: str | None = None) -> dict:
     """Score a title on MyAnimeList, then refresh recommendations.
 
     An unlisted or planned title is marked completed (with its episode count)
@@ -445,7 +433,7 @@ def rate(mal_id: int, body: RateIn, s: ApprovedSession, background: BackgroundTa
         (uid, mal_id, new_status, body.score, fields.get("num_watched_episodes", 0), finished))
     execute("INSERT INTO feedback (user_id, mal_id, action, surface) VALUES (%s,%s,'rated',%s)",
             (uid, mal_id, "quiz" if source == "quiz" else None))
-    background.add_task(refresh.rebuild, uid)
+    tasks.enqueue("rebuild", uid)
     return {"mal_id": mal_id, "list_status": new_status, "list_score": body.score,
             "refreshing": True}
 
@@ -485,7 +473,7 @@ def quiz_answer(mal_id: int, answer: str, s: ApprovedSession) -> dict:
 # ------------------------------------------------------------------ sync --
 
 @router.post("/me/sync", dependencies=[Depends(require_csrf)])
-def sync(s: ApprovedSession, background: BackgroundTasks) -> dict:
+def sync(s: ApprovedSession) -> dict:
     """Re-read the whole list from MyAnimeList, then rebuild. At most once
     per SYNC_COOLDOWN per account; the answer says when the next is allowed."""
     uid = s["app_user_id"]
@@ -499,7 +487,7 @@ def sync(s: ApprovedSession, background: BackgroundTasks) -> dict:
         raise HTTPException(429, {"message": "Synced recently - try again shortly.",
                                   "retry_after": max(wait, 1)},
                             headers={"Retry-After": str(max(wait, 1))})
-    background.add_task(refresh.sync_and_rebuild, s["mal_username"], uid, s["access_token"])
+    tasks.enqueue("sync", uid)
     return {"status": "syncing", "next_allowed_in": int(SYNC_COOLDOWN.total_seconds())}
 
 

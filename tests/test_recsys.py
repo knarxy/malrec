@@ -566,3 +566,17 @@ def test_acclaim_penalty_hits_lift_from_acclaim_and_fades_with_evidence(monkeypa
     assert np.allclose(s.risk_penalty([1, 2]), [0.24, 0.0]), "co-rating evidence halves it"
     um.lam = 0.125
     assert np.allclose(s.risk_penalty([1, 2]), [0.06, 0.0]), "follows the trust"
+
+
+def test_predict_parts_puts_each_prediction_at_its_item():
+    from types import SimpleNamespace
+
+    from malrec.recsys.hybrid import UserModel
+    inner = SimpleNamespace(
+        rows=lambda ids: [{"mal_id": m} for m in reversed(ids) if m != 3],   # unordered, 3 unknown
+        _predict_known=lambda rows: np.array([r["mal_id"] * 10.0 for r in rows]))
+    um = SimpleNamespace(inner=inner, lam=0.5,
+                         stack=lambda ids: np.array([m + 0.5 for m in ids]))
+    st, pe = UserModel.predict_parts(um, [1, 2, 3, 4])
+    assert np.allclose(st[[0, 1, 3]], [1.5, 2.5, 4.5]) and np.isnan(st[2])
+    assert np.allclose(pe[[0, 1, 3]], [10, 20, 40]) and np.isnan(pe[2])

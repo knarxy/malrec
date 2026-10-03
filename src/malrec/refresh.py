@@ -1,88 +1,20 @@
 """Rebuilding a user's recommendations after their list changed.
 
-Triggered by a rating from the app or the "sync with MyAnimeList" button.
-Runs in the API process's background tasks. Requests that arrive while a
-rebuild is running do not start a second one; they mark it dirty, and it
-runs once more when it finishes - so five quick ratings cost two rebuilds,
-not five.
+Rebuilds and list syncs run in the worker (malrec.tasks); this module keeps
+what both the worker and the nightly job need: a live MAL token for a user,
+the fingerprint that tells whether a list changed, and the nightly sync.
 """
 from __future__ import annotations
 
 import logging
-import threading
-import time
 
 log = logging.getLogger(__name__)
 
-# How long the app waits on a sync before telling the user it gave up. The
-# work itself is bounded by the MAL client's per-request timeouts and retries;
-# this only bounds what the UI shows as "in progress".
-SYNC_TIMEOUT_S = 180
-
-_lock = threading.Lock()
-_state: dict[int, dict] = {}
-
 
 def state(user_id: int) -> dict:
-    with _lock:
-        st = dict(_state.get(user_id) or {"state": "idle"})
-    if st["state"] in ("syncing", "rebuilding") and \
-            time.time() - st.get("started", 0) > SYNC_TIMEOUT_S:
-        st["state"] = "timeout"
-    return {"refresh": st["state"], "refresh_error": st.get("error"),
-            "refreshed_at": st.get("finished")}
-
-
-def _begin(user_id: int, phase: str) -> dict | None:
-    with _lock:
-        st = _state.setdefault(user_id, {"state": "idle"})
-        if st["state"] in ("syncing", "rebuilding") and \
-                time.time() - st.get("started", 0) < SYNC_TIMEOUT_S:
-            st["dirty"] = True
-            return None
-        st.update(state=phase, dirty=False, started=time.time(), error=None)
-        return st
-
-
-def _rebuild_loop(user_id: int, st: dict) -> None:
-    from .model import invalidate_scorer
-    from .surfaces import build_all
-    while True:
-        with _lock:
-            st["state"] = "rebuilding"
-            st["dirty"] = False
-        invalidate_scorer(user_id)
-        build_all(user_id, limit=60)
-        with _lock:
-            if not st.get("dirty"):
-                st.update(state="idle", finished=time.time())
-                return
-
-
-def rebuild(user_id: int) -> None:
-    st = _begin(user_id, "rebuilding")
-    if st is None:
-        return
-    try:
-        _rebuild_loop(user_id, st)
-    except Exception as e:
-        log.exception("rebuild for user %s failed", user_id)
-        with _lock:
-            st.update(state="failed", error=f"{type(e).__name__}: {e}"[:300])
-
-
-def sync_and_rebuild(username: str, user_id: int, token: str) -> None:
-    from .ingest.jobs import sync_user_list
-    st = _begin(user_id, "syncing")
-    if st is None:
-        return
-    try:
-        sync_user_list(username, enrich=True, token=token)
-        _rebuild_loop(user_id, st)
-    except Exception as e:
-        log.exception("sync for %s failed", username)
-        with _lock:
-            st.update(state="failed", error=f"{type(e).__name__}: {e}"[:300])
+    """The app's view of the user's latest sync or rebuild (malrec.tasks)."""
+    from .tasks import state as task_state
+    return task_state(user_id)
 
 
 # ------------------------------------------------------------ nightly sync --
@@ -92,7 +24,7 @@ def sync_and_rebuild(username: str, user_id: int, token: str) -> None:
 # list once a night (one or two requests each, plus a detail page for each
 # title new to the catalogue) and rebuilds only the users whose list changed.
 
-def _fingerprint(user_id: int) -> str | None:
+def fingerprint(user_id: int) -> str | None:
     from .db import scalar
     return scalar("SELECT md5(string_agg(mal_id || ':' || status || ':' || score, ','"
                   " ORDER BY mal_id)) FROM list_entry WHERE user_id=%s", (user_id,))
@@ -127,14 +59,14 @@ def sync_all_users() -> list[dict]:
     out = []
     for u in query("SELECT id, mal_username FROM app_user ORDER BY id"):
         uid, name = u["id"], u["mal_username"]
-        before = _fingerprint(uid)
+        before = fingerprint(uid)
         try:
             sync_user_list(name, enrich=True, token=token_for(uid))
         except Exception as e:  # noqa: BLE001 - one private/renamed list must not stop the rest
             log.warning("nightly sync of %s failed: %s", name, e)
             out.append({"user": name, "error": f"{type(e).__name__}: {e}"[:200]})
             continue
-        changed = _fingerprint(uid) != before
+        changed = fingerprint(uid) != before
         if changed:
             invalidate_scorer(uid)
             try:
