@@ -59,8 +59,17 @@ def test_a_mail_is_html_with_a_text_part_and_the_logo_inline(mailer):
     assert notify.send("Betreff", page, text) is None
     msg = mailer[0]
     assert msg["Subject"] == "[malrec] Betreff" and msg["To"] == "admin@example.org"
+    from email.utils import parsedate_to_datetime
+    sent_at = parsedate_to_datetime(msg["Date"])           # clients show 1970 without it
+    assert abs((sent_at - dt.datetime.now(dt.UTC)).total_seconds()) < 60
     kinds = [p.get_content_type() for p in msg.walk()]
-    assert {"text/plain", "text/html", "image/png"} <= set(kinds)
+    # related around the text/HTML choice and the inline logo - nesting the
+    # logo inside the HTML alternative made some clients show plain text only
+    assert kinds == ["multipart/related", "multipart/alternative", "text/plain", "text/html",
+                     "image/png"]
+    assert msg.get_param("type") == "multipart/alternative"
+    assert next(p for p in msg.walk() if p.get_content_type() == "image/png"
+                )["Content-Disposition"].startswith("inline")
     assert any(p.get("Content-ID") == "<malrec-logo>" for p in msg.walk())
 
 

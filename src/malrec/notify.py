@@ -25,8 +25,10 @@ import html
 import logging
 import smtplib
 import ssl
-from email.message import EmailMessage
-from email.utils import formataddr, make_msgid
+from email.mime.image import MIMEImage
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.utils import formataddr, formatdate, make_msgid
 from importlib import resources
 
 from .config import settings
@@ -320,17 +322,26 @@ def send(subject: str, page: str, text: str) -> str | None:
     cfg = settings()
     if not enabled():
         return "notifications are not configured"
-    msg = EmailMessage()
+    # multipart/related (type multipart/alternative): the text/HTML choice
+    # first, then the inline logo it refers to. Nesting the logo inside the
+    # HTML alternative instead made some clients (SOGo among them) fall back
+    # to the plain text.
+    msg = MIMEMultipart("related", type="multipart/alternative")
     msg["Subject"] = f"[malrec] {subject}"
     msg["From"] = formataddr(("malrec", cfg.smtp_from or cfg.smtp_user))
     msg["To"] = ", ".join(a.strip() for a in cfg.admin_email.split(",") if a.strip())
+    msg["Date"] = formatdate(localtime=True)     # neither smtplib nor the server adds it
     msg["Message-ID"] = make_msgid(domain=(cfg.smtp_from or cfg.smtp_user).split("@")[-1] or None)
-    msg.set_content(text)
-    msg.add_alternative(page, subtype="html")
+    alt = MIMEMultipart("alternative")
+    alt.attach(MIMEText(text, "plain", "utf-8"))
+    alt.attach(MIMEText(page, "html", "utf-8"))
+    msg.attach(alt)
     try:
-        logo = resources.files("malrec").joinpath("assets/mail-logo.png").read_bytes()
-        msg.get_payload()[1].add_related(logo, "image", "png", cid="<malrec-logo>",
-                                         filename="malrec.png")
+        logo = MIMEImage(resources.files("malrec").joinpath("assets/mail-logo.png").read_bytes(),
+                         "png")
+        logo.add_header("Content-ID", "<malrec-logo>")
+        logo.add_header("Content-Disposition", "inline", filename="malrec.png")
+        msg.attach(logo)
     except Exception:  # noqa: BLE001 - a mail without its logo still goes out
         log.warning("mail logo missing")
     try:
