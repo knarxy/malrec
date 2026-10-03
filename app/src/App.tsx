@@ -500,7 +500,7 @@ function Main({ lang, setLangState }: { lang: Lang; setLangState: (l: Lang) => v
             {isOwn && <button className="menu-extra" onClick={() => setQuiz(true)}>{t('Rate titles')}</button>}
             {isOwn && <button className="menu-extra" onClick={() => setTogether(true)}>{t('Watch together')}</button>}
             <button className="menu-extra" onClick={() => setInsights(true)} disabled={!profile}>{t('Your taste')}</button>
-            {auth.is_admin && <button onClick={() => setAdminView(true)}>Verwaltung</button>}
+            {auth.is_admin && <button onClick={() => setAdminView(true)}>{t('adm.menu')}</button>}
             {auth.is_admin && !isOwn && <a className="menu-link" href="/">{t('back.own')}</a>}
             <label className="menu-lang">{t('Language')} <LangPicker onChange={changeLang} /></label>
             <button onClick={logout}>{t('Sign out')}</button>

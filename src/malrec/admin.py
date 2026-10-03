@@ -145,18 +145,20 @@ def audit_log(v: Admin) -> list[dict]:
 
 # ----------------------------------------------------------------- system --
 
-JOBS = {                     # log file -> (label, how often it should run, in hours)
-    "users.log": ("Listen-Abgleich (nächtlich)", 26),
-    "backup.log": ("Datenbank-Sicherung (nächtlich)", 26),
-    "upcoming.log": ("Demnächst-Aktualisierung (wöchentlich)", 24 * 8),
-    "refresh.log": ("Monatliche Aktualisierung", 24 * 32),
+# log file -> (job code, how often it should run, in hours). Codes and states
+# are translated by the app (app/src/i18n.tsx, "adm.job.*", "adm.jobstate.*").
+JOBS = {
+    "users.log": ("list_sync", 26),
+    "backup.log": ("backup", 26),
+    "upcoming.log": ("upcoming", 24 * 8),
+    "refresh.log": ("monthly", 24 * 32),
 }
 _FAIL = re.compile(r"Traceback|FAILED|failed|Error|skipped", re.IGNORECASE)
 
 
 def _job_status(path: Path, max_age_h: float) -> dict:
     if not path.exists():
-        return {"state": "noch nie gelaufen", "ok": None}
+        return {"state": "never", "ok": None}
     age_h = (time.time() - path.stat().st_mtime) / 3600
     lines = [ln for ln in path.read_text(errors="replace").splitlines() if ln.strip()]
     tail = lines[-40:]
@@ -166,8 +168,8 @@ def _job_status(path: Path, max_age_h: float) -> dict:
     last = tail[start:]
     failed = any(_FAIL.search(ln) and "non-fatal" not in ln for ln in last)
     ok = not failed and age_h <= max_age_h
-    return {"ok": ok, "state": "fehlgeschlagen" if failed else
-            ("überfällig" if age_h > max_age_h else "ok"),
+    return {"ok": ok, "state": "failed" if failed else
+            ("overdue" if age_h > max_age_h else "ok"),
             "last_run": dt.datetime.fromtimestamp(path.stat().st_mtime, dt.UTC).isoformat(),
             "tail": last[-6:]}
 
