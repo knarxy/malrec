@@ -155,6 +155,18 @@ nothing is exposed until you choose to.
 </details>
 
 <details>
+<summary>📬 <b>Optional: e-mails for the admin</b></summary>
+
+<br>
+
+Add an SMTP account to `.env` (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`,
+`ADMIN_EMAIL`) and malrec mails you when someone is waiting for approval,
+when background tasks fail, and when the scheduled jobs have run. Try it with
+`docker compose exec api malrec notify test --all`.
+
+</details>
+
+<details>
 <summary>🕰️ <b>Optional: keep everything fresh automatically</b></summary>
 
 <br>

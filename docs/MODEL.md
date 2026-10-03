@@ -674,3 +674,22 @@ make dev-lab CMD="python -u -m experiments.exp_toplist --round 7"
 ```
 
 Move the database with `pg_dump -Fc` / `pg_restore`, not by copying files.
+
+### Admin e-mails
+
+With `SMTP_HOST` and `ADMIN_EMAIL` set (STARTTLS on `SMTP_PORT`, login with
+`SMTP_USER` / `SMTP_PASSWORD`), `malrec.notify` mails the admin, in the admin
+account's app language and in the app's look:
+
+| when | from |
+|---|---|
+| an account asks for approval (once per request) | sign-in |
+| background tasks failed - the first at once, then bundled, at most every 30 minutes | the worker |
+| the monthly refresh ran: new model or kept, with the gate's numbers; or it stopped on an error | `monthly_refresh.sh` |
+| the weekly Coming Soon refresh ran, or failed | `weekly_upcoming.sh` |
+| the nightly list sync or backup failed (no mail when they succeed) | `nightly_sync.sh`, `backup.sh` |
+
+Every mail is recorded in the `notification` table, which also keeps one
+event from being mailed twice. `malrec notify test --all` sends a test mail
+and one sample of every kind. Sending never fails the job or request that
+triggered it, and the test suite never sends.

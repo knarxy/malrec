@@ -258,9 +258,10 @@ def callback(code: str | None = None, state: str | None = None,
 
     username = me["name"]
     uid = get_or_create_user(username)
+    # fresh: this sign-in is the account's first request for approval
     acct = one("UPDATE app_user SET last_login_at = now(),"
-               " requested_at = coalesce(requested_at, now()) WHERE id=%s RETURNING status",
-               (uid,))
+               " requested_at = coalesce(requested_at, now()) WHERE id=%s"
+               " RETURNING status, requested_at = now() AS fresh", (uid,))
     status = acct["status"] if acct else "pending"
     if status == "pending":
         # The admin named in the server's config approves themselves on first
@@ -271,6 +272,12 @@ def callback(code: str | None = None, state: str | None = None,
             execute("UPDATE app_user SET status='approved', approved_at=now() WHERE id=%s",
                     (uid,))
             status = "approved"
+    if status == "pending" and acct and acct["fresh"]:
+        # tell the admin by mail, off the request path (malrec.notify)
+        import threading
+
+        from . import notify
+        threading.Thread(target=notify.pending_signup, args=(uid,), daemon=True).start()
     if status in ("rejected", "blocked"):
         # no session at all: nothing is fetched or stored for them
         return RedirectResponse(f"{base}/?auth_error=blocked", status_code=302)

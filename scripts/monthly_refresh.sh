@@ -20,7 +20,18 @@ set -eu
 cd /opt/malrec
 mkdir -p logs
 DRY_RUN=${DRY_RUN:-}
-if [ -n "$DRY_RUN" ]; then exec >>logs/refresh-dryrun.log 2>&1; else exec >>logs/refresh.log 2>&1; fi
+LOGF=logs/refresh.log
+[ -n "$DRY_RUN" ] && LOGF=logs/refresh-dryrun.log
+exec >>"$LOGF" 2>&1
+# a run that stops on an error tells the admin by mail (malrec.notify)
+on_exit() {
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+        tail -40 "$LOGF" | docker exec -i malrec-api malrec notify job-failed --job monthly \
+            >/dev/null 2>&1 || true
+    fi
+}
+trap on_exit EXIT
 # the nightly jobs share this lock; wait for them rather than skip the month
 exec 9>logs/refresh.lock
 flock -w 7200 9 || { echo "$(date -Is) lock held for 2 hours; skipped"; exit 1; }
@@ -61,4 +72,7 @@ lab malrec report || echo "report failed (non-fatal)"
 # population-level comparison with baselines on the deployed configuration
 lab python -u experiments/exp_audit.py --max-eval "$([ -n "$DRY_RUN" ] && echo 10 || echo 100)" \
     2>&1 | grep -v "^[0-9][0-9]:" || echo "exp_audit failed (non-fatal)"
+# the result, by mail to the admin
+printf '%s' "$fit" | docker exec -i malrec-api malrec notify monthly \
+    --log "/app/$LOGF" ${DRY_RUN:+--dry-run} || echo "result mail failed (non-fatal)"
 echo "=== $(date -Is) done ==="

@@ -306,6 +306,76 @@ def recommend(user: str = typer.Option(None),
                    f"{' | '.join(why)[:52]}")
 
 
+notify_app = typer.Typer(help="Admin e-mails (malrec.notify).")
+app.add_typer(notify_app, name="notify")
+
+
+def _stdin_json():
+    """The first JSON value on stdin (a job's output), or None. Anything
+    around it, or a broken document, never stops the mail from going out."""
+    import sys
+    raw = sys.stdin.read()
+    start = min((i for i in (raw.find("{"), raw.find("[")) if i >= 0), default=-1)
+    if start < 0:
+        return None
+    try:
+        return json.JSONDecoder().raw_decode(raw[start:])[0]
+    except ValueError:
+        logging.getLogger(__name__).warning("notify: could not read the job's JSON output")
+        return None
+
+
+@notify_app.command("test")
+def notify_test(all_kinds: bool = typer.Option(False, "--all", help="also one sample of every kind")
+                ) -> None:
+    """Send a test mail to ADMIN_EMAIL."""
+    _setup()
+    from .notify import enabled, test
+    if not enabled():
+        raise typer.Exit("SMTP_HOST / ADMIN_EMAIL not set")
+    typer.echo(json.dumps(test(all_kinds)))
+
+
+@notify_app.command("monthly")
+def notify_monthly(log: str = typer.Option(..., help="the refresh log"),
+                   dry_run: bool = typer.Option(False)) -> None:
+    """Mail the monthly refresh's result; the fit JSON comes on stdin."""
+    _setup()
+    from pathlib import Path
+
+    from .notify import monthly
+    fit = _stdin_json() or {}
+    text = Path(log).read_text(errors="replace") if Path(log).exists() else ""
+    start = text.rfind("monthly refresh")            # this run's section of the log
+    monthly(fit, text[max(start, 0):], dry_run=dry_run)
+
+
+@notify_app.command("weekly")
+def notify_weekly() -> None:
+    """Mail the weekly coming-soon refresh's result (its JSON on stdin)."""
+    _setup()
+    from .notify import weekly
+    weekly(_stdin_json() or {})
+
+
+@notify_app.command("nightly")
+def notify_nightly() -> None:
+    """Mail the nightly list sync's failures, if any (its JSON on stdin)."""
+    _setup()
+    from .notify import nightly
+    nightly(_stdin_json() or [])
+
+
+@notify_app.command("job-failed")
+def notify_job_failed(job: str = typer.Option(..., help="backup, list_sync, monthly or weekly")
+                      ) -> None:
+    """Mail that a scheduled job failed; the tail of its log comes on stdin."""
+    import sys
+    _setup()
+    from .notify import job_failed
+    job_failed(job, sys.stdin.read())
+
+
 @app.command("worker")
 def worker_cmd(threads: int = typer.Option(None, help="tasks at once (default WORKER_THREADS)")
                ) -> None:

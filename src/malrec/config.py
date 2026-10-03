@@ -30,6 +30,16 @@ class Settings(BaseSettings):
     # Comma-separated MAL usernames with admin rights (approve users, admin
     # panel, viewing any profile). Config, not a database flag, on purpose.
     admin_users: str = ""
+    # Admin e-mails (malrec.notify): off unless SMTP_HOST and ADMIN_EMAIL are
+    # set. STARTTLS on SMTP_PORT; SMTP_FROM defaults to SMTP_USER. Times in
+    # the mails are shown in NOTIFY_TIMEZONE.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    admin_email: str = ""
+    notify_timezone: str = "UTC"
     # How users reach whoever runs this instance (a URL or an address), shown
     # on the privacy page. Empty: the page says "the operator of this site".
     operator_contact: str = ""

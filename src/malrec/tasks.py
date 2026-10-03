@@ -194,7 +194,17 @@ def work_once() -> bool:
     except Exception as e:
         log.exception("task %s %s for user %s failed", t["id"], t["kind"], t["user_id"])
         finish(t["id"], f"{type(e).__name__}: {e}"[:300])
+        _mail_failures()
     return True
+
+
+def _mail_failures() -> None:
+    """Mail failed tasks to the admin (bundled, see notify.task_failures)."""
+    try:
+        from .notify import task_failures
+        task_failures()
+    except Exception:
+        log.exception("failure mail")
 
 
 def worker(threads: int = 1, idle_sleep: float = 1.0) -> None:
@@ -219,9 +229,12 @@ def worker(threads: int = 1, idle_sleep: float = 1.0) -> None:
                 log.exception("worker heartbeat")
 
     def loop() -> None:
-        last_house = 0.0
+        last_house = last_mail = 0.0
         while not stop.is_set():
             beat_file.touch()
+            if time.time() - last_mail > 60:      # bundled failures that are now due
+                _mail_failures()
+                last_mail = time.time()
             if time.time() - last_house > 3600:
                 housekeeping()
                 last_house = time.time()
