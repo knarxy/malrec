@@ -11,6 +11,11 @@ export const LANGS: { code: Lang; label: string }[] = [
 ]
 
 const de: Record<string, string> = {
+  'bell.label': 'Freigaben',
+  'bell.label_n': '{n} warten auf Freigabe',
+  'bell.title': 'Warten auf Freigabe',
+  'bell.none': 'Niemand wartet gerade.',
+  'bell.open': 'Verwaltung öffnen',
   'adm.menu': 'Verwaltung',
   'adm.title': 'Verwaltung',
   'adm.back': 'Zurück zur App',
@@ -377,6 +382,11 @@ const de: Record<string, string> = {
 }
 
 const en: Record<string, string> = {
+  'bell.label': 'Approvals',
+  'bell.label_n': '{n} waiting for approval',
+  'bell.title': 'Waiting for approval',
+  'bell.none': 'Nobody is waiting right now.',
+  'bell.open': 'Open the admin panel',
   'adm.menu': 'Admin panel',
   'adm.title': 'Admin',
   'adm.back': 'Back to the app',

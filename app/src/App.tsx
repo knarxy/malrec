@@ -4,7 +4,7 @@ import {
   type Prefs, type Profile, type Recommendation, type Surface,
 } from './api'
 import { BrandMark, Card, Controls, Details, Insights, SearchBox, Skeletons } from './components'
-import { Admin } from './admin'
+import { Admin, AdminBell } from './admin'
 import { Quiz } from './quiz'
 import { captureTogetherToken, Together } from './together'
 import {
@@ -496,6 +496,7 @@ function Main({ lang, setLangState }: { lang: Lang; setLangState: (l: Lang) => v
           {isOwn && <button className="bar-btn bar-extra" onClick={() => setQuiz(true)}>{t('Rate titles')}</button>}
           {isOwn && <button className="bar-btn bar-extra" onClick={() => setTogether(true)}>{t('Watch together')}</button>}
           <button className="bar-btn bar-extra" onClick={() => setInsights(true)} disabled={!profile}>{t('Your taste')}</button>
+          {auth.is_admin && <AdminBell onOpenPanel={() => setAdminView(true)} />}
           <AccountMenu username={auth.username ?? ''} picture={auth.picture} viewing={isOwn ? null : user}>
             {isOwn && <button className="menu-extra" onClick={() => setQuiz(true)}>{t('Rate titles')}</button>}
             {isOwn && <button className="menu-extra" onClick={() => setTogether(true)}>{t('Watch together')}</button>}

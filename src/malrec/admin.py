@@ -50,6 +50,14 @@ USERS_SQL = """
 """
 
 
+@router.get("/pending")
+def pending(v: Admin) -> list[dict]:
+    """Accounts waiting for approval, oldest first - for the app's
+    notification bell, which polls this, so it stays a single cheap query."""
+    return query("SELECT id, mal_username, requested_at FROM app_user WHERE status='pending'"
+                 " ORDER BY requested_at NULLS LAST, id")
+
+
 @router.get("/users")
 def users(v: Admin) -> list[dict]:
     out = query(USERS_SQL)

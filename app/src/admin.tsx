@@ -1,8 +1,8 @@
 // The admin panel. Shown only to admin accounts; the API checks every request
 // itself (malrec.admin), this is just the controls. Strings are in i18n.tsx
 // under "adm.*".
-import { useCallback, useEffect, useState } from 'react'
-import { api, ApiError, type AdminSystem, type AdminUser } from './api'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { api, ApiError, type AdminSystem, type AdminUser, type PendingUser } from './api'
 import { BrandMark } from './components'
 import { useI18n } from './i18n'
 
@@ -14,6 +14,19 @@ function useWhen() {
     if (!iso) return '—'
     return new Date(iso).toLocaleString(lang === 'de' ? 'de-DE' : 'en-GB',
       { dateStyle: 'short', timeStyle: 'short' })
+  }
+}
+
+/** "5 min ago", "3 hr ago", "2 days ago" - in the chosen language. */
+function useAgo() {
+  const { lang } = useI18n()
+  return (iso: string | null | undefined): string => {
+    if (!iso) return '—'
+    const rtf = new Intl.RelativeTimeFormat(lang, { numeric: 'auto', style: 'short' })
+    const min = Math.round((new Date(iso).getTime() - Date.now()) / 60000)
+    if (Math.abs(min) < 60) return rtf.format(min, 'minute')
+    if (Math.abs(min) < 60 * 24) return rtf.format(Math.round(min / 60), 'hour')
+    return rtf.format(Math.round(min / 1440), 'day')
   }
 }
 
@@ -307,6 +320,100 @@ function Log() {
           ))}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+const BELL_POLL_MS = 60_000
+
+/** Admin only: a bell in the top bar with the number of accounts waiting for
+ *  approval (also shown in the tab title), and a dropdown to approve them or
+ *  open the panel. Polls while the tab is visible, and again on return. */
+export function AdminBell({ onOpenPanel }: { onOpenPanel: () => void }) {
+  const { t } = useI18n()
+  const ago = useAgo()
+  const [pending, setPending] = useState<PendingUser[]>([])
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState<number | null>(null)
+  const ref = useRef<HTMLDivElement>(null)
+
+  const load = useCallback(() => {
+    if (document.visibilityState !== 'visible') return
+    api.adminPending().then(setPending).catch(() => {})
+  }, [])
+  useEffect(() => {
+    load()
+    const id = window.setInterval(load, BELL_POLL_MS)
+    document.addEventListener('visibilitychange', load)
+    return () => {
+      window.clearInterval(id)
+      document.removeEventListener('visibilitychange', load)
+    }
+  }, [load])
+
+  // "(2) malrec" in the tab while someone waits
+  useEffect(() => {
+    const base = document.title.replace(/^\(\d+\) /, '')
+    document.title = pending.length ? `(${pending.length}) ${base}` : base
+    return () => { document.title = document.title.replace(/^\(\d+\) /, '') }
+  }, [pending.length])
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  async function approve(u: PendingUser) {
+    setBusy(u.id)
+    try {
+      await api.adminAction(u.id, 'approve')
+      setPending((p) => p.filter((x) => x.id !== u.id))
+    } catch { load() } finally { setBusy(null) }
+  }
+
+  const n = pending.length
+  return (
+    <div className="account" ref={ref}>
+      <button className={`bar-btn bell-btn${n ? ' has-news' : ''}`} aria-haspopup="menu" aria-expanded={open}
+              aria-label={n ? t('bell.label_n', { n }) : t('bell.label')}
+              title={n ? t('bell.label_n', { n }) : t('bell.label')}
+              onClick={() => { setOpen((o) => !o); if (!open) load() }}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+          <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+        </svg>
+        {n > 0 && <span className="bell-count" aria-hidden="true">{n > 9 ? '9+' : n}</span>}
+      </button>
+      {open && (
+        <div className="menu bell-menu" role="menu">
+          <div className="menu-head">
+            <b>{t('bell.title')}</b>
+            {n === 0 && <div>{t('bell.none')}</div>}
+          </div>
+          {pending.map((u) => (
+            <div className="bell-row" key={u.id}>
+              <div className="bell-who">
+                <b>{u.mal_username}</b>
+                <span>{t('adm.requested', { when: ago(u.requested_at) })}</span>
+              </div>
+              <button className="primary" disabled={busy === u.id} onClick={() => approve(u)}>
+                {t('adm.approve')}
+              </button>
+            </div>
+          ))}
+          <button onClick={() => { setOpen(false); onOpenPanel() }}>{t('bell.open')}</button>
+        </div>
+      )}
     </div>
   )
 }

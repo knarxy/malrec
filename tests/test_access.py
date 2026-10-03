@@ -198,3 +198,13 @@ def test_rate_limit_table_is_swept(monkeypatch):
     dep = access.rate_limit("b", 10, 60).dependency
     dep(Request({"type": "http", "headers": [], "client": ("10.9.9.9", 1)}))
     assert set(access._hits) == {("b", "10.9.9.9")}
+
+
+def test_only_the_admin_sees_who_is_waiting(accounts):
+    _, cl = accounts
+    rows = cl["admin"].get("/admin/pending").json()
+    assert [r["mal_username"] for r in rows if r["mal_username"].startswith("malrec_t_")] \
+        == [NAMES["pending"]]
+    for role in ("user", "pending"):
+        assert cl[role].get("/admin/pending").status_code == 403
+    assert TestClient(app).get("/admin/pending").status_code == 401

@@ -142,6 +142,12 @@ export interface AuthState {
   picture?: string | null
 }
 
+export interface PendingUser {
+  id: number
+  mal_username: string
+  requested_at: string | null
+}
+
 export interface AdminUser {
   id: number
   mal_username: string
@@ -353,6 +359,7 @@ export const api = {
 
   // ---- admin panel
   adminUsers: () => req<AdminUser[]>('/admin/users'),
+  adminPending: () => req<PendingUser[]>('/admin/pending'),
   adminAction: (id: number, action: 'approve' | 'reject' | 'block' | 'unblock' | 'logout'
     | 'sync' | 'rebuild') =>
     req<unknown>(`/admin/users/${id}/${action}`, { method: 'POST', headers: CSRF }),
