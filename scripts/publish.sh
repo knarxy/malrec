@@ -28,7 +28,18 @@ find . -mindepth 1 -type d -not -path './.git' -not -path './.git/*' -empty -del
 (cd "$REPO" && git archive master) | tar -x
 for f in $EXCLUDE; do rm -rf -- "$f"; done
 
-hits=$(grep -rnIiE -- "$SCAN" . --exclude-dir=.git | grep -vE -- "${ALLOW:-^\$}" || true)
+# grep exits 0 on a match, 1 on none, 2 on an error: an error must stop the
+# publish, never read as "nothing found"
+set +e
+found=$(grep -rnIiE --exclude-dir=.git -e "$SCAN" .)
+rc=$?
+set -e
+if [ "$rc" -gt 1 ]; then
+    echo "== the private-string scan failed (grep exit $rc) - nothing published"
+    git checkout -q -- . && git clean -fdq
+    exit 1
+fi
+hits=$(printf '%s\n' "$found" | grep -vE -e "${ALLOW:-^\$}" | grep -v '^$' || true)
 if [ -n "$hits" ]; then
     echo "$hits" | cut -c1-160
     echo "== private strings found - nothing published"
