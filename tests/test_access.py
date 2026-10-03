@@ -208,3 +208,53 @@ def test_only_the_admin_sees_who_is_waiting(accounts):
     for role in ("user", "pending"):
         assert cl[role].get("/admin/pending").status_code == 403
     assert TestClient(app).get("/admin/pending").status_code == 401
+
+
+def test_an_account_can_delete_itself_and_everything_stored(accounts):
+    ids, cl = accounts
+    uid, name = ids["pending"], NAMES["pending"]              # waiting accounts may too
+    execute("INSERT INTO list_entry (user_id, mal_id, status, score) VALUES (%s, 1, 'completed', 8)",
+            (uid,))
+    execute("INSERT INTO job (kind, username, state) VALUES ('onboard', %s, 'done')", (name,))
+    from malrec.ingest.fullfetch import name_hash
+    execute("DELETE FROM cf_user WHERE name_hash=%s", (name_hash(name),))
+    execute("INSERT INTO cf_user (name_hash, name, source, state) VALUES (%s, %s, 'test', 'done')",
+            (name_hash(name), name))
+    execute("INSERT INTO admin_log (admin, action, target) VALUES (%s, 'approve', %s)",
+            (NAMES["admin"], name))
+    c = cl["pending"]
+    assert c.request("DELETE", "/me", json={"confirm": name}).status_code == 403    # no CSRF
+    assert c.request("DELETE", "/me", headers=CSRF, json={"confirm": "someone"}).status_code == 422
+    r = c.request("DELETE", "/me", headers=CSRF, json={"confirm": name.upper()})
+    assert r.status_code == 200 and r.json() == {"deleted": True}
+    assert scalar("SELECT count(*) FROM app_user WHERE id=%s", (uid,)) == 0
+    for sql in ("SELECT count(*) FROM list_entry WHERE user_id=%s",
+                "SELECT count(*) FROM mal_session WHERE app_user_id=%s"):
+        assert scalar(sql, (uid,)) == 0
+    assert scalar("SELECT count(*) FROM job WHERE username=%s", (name,)) == 0
+    # the sample keeps only the anonymous hash, excluded from future sampling
+    row = one("SELECT name, state FROM cf_user WHERE name_hash=%s", (name_hash(name),))
+    assert row == {"name": None, "state": "excluded"}
+    execute("DELETE FROM cf_user WHERE name_hash=%s", (name_hash(name),))
+    assert scalar("SELECT count(*) FROM admin_log WHERE target=%s", (name,)) == 0
+    assert c.get("/auth/me").json() == {"signed_in": False}
+
+
+def test_nobody_can_delete_someone_elses_account(accounts):
+    """DELETE /me acts only on the caller's own session; there is no way to
+    name another account, and a signed-out visitor gets nothing."""
+    ids, cl = accounts
+    other = NAMES["other"]
+    # signed out, with or without a made-up cookie
+    assert TestClient(app).request("DELETE", "/me", headers=CSRF,
+                                   json={"confirm": other}).status_code == 401
+    fake = TestClient(app)
+    fake.cookies.set(auth.COOKIE, secrets.token_urlsafe(16))
+    assert fake.request("DELETE", "/me", headers=CSRF, json={"confirm": other}).status_code == 401
+    # signed in as someone else: naming the other account is refused
+    r = cl["user"].request("DELETE", "/me", headers=CSRF, json={"confirm": other})
+    assert r.status_code == 422
+    # the admin's panel delete is the only way to remove another account
+    assert cl["user"].request("DELETE", f"/admin/users/{ids['other']}", headers=CSRF).status_code == 403
+    assert scalar("SELECT count(*) FROM app_user WHERE id IN (%s, %s)",
+                  (ids["other"], ids["user"])) == 2

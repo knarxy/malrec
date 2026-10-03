@@ -5,6 +5,7 @@ import {
 } from './api'
 import { BrandMark, Card, Controls, Details, Insights, SearchBox, Skeletons } from './components'
 import { Admin, AdminBell } from './admin'
+import { PrivacyPage } from './privacy'
 import { Quiz } from './quiz'
 import { captureTogetherToken, Together } from './together'
 import {
@@ -136,6 +137,7 @@ function Footer() {
         {' '}{t('credits.and')}{' '}
         <span className="credits-claude">Claude Opus 5.5</span>
       </p>
+      <div className="credits-links">
       <a className="credits-source" href="https://github.com/knarxy/malrec" target="_blank"
          rel="noopener noreferrer">
         <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true">
@@ -143,6 +145,8 @@ function Footer() {
         </svg>
         {t('credits.source')}
       </a>
+      <a className="credits-source" href="/privacy">{t('privacy.link')}</a>
+      </div>
     </footer>
   )
 }
@@ -163,6 +167,9 @@ function SignIn({ authError, onLang }: { authError: string | null; onLang: (l: L
         <p className="sub" style={{ margin: '10px 0 0', fontSize: 12.5 }}>{t('signin.benefit')}</p>
         {authError && <AuthErrorNotice code={authError} />}
         <p className="sub" style={{ margin: '18px 0 0', fontSize: 13 }}>{t('signin.approval')}</p>
+        <p className="sub" style={{ margin: '12px 0 0', fontSize: 12.5 }}>
+          <a href="/privacy">{t('privacy.link')}</a>
+        </p>
       </div>
     </div>
   )
@@ -182,7 +189,10 @@ function Pending({ username, onLang, onLogout, hasInvite }: {
         </div>
         <p className="sub">{t('pending.text', { user: username })}</p>
         {hasInvite && <p className="sub">{t('together.link_wait')}</p>}
-        <button style={{ marginTop: 8 }} onClick={onLogout}>{t('Sign out')}</button>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 8 }}>
+          <button onClick={onLogout}>{t('Sign out')}</button>
+          <a href="/privacy" style={{ fontSize: 13 }}>{t('privacy.menu')}</a>
+        </div>
       </div>
     </div>
   )
@@ -256,6 +266,18 @@ export default function App() {
     lang, t: makeT(lang), label: (x: string) => translateLabel(lang, x),
   }), [lang])
   useEffect(() => { document.documentElement.lang = lang }, [lang])
+  if (window.location.pathname.replace(/\/+$/, '') === '/privacy') {
+    const pick = (l: Lang) => {
+      setLangState(l)
+      try { localStorage.setItem('malrec.lang', l) } catch { /* storage blocked */ }
+    }
+    return (
+      <I18nContext.Provider value={i18n}>
+        <PrivacyPage onLang={pick} />
+        <Footer />
+      </I18nContext.Provider>
+    )
+  }
   return (
     <I18nContext.Provider value={i18n}>
       <Main lang={lang} setLangState={setLangState} />
@@ -504,6 +526,7 @@ function Main({ lang, setLangState }: { lang: Lang; setLangState: (l: Lang) => v
             {auth.is_admin && <button onClick={() => setAdminView(true)}>{t('adm.menu')}</button>}
             {auth.is_admin && !isOwn && <a className="menu-link" href="/">{t('back.own')}</a>}
             <label className="menu-lang">{t('Language')} <LangPicker onChange={changeLang} /></label>
+            <a className="menu-link" href="/privacy">{t('privacy.menu')}</a>
             <button onClick={logout}>{t('Sign out')}</button>
           </AccountMenu>
         </div>

@@ -170,6 +170,13 @@ export interface AdminSystem {
   last_backup: string
   jobs: Record<string, { label: string; ok: boolean | null; state: string;
     last_run?: string; tail?: string[] }>
+  worker?: {
+    state: 'ok' | 'stalled' | 'stuck' | 'never'
+    started_at: string | null; last_seen: string | null; threads: number | null
+    queued: number; running: number; failed_24h: number; done_24h: number
+    oldest_queued_s: number | null; longest_running_s: number | null
+    recent_failures: { kind: string; username: string; error: string | null; finished_at: string | null }[]
+  }
 }
 
 export interface Surface {
@@ -269,7 +276,10 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   authMe: () => req<AuthState>('/auth/me'),
 
-  authConfig: () => req<{ redirect_uri: string | null; register_at: string }>('/auth/config'),
+  authConfig: () => req<{ redirect_uri: string | null; register_at: string;
+    operator_contact?: string | null }>('/auth/config'),
+  deleteMe: (confirm: string) =>
+    req<{ deleted: boolean }>('/me', { method: 'DELETE', headers: CSRF, body: JSON.stringify({ confirm }) }),
 
   /** Full-page navigation: the OAuth dance has to leave the app. */
   loginUrl: (returnTo = '/') => `${BASE}/auth/login?return_to=${encodeURIComponent(returnTo)}`,

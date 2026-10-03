@@ -35,6 +35,9 @@ UI_TIMEOUT_S = 180
 MAX_ATTEMPTS = 3
 KEEP_DAYS = 14
 HEARTBEAT = "/tmp/malrec-worker-alive"
+BEAT_EVERY_S = 30           # database heartbeat, for the admin panel
+STALLED_AFTER_S = 180      # no heartbeat: the worker process is gone or frozen
+STUCK_AFTER_S = 900        # a task running this long is probably hung
 
 
 def enqueue(kind: str, user_id: int) -> None:
@@ -136,6 +139,42 @@ def recover() -> int:
     return execute("UPDATE task SET state='queued' WHERE state='running'")
 
 
+def beat(started: bool = False, threads: int = 1) -> None:
+    if started:
+        execute("INSERT INTO worker_status (id, started_at, beat_at, threads)"
+                " VALUES (1, now(), now(), %s) ON CONFLICT (id) DO UPDATE"
+                " SET started_at = now(), beat_at = now(), threads = EXCLUDED.threads", (threads,))
+    else:
+        execute("UPDATE worker_status SET beat_at = now() WHERE id = 1")
+
+
+def status() -> dict:
+    """For the admin panel: is the worker alive, what is waiting, what failed."""
+    w = one("SELECT started_at, beat_at, threads,"
+            " extract(epoch FROM now() - beat_at)::int AS silent_s FROM worker_status")
+    q = one("""SELECT count(*) FILTER (WHERE state = 'queued') AS queued,
+                      count(*) FILTER (WHERE state = 'running') AS running,
+                      count(*) FILTER (WHERE state = 'failed'
+                                         AND finished_at > now() - interval '1 day') AS failed_24h,
+                      extract(epoch FROM now() - min(created_at)
+                              FILTER (WHERE state = 'queued'))::int AS oldest_queued_s,
+                      extract(epoch FROM now() - min(started_at)
+                              FILTER (WHERE state = 'running'))::int AS longest_running_s,
+                      count(*) FILTER (WHERE state = 'done'
+                                         AND finished_at > now() - interval '1 day') AS done_24h
+                 FROM task""")
+    from .db import query
+    failures = query("""SELECT t.kind, u.mal_username AS username, t.error, t.finished_at
+                          FROM task t JOIN app_user u ON u.id = t.user_id
+                         WHERE t.state = 'failed' ORDER BY t.finished_at DESC NULLS LAST LIMIT 5""")
+    state = ("never" if w is None else
+             "stalled" if w["silent_s"] > STALLED_AFTER_S else
+             "stuck" if (q["longest_running_s"] or 0) > STUCK_AFTER_S else "ok")
+    return {"state": state, "started_at": w["started_at"] if w else None,
+            "last_seen": w["beat_at"] if w else None, "threads": w["threads"] if w else None,
+            **q, "recent_failures": failures}
+
+
 def housekeeping() -> None:
     execute("DELETE FROM task WHERE state IN ('done', 'failed')"
             " AND finished_at < now() - %s::interval", (f"{KEEP_DAYS} days",))
@@ -167,14 +206,22 @@ def worker(threads: int = 1, idle_sleep: float = 1.0) -> None:
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: stop.set())
     log.info("worker: %d requeued after a restart", recover())
+    beat(started=True, threads=max(1, threads))
     active_global()
     item_store()                       # warm the shared caches before the first task
-    beat = Path(HEARTBEAT)
+    beat_file = Path(HEARTBEAT)
+
+    def heartbeat() -> None:            # the process is alive, even mid-task
+        while not stop.wait(BEAT_EVERY_S):
+            try:
+                beat()
+            except Exception:
+                log.exception("worker heartbeat")
 
     def loop() -> None:
         last_house = 0.0
         while not stop.is_set():
-            beat.touch()
+            beat_file.touch()
             if time.time() - last_house > 3600:
                 housekeeping()
                 last_house = time.time()
@@ -186,6 +233,7 @@ def worker(threads: int = 1, idle_sleep: float = 1.0) -> None:
             if not busy:
                 stop.wait(idle_sleep)
 
+    threading.Thread(target=heartbeat, name="heartbeat", daemon=True).start()
     pool = [threading.Thread(target=loop, name=f"worker-{i}") for i in range(max(1, threads))]
     for th in pool:
         th.start()

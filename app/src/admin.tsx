@@ -174,8 +174,34 @@ function System() {
     api.adminSystem().then(setS).catch((e) => setErr(e instanceof ApiError ? e.message : t('adm.error')))
   }, [t])
   if (!s) return <p className="surface-note">{err ?? t('Loading…')}</p>
+  const w = s.worker
   return (
     <>
+      {w && (
+        <>
+          <h3>{t('adm.worker')}</h3>
+          <div className="admin-row">
+            <div>
+              <b>{t('adm.worker.name')}</b>{' '}
+              <span className={`badge ${w.state === 'ok' ? 'approved' : w.state === 'never' ? 'pending' : 'blocked'}`}>
+                {t(`adm.worker.state.${w.state}`)}
+              </span>
+              <div className="surface-note">
+                {t('adm.worker.seen', { when: when(w.last_seen), since: when(w.started_at) })}
+              </div>
+              <div className="surface-note">
+                {t('adm.worker.counts', { q: w.queued, r: w.running, d: w.done_24h, f: w.failed_24h })}
+                {w.oldest_queued_s !== null && w.queued > 0 &&
+                  ` · ${t('adm.worker.oldest', { s: w.oldest_queued_s })}`}
+              </div>
+              {w.recent_failures.length > 0 && (
+                <pre className="log-tail">{w.recent_failures.map((f) =>
+                  `${when(f.finished_at)}  ${f.kind}  ${f.username}  ${f.error ?? ''}`).join('\n')}</pre>
+              )}
+            </div>
+          </div>
+        </>
+      )}
       <h3>{t('adm.jobs')}</h3>
       {Object.entries(s.jobs).map(([k, j]) => (
         <div className="admin-row" key={k}>

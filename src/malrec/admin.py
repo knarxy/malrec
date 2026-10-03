@@ -140,8 +140,8 @@ def delete_user(uid: int, v: Admin) -> dict:
     u = _user(uid)
     if u["mal_username"].lower() == v.username.lower():
         raise HTTPException(409, "You cannot delete your own account.")
-    execute("DELETE FROM job WHERE username=%s", (u["mal_username"],))
-    execute("DELETE FROM app_user WHERE id=%s", (uid,))
+    from .account import erase
+    erase(uid, u["mal_username"], scrub_audit=False)    # the admin keeps the record
     _audit(v, "delete", u["mal_username"])
     return {"id": uid, "deleted": True}
 
@@ -204,6 +204,7 @@ def system(v: Admin) -> dict:
         "jobs": {name: {"label": label, **_job_status(logs / name, h)}
                  for name, (label, h) in JOBS.items()},
         "version": os.environ.get("MALREC_VERSION", ""),
+        "worker": tasks.status(),
     }
 
 

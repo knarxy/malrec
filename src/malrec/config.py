@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     # Comma-separated MAL usernames with admin rights (approve users, admin
     # panel, viewing any profile). Config, not a database flag, on purpose.
     admin_users: str = ""
+    # How users reach whoever runs this instance (a URL or an address), shown
+    # on the privacy page. Empty: the page says "the operator of this site".
+    operator_contact: str = ""
     # Background work (rebuilds, syncs, onboarding) runs in `malrec worker`.
     # tasks_inline runs it in a thread of the API instead, for local
     # development without a worker; worker_threads > 1 runs several users'

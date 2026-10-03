@@ -304,7 +304,9 @@ def auth_config() -> dict:
     has to be registered on MyAnimeList. Contains nothing secret."""
     cfg = settings()
     return {"redirect_uri": cfg.mal_redirect_uri or None,
-            "register_at": "https://myanimelist.net/apiconfig"}
+            "register_at": "https://myanimelist.net/apiconfig",
+            # shown on the privacy page as the way to reach the operator
+            "operator_contact": cfg.operator_contact or None}
 
 
 @router.get("/auth/me")
@@ -325,6 +327,25 @@ def logout(request: Request) -> JSONResponse:
     if token:
         execute("DELETE FROM mal_session WHERE token_hash=%s", (_hash(token),))
     resp = JSONResponse({"signed_in": False})
+    resp.delete_cookie(COOKIE, path="/")
+    return resp
+
+
+class DeleteMeIn(BaseModel):
+    confirm: str = Field(max_length=40, description="the account's MAL username, retyped")
+
+
+@router.delete("/me", dependencies=[Depends(require_csrf), rate_limit("delete_me", 5, 3600)])
+def delete_me(body: DeleteMeIn, s: AnySession) -> JSONResponse:
+    """Delete the signed-in account and everything stored for it, at once
+    (malrec.account.erase). Any status may do this, waiting or approved.
+    Nothing on MyAnimeList changes."""
+    if body.confirm.strip().lower() != s["mal_username"].lower():
+        raise HTTPException(422, "Type your MyAnimeList username to confirm.")
+    from .account import erase
+    erase(s["app_user_id"], s["mal_username"])
+    log.info("account %s deleted by its owner", s["app_user_id"])
+    resp = JSONResponse({"deleted": True})
     resp.delete_cookie(COOKIE, path="/")
     return resp
 

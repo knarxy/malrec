@@ -1,6 +1,7 @@
 # secrets and local settings
 .env
 .make.local
+.publish.local
 
 # python
 .venv/

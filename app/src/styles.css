@@ -512,6 +512,28 @@ select.lang { padding: 6px 8px; }
 .link-box .surface-note { flex-basis: 100%; margin: 0; }
 .invite-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 
+/* ---------------------------------------------------------------- privacy */
+
+.privacy { max-width: 760px; padding-block: 34px 10px; }
+.privacy h1 { margin: 0 0 10px; font-size: 32px; letter-spacing: -0.03em; }
+.privacy h2 { margin: 30px 0 8px; font-size: 18px; letter-spacing: -0.01em; }
+.privacy p, .privacy li { color: #c9cfdb; font-size: 14.5px; line-height: 1.65; }
+.privacy p { margin: 0 0 10px; }
+.privacy ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.privacy-intro { font-size: 16px !important; color: var(--text) !important; }
+.danger-zone {
+  margin-top: 34px; padding: 4px 20px 20px; border-radius: var(--radius);
+  border: 1px solid rgb(240 120 120 / .35); background: rgb(240 120 120 / .05);
+}
+.danger-zone.done { border-color: rgb(87 217 163 / .35); background: rgb(87 217 163 / .05); }
+.privacy-confirm { display: grid; gap: 8px; margin: 14px 0; font-size: 13.5px; color: var(--muted); }
+.privacy-confirm input { max-width: 340px; }
+button.danger {
+  background: #b5414f; border-color: #b5414f; color: #fff; font-weight: 700; padding: 10px 18px;
+}
+button.danger:hover:not(:disabled) { background: #c84d5c; border-color: #c84d5c; }
+a.primary-link { background: var(--grad); color: var(--on-grad); font-weight: 700; }
+
 /* ---------------------------------------------------------------- credits */
 
 .credits {
@@ -523,8 +545,9 @@ select.lang { padding: 6px 8px; }
   background: linear-gradient(90deg, transparent, var(--line) 20%, var(--accent-dim) 50%, var(--line) 80%, transparent);
 }
 .credits p { margin: 0; letter-spacing: .01em; }
+.credits-links { display: flex; justify-content: center; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 .credits-source {
-  display: inline-flex; align-items: center; gap: 7px; margin-top: 12px;
+  display: inline-flex; align-items: center; gap: 7px; min-height: 30px;
   padding: 6px 13px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
   color: var(--muted); text-decoration: none;
   background: var(--glass); border: 1px solid var(--glass-line);

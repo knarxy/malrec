@@ -113,3 +113,19 @@ def test_model_cache_is_bounded_and_follows_the_list(monkeypatch):
     model.cached_model(4)
     assert loads[-1] == 4 and len(loads) == 5
     model._scorers.clear()
+
+
+def test_worker_status_tells_alive_from_stalled_and_stuck(monkeypatch):
+    import malrec.db
+    counts = {"queued": 2, "running": 1, "failed_24h": 0, "done_24h": 5,
+              "oldest_queued_s": 12, "longest_running_s": 30}
+    beat = {"started_at": None, "beat_at": None, "threads": 1, "silent_s": 20}
+    monkeypatch.setattr(tasks, "one", lambda sql, p=None: beat if "worker_status" in sql else counts)
+    monkeypatch.setattr(malrec.db, "query", lambda sql, p=None: [])
+    assert tasks.status()["state"] == "ok"
+    counts["longest_running_s"] = tasks.STUCK_AFTER_S + 1
+    assert tasks.status()["state"] == "stuck"
+    beat["silent_s"] = tasks.STALLED_AFTER_S + 1
+    assert tasks.status()["state"] == "stalled"
+    monkeypatch.setattr(tasks, "one", lambda sql, p=None: None if "worker_status" in sql else counts)
+    assert tasks.status()["state"] == "never"
