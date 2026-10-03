@@ -1,0 +1,16 @@
+
+== top of list = above the user's 60th best pool prediction ==
+   n top pairs  bias general  bias top-fit  RMSE gen  RMSE top  all-items RMSE gen/top
+   5      1912         -0.44         +0.05      1.71      1.61        1.60 / 1.85   (top line: 0.35x+5.41, 1495 fit pairs)
+  10      1922         -0.38         -0.06      1.68      1.61        1.61 / 1.67   (top line: 0.53x+3.88, 1486 fit pairs)
+  25      2005         -0.28         +0.03      1.60      1.56        1.66 / 1.72   (top line: 0.55x+3.74, 1595 fit pairs)
+  60      2342         -0.19         +0.10      1.42      1.41        1.47 / 1.64   (top line: 0.62x+3.26, 1841 fit pairs)
+ 150      4046         -0.16         -0.02      1.42      1.40        1.39 / 1.42   (top line: 0.85x+1.28, 2287 fit pairs)
+
+== top of list = above the user's 200th best pool prediction ==
+   n top pairs  bias general  bias top-fit  RMSE gen  RMSE top  all-items RMSE gen/top
+   5      4792         -0.38         +0.02      1.62      1.54        1.68 / 1.77   (top line: 0.45x+4.50, 3884 fit pairs)
+  10      4805         -0.18         +0.10      1.63      1.58        1.64 / 1.77   (top line: 0.49x+4.17, 3857 fit pairs)
+  25      4971         -0.16         -0.00      1.52      1.49        1.51 / 1.57   (top line: 0.65x+2.86, 3958 fit pairs)
+  60      5350         -0.22         -0.04      1.41      1.39        1.49 / 1.52   (top line: 0.73x+2.24, 4416 fit pairs)
+ 150      7386         -0.23         -0.09      1.43      1.41        1.41 / 1.42   (top line: 0.90x+0.88, 4978 fit pairs)

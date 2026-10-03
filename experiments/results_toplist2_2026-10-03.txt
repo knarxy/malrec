@@ -1,0 +1,68 @@
+4810 users (3463 fit / 625 stack / 722 eval); pools: safe 4841, gems 6344; 3938 side stories / recaps left out [198s]
+
+== sampled users, 150 list entries (111 users) [415s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+BASE           0.556  1.240  0.265  0.170  0.287  0.020  0.243  0.096  0.123  0.132   |              0.085  0.004  0.487  0.147  0.061  0.136
+U.3            0.556  1.240  0.267  0.172  0.290  0.020  0.239  0.068  0.122  0.135   |              0.087  0.004  0.490  0.114  0.059  0.131
+U.6            0.556  1.240  0.267  0.173  0.293  0.020  0.238  0.051  0.120  0.133   |              0.088  0.003  0.491  0.091  0.059  0.129
+D.25           0.556  1.240  0.267  0.172  0.291  0.022  0.241  0.094  0.118  0.125   |              0.088  0.004  0.484  0.144  0.060  0.134
+D.5            0.556  1.240  0.269  0.175  0.290  0.021  0.244  0.090  0.114  0.125   |              0.090  0.004  0.482  0.144  0.060  0.128
+U.3 D.25       0.556  1.240  0.268  0.173  0.292  0.021  0.237  0.066  0.115  0.126   |              0.089  0.004  0.485  0.111  0.058  0.128
+U.3 D.5        0.556  1.240  0.269  0.176  0.292  0.021  0.237  0.066  0.113  0.123   |              0.088  0.004  0.483  0.110  0.058  0.123
+U.6 D.5        0.556  1.240  0.272  0.179  0.292  0.021  0.238  0.052  0.113  0.126   |              0.089  0.004  0.485  0.087  0.056  0.124
+U.3 L.3        0.556  1.240  0.267  0.173  0.289  0.022  0.237  0.066  0.096  0.125   |              0.089  0.004  0.488  0.116  0.045  0.130
+U.3 D.5 L.3    0.556  1.240  0.269  0.176  0.294  0.020  0.237  0.065  0.088  0.116   |              0.088  0.004  0.482  0.108  0.045  0.121
+
+== sampled users, 250 list entries (91 users) [612s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+BASE           0.557  1.186  0.252  0.168  0.321  0.017  0.183  0.053  0.115  0.162   |              0.104  0.003  0.407  0.070  0.058  0.133
+U.3            0.557  1.186  0.251  0.167  0.325  0.016  0.177  0.018  0.113  0.163   |              0.102  0.003  0.410  0.033  0.057  0.134
+U.6            0.557  1.186  0.250  0.166  0.326  0.015  0.178  0.003  0.110  0.165   |              0.103  0.003  0.410  0.020  0.057  0.130
+D.25           0.557  1.186  0.256  0.169  0.329  0.017  0.179  0.047  0.105  0.171   |              0.107  0.003  0.389  0.067  0.057  0.123
+D.5            0.557  1.186  0.252  0.167  0.322  0.020  0.180  0.047  0.098  0.178   |              0.102  0.003  0.393  0.063  0.052  0.124
+U.3 D.25       0.557  1.186  0.254  0.167  0.332  0.017  0.176  0.014  0.102  0.166   |              0.107  0.003  0.388  0.035  0.053  0.118
+U.3 D.5        0.557  1.186  0.252  0.166  0.324  0.020  0.177  0.013  0.097  0.172   |              0.100  0.004  0.395  0.030  0.053  0.125
+U.6 D.5        0.557  1.186  0.251  0.166  0.324  0.017  0.177  0.004  0.098  0.172   |              0.101  0.004  0.393  0.020  0.052  0.122
+U.3 L.3        0.557  1.186  0.254  0.169  0.327  0.015  0.174  0.015  0.061  0.154   |              0.101  0.003  0.407  0.034  0.025  0.128
+U.3 D.5 L.3    0.557  1.186  0.257  0.170  0.326  0.020  0.176  0.011  0.059  0.161   |              0.099  0.004  0.396  0.030  0.018  0.116
+
+== sampled users, 400 list entries (69 users) [787s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+BASE           0.575  1.139  0.251  0.164  0.393  0.020  0.135  0.020  0.101  0.145   |              0.141  0.006  0.329  0.043  0.059  0.139
+U.3            0.575  1.139  0.252  0.165  0.396  0.022  0.133  0.006  0.099  0.139   |              0.143  0.006  0.320  0.019  0.058  0.129
+U.6            0.575  1.139  0.252  0.165  0.397  0.022  0.132  0.001  0.099  0.138   |              0.145  0.006  0.322  0.010  0.058  0.126
+D.25           0.575  1.139  0.250  0.160  0.394  0.023  0.138  0.016  0.088  0.133   |              0.145  0.007  0.313  0.041  0.052  0.132
+D.5            0.575  1.139  0.251  0.162  0.384  0.026  0.139  0.014  0.090  0.139   |              0.141  0.007  0.309  0.035  0.048  0.138
+U.3 D.25       0.575  1.139  0.251  0.160  0.393  0.023  0.136  0.004  0.087  0.132   |              0.148  0.007  0.312  0.016  0.052  0.126
+U.3 D.5        0.575  1.139  0.252  0.162  0.386  0.026  0.138  0.001  0.091  0.139   |              0.145  0.007  0.312  0.014  0.046  0.132
+U.6 D.5        0.575  1.139  0.251  0.162  0.386  0.026  0.138  0.001  0.091  0.139   |              0.146  0.007  0.313  0.010  0.046  0.132
+U.3 L.3        0.575  1.139  0.253  0.166  0.401  0.022  0.139  0.006  0.045  0.133   |              0.148  0.006  0.314  0.019  0.014  0.119
+U.3 D.5 L.3    0.575  1.139  0.256  0.165  0.393  0.026  0.141  0.003  0.046  0.135   |              0.146  0.007  0.306  0.016  0.016  0.120
+
+== reference profile, 8 temporal splits (146 ratings, calibration (1.1918, -2.0863)) ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+BASE           0.781  0.830  0.427  0.338  0.163  0.000  0.050  0.237  0.100  0.000   |              0.025  0.000  0.637  0.175  0.000  0.000
+U.3            0.781  0.830  0.518  0.408  0.163  0.000  0.050  0.087  0.088  0.000   |              0.025  0.000  0.700  0.062  0.000  0.000
+U.6            0.781  0.830  0.518  0.408  0.188  0.000  0.050  0.000  0.100  0.000   |              0.025  0.000  0.712  0.000  0.000  0.000
+D.25           0.781  0.830  0.377  0.285  0.200  0.000  0.013  0.150  0.025  0.000   |              0.025  0.000  0.562  0.212  0.000  0.000
+D.5            0.781  0.830  0.354  0.268  0.238  0.000  0.013  0.113  0.013  0.000   |              0.025  0.000  0.500  0.237  0.000  0.000
+U.3 D.25       0.781  0.830  0.432  0.331  0.213  0.000  0.000  0.000  0.050  0.000   |              0.025  0.000  0.637  0.050  0.000  0.000
+U.3 D.5        0.781  0.830  0.381  0.289  0.275  0.000  0.000  0.000  0.013  0.000   |              0.025  0.000  0.512  0.062  0.000  0.000
+U.6 D.5        0.781  0.830  0.407  0.308  0.275  0.000  0.000  0.000  0.013  0.000   |              0.025  0.000  0.525  0.000  0.000  0.000
+U.3 L.3        0.781  0.830  0.518  0.408  0.175  0.000  0.050  0.113  0.000  0.000   |              0.025  0.000  0.700  0.062  0.000  0.000
+U.3 D.5 L.3    0.781  0.830  0.393  0.298  0.275  0.000  0.000  0.000  0.000  0.000   |              0.025  0.000  0.512  0.062  0.000  0.000
+
+reference profile today, Safe Bets top 10 per configuration:
+  BASE         Shingeki no Kyojin S | Re:Zero kara Hajimer | Violet Evergarden Mo | Shiguang Dailiren II | Kusuriya no Hitorigo | No Game No Life: Zer | Seishun Buta Yarou w | Hunter x Hunter (201 | 3-gatsu no Lion 2nd  | Hajime no Ippo
+  U.3          Shingeki no Kyojin S | Re:Zero kara Hajimer | Violet Evergarden Mo | Shiguang Dailiren II | No Game No Life: Zer | Seishun Buta Yarou w | Hunter x Hunter (201 | 3-gatsu no Lion 2nd  | Ansatsu Kyoushitsu 2 | Shingeki no Kyojin S
+  U.6          Shingeki no Kyojin S | Re:Zero kara Hajimer | Violet Evergarden Mo | Shiguang Dailiren II | No Game No Life: Zer | Seishun Buta Yarou w | Hunter x Hunter (201 | 3-gatsu no Lion 2nd  | Ansatsu Kyoushitsu 2 | Shingeki no Kyojin S
+  D.25         Shingeki no Kyojin S | Shiguang Dailiren II | Violet Evergarden Mo | Re:Zero kara Hajimer | No Game No Life: Zer | Seishun Buta Yarou w | Shingeki no Kyojin S | Kusuriya no Hitorigo | Hunter x Hunter (201 | Ansatsu Kyoushitsu 2
+  D.5          Shingeki no Kyojin S | Shiguang Dailiren II | Violet Evergarden Mo | One Punch Man | No Game No Life: Zer | Shingeki no Kyojin S | Seishun Buta Yarou w | Hunter x Hunter (201 | Angel Beats! | Gosick
+  U.3 D.25     Shingeki no Kyojin S | Shiguang Dailiren II | Violet Evergarden Mo | Re:Zero kara Hajimer | No Game No Life: Zer | Seishun Buta Yarou w | Shingeki no Kyojin S | Hunter x Hunter (201 | Ansatsu Kyoushitsu 2 | One Punch Man
+  U.3 D.5      Shingeki no Kyojin S | Shiguang Dailiren II | Violet Evergarden Mo | One Punch Man | No Game No Life: Zer | Shingeki no Kyojin S | Seishun Buta Yarou w | Hunter x Hunter (201 | Angel Beats! | Gosick
+  U.6 D.5      Shingeki no Kyojin S | Shiguang Dailiren II | Violet Evergarden Mo | One Punch Man | No Game No Life: Zer | Shingeki no Kyojin S | Seishun Buta Yarou w | Hunter x Hunter (201 | Angel Beats! | Gosick
+  U.3 L.3      Shingeki no Kyojin S | Re:Zero kara Hajimer | Violet Evergarden Mo | Shiguang Dailiren II | No Game No Life: Zer | Seishun Buta Yarou w | 3-gatsu no Lion 2nd  | Ansatsu Kyoushitsu 2 | Shingeki no Kyojin S | Bleach: Sennen Kesse
+  U.3 D.5 L.3  Shingeki no Kyojin S | Shiguang Dailiren II | Violet Evergarden Mo | One Punch Man | No Game No Life: Zer | Shingeki no Kyojin S | Seishun Buta Yarou w | Angel Beats! | Gosick | Kaguya-sama wa Kokur
+
+[804s]
+[exit 0]

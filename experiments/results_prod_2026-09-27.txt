@@ -1,0 +1,35 @@
+stacker (base): [0.752, 0.983, 1.027, -0.025, 0.352, 0.188, 0.133, 0.113, -0.044]
+4563 users (3285 fit / 593 stack / 685 eval) [195s]
+
+== sampled users with 10 list entries (133 users) [332s] ==
+                        rho  nDCG@10   RMSE  recall@50  pop20   rho wins vs base
+base                 0.4589   0.6750  1.461      0.125    802
+ease prod (top-100)  0.4589   0.6750  1.461      0.134    710   0/130 better, 0 worse
+
+== sampled users with 25 list entries (143 users) [490s] ==
+                        rho  nDCG@10   RMSE  recall@50  pop20   rho wins vs base
+base                 0.4657   0.6741  1.415      0.151    747
+ease prod (top-100)  0.4657   0.6741  1.415      0.175    744   0/143 better, 0 worse
+
+== sampled users with 60 list entries (141 users) [650s] ==
+                        rho  nDCG@10   RMSE  recall@50  pop20   rho wins vs base
+base                 0.4821   0.6775  1.338      0.214    502
+ease prod (top-100)  0.4821   0.6775  1.338      0.232    533   0/141 better, 0 worse
+
+== sampled users with 150 list entries (120 users) [810s] ==
+                        rho  nDCG@10   RMSE  recall@50  pop20   rho wins vs base
+base                 0.5123   0.6517  1.306      0.216    608
+ease prod (top-100)  0.5123   0.6517  1.306      0.239    606   0/119 better, 0 worse
+
+== sampled users with 400 list entries (67 users) [963s] ==
+                        rho  nDCG@10   RMSE  recall@50  pop20   rho wins vs base
+base                 0.5373   0.6133  1.281      0.181    682
+ease prod (top-100)  0.5373   0.6133  1.281      0.204    662   0/66 better, 0 worse
+
+== reference profile, 8 temporal splits at his real size [970s] ==
+                        rho  nDCG@10   RMSE  recall@50  pop20   rho wins vs base
+base                 0.7647   0.7623  0.912      0.187    328
+ease prod (top-100)  0.7647   0.7623  0.912      0.245    339   0/8 better, 0 worse
+  TODAY                per split: [0.7179, 0.7799, 0.7676, 0.7822, 0.8021, 0.8196, 0.7955, 0.6321]
+  base                 per split: [0.7297, 0.7799, 0.7676, 0.7846, 0.8053, 0.8179, 0.7986, 0.6334]
+  ease prod (top-100)  per split: [0.7297, 0.7799, 0.7676, 0.7846, 0.8053, 0.8179, 0.7986, 0.6334]

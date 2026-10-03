@@ -1,0 +1,33 @@
+4810 users (3463 fit / 625 stack / 722 eval); pools: safe 4841, gems 6344; 3938 side stories / recaps left out [211s]
+
+== sampled users, 150 list entries (126 users with liked targets) [379s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+SHIPPED        0.531  1.274  0.325  0.220  0.321  0.017  0.249  0.050  0.083  0.119   |              0.088  0.002  0.448  0.106  0.015  0.130
+MEMCAP .3      0.531  1.274  0.326  0.220  0.314  0.015  0.247  0.052  0.084  0.116   |              0.088  0.004  0.438  0.106  0.015  0.124
+MEMCAP .15     0.531  1.274  0.323  0.218  0.311  0.014  0.246  0.056  0.083  0.112   |              0.087  0.006  0.436  0.106  0.015  0.121
+
+== sampled users, 250 list entries (101 users with liked targets) [529s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+SHIPPED        0.558  1.233  0.319  0.215  0.333  0.012  0.186  0.027  0.054  0.112   |              0.110  0.003  0.369  0.048  0.018  0.122
+MEMCAP .3      0.558  1.233  0.322  0.218  0.334  0.013  0.182  0.028  0.057  0.109   |              0.109  0.004  0.365  0.047  0.018  0.118
+MEMCAP .15     0.558  1.233  0.316  0.214  0.343  0.014  0.193  0.026  0.058  0.108   |              0.110  0.004  0.364  0.043  0.019  0.113
+
+== sampled users, 400 list entries (73 users with liked targets) [668s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+SHIPPED        0.574  1.155  0.313  0.214  0.368  0.008  0.140  0.012  0.068  0.104   |              0.118  0.007  0.348  0.010  0.007  0.112
+MEMCAP .3      0.574  1.155  0.312  0.214  0.366  0.008  0.147  0.012  0.064  0.099   |              0.118  0.005  0.345  0.010  0.005  0.105
+MEMCAP .15     0.574  1.155  0.310  0.214  0.367  0.010  0.141  0.012  0.059  0.096   |              0.121  0.007  0.348  0.011  0.004  0.108
+
+== reference profile, 8 temporal splits (146 ratings, calibration (1.1391, -1.6434)) ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+SHIPPED        0.780  0.847  0.421  0.324  0.275  0.000  0.062  0.013  0.000  0.000   |              0.000  0.000  0.487  0.038  0.000  0.000
+MEMCAP .3      0.780  0.847  0.421  0.324  0.275  0.000  0.062  0.013  0.000  0.000   |              0.000  0.000  0.475  0.038  0.000  0.000
+MEMCAP .15     0.780  0.847  0.428  0.331  0.300  0.000  0.062  0.000  0.000  0.038   |              0.000  0.000  0.475  0.050  0.000  0.000
+
+reference profile today, Safe Bets top 10 per configuration:
+  SHIPPED      Violet Evergarden Mo | Shingeki no Kyojin S | Shiguang Dailiren II | Ansatsu Kyoushitsu 2 | No Game No Life: Zer | Hunter x Hunter (201 | Durarara!! | Angel Beats! | Seishun Buta Yarou w | Kimi no Suizou wo Ta
+  MEMCAP .3    Violet Evergarden Mo | Shingeki no Kyojin S | Shiguang Dailiren II | Ansatsu Kyoushitsu 2 | No Game No Life: Zer | Hunter x Hunter (201 | Durarara!! | Angel Beats! | Seishun Buta Yarou w | Re:Zero kara Hajimer
+  MEMCAP .15   Shingeki no Kyojin S | Violet Evergarden Mo | Shiguang Dailiren II | Re:Zero kara Hajimer | Hunter x Hunter (201 | Ansatsu Kyoushitsu 2 | Durarara!! | Great Teacher Onizuk | Odd Taxi | Angel Beats!
+
+[681s]
+[exit 0]

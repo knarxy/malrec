@@ -1,0 +1,61 @@
+ Container malrec-db  Running
+stacker (base): [0.752, 0.983, 1.027, -0.025, 0.352, 0.188, 0.133, 0.113, -0.044]
+4563 users (3285 fit / 593 stack / 685 eval) [128s]
+
+== sampled users with 150 list entries (96 users) [556s] ==
+                        rho  nDCG@10   RMSE  recall@50   rho wins vs base
+base                 0.5100   0.6557  1.265      0.238
+nolevel hl=1.0       0.5108   0.6614  1.260      0.242   45/95 better, 45 worse
+nolevel hl=2.0       0.5171   0.6662  1.255      0.247   49/95 better, 44 worse
+nolevel hl=none      0.5122   0.6673  1.267      0.240   46/95 better, 47 worse
+koren hl=0.5         0.5096   0.6550  1.270      0.237   35/95 better, 35 worse
+koren hl=1.0         0.5097   0.6570  1.264      0.242   42/95 better, 48 worse
+koren hl=2.0         0.5153   0.6615  1.254      0.246   54/95 better, 39 worse
+koren hl=none        0.5117   0.6643  1.257      0.239   47/95 better, 46 worse
+log hl=0.5           0.5098   0.6552  1.268      0.237   30/95 better, 27 worse
+log hl=1.0           0.5100   0.6590  1.262      0.241   39/95 better, 51 worse
+log hl=2.0           0.5159   0.6623  1.254      0.247   48/95 better, 45 worse
+log hl=none          0.5110   0.6628  1.259      0.240   46/95 better, 47 worse
+
+== sampled users with 400 list entries (54 users) [1012s] ==
+                        rho  nDCG@10   RMSE  recall@50   rho wins vs base
+base                 0.5395   0.6385  1.256      0.179
+nolevel hl=1.0       0.5339   0.6483  1.250      0.184   26/53 better, 27 worse
+nolevel hl=2.0       0.5328   0.6572  1.245      0.187   25/53 better, 28 worse
+nolevel hl=none      0.5299   0.6613  1.252      0.177   23/53 better, 30 worse
+koren hl=0.5         0.5365   0.6466  1.252      0.180   28/53 better, 20 worse
+koren hl=1.0         0.5355   0.6552  1.245      0.184   30/53 better, 23 worse
+koren hl=2.0         0.5342   0.6578  1.240      0.189   28/53 better, 25 worse
+koren hl=none        0.5323   0.6668  1.243      0.181   24/53 better, 29 worse
+log hl=0.5           0.5360   0.6458  1.253      0.178   26/53 better, 20 worse
+log hl=1.0           0.5355   0.6520  1.248      0.182   28/53 better, 25 worse
+log hl=2.0           0.5338   0.6588  1.244      0.189   29/53 better, 24 worse
+log hl=none          0.5324   0.6637  1.243      0.181   23/53 better, 30 worse
+
+== reference profile, 8 temporal splits at his real size [1046s] ==
+                        rho  nDCG@10   RMSE  recall@50   rho wins vs base
+base                 0.7666   0.7583  0.941      0.200
+nolevel hl=1.0       0.7322   0.7413  0.931      0.227   1/8 better, 7 worse
+nolevel hl=2.0       0.6947   0.7344  0.964      0.260   1/8 better, 7 worse
+nolevel hl=none      0.7268   0.7754  0.946      0.348   1/8 better, 7 worse
+koren hl=0.5         0.7632   0.7612  0.973      0.210   2/8 better, 6 worse
+koren hl=1.0         0.7228   0.7381  0.964      0.232   0/8 better, 8 worse
+koren hl=2.0         0.6878   0.7150  0.999      0.253   0/8 better, 8 worse
+koren hl=none        0.6826   0.7635  1.028      0.312   0/8 better, 8 worse
+log hl=0.5           0.7610   0.7714  0.971      0.192   2/8 better, 5 worse
+log hl=1.0           0.7288   0.7408  0.996      0.223   0/8 better, 8 worse
+log hl=2.0           0.6943   0.7246  1.035      0.247   0/8 better, 8 worse
+log hl=none          0.6833   0.7826  1.085      0.326   1/8 better, 7 worse
+  TODAY                per split: [0.7179, 0.7799, 0.7676, 0.7822, 0.8021, 0.8196, 0.8024, 0.6352]
+  base                 per split: [0.7297, 0.7799, 0.7676, 0.7846, 0.8053, 0.8179, 0.8112, 0.6365]
+  nolevel hl=1.0       per split: [0.6827, 0.7415, 0.7312, 0.7436, 0.7747, 0.7825, 0.7615, 0.6399]
+  nolevel hl=2.0       per split: [0.63, 0.6798, 0.6677, 0.6946, 0.7499, 0.7498, 0.7379, 0.6475]
+  nolevel hl=none      per split: [0.6608, 0.718, 0.69, 0.7374, 0.7683, 0.7728, 0.7717, 0.6955]
+  koren hl=0.5         per split: [0.7062, 0.7813, 0.7901, 0.7822, 0.8002, 0.8176, 0.8064, 0.6214]
+  koren hl=1.0         per split: [0.6782, 0.7317, 0.73, 0.7371, 0.7693, 0.7731, 0.7499, 0.6128]
+  koren hl=2.0         per split: [0.6519, 0.6639, 0.6878, 0.7021, 0.7428, 0.7311, 0.7164, 0.6067]
+  koren hl=none        per split: [0.6009, 0.6917, 0.7167, 0.6739, 0.7362, 0.7188, 0.7424, 0.5807]
+  log hl=0.5           per split: [0.7062, 0.7813, 0.7676, 0.7896, 0.8044, 0.8169, 0.7895, 0.6321]
+  log hl=1.0           per split: [0.69, 0.7301, 0.7291, 0.7431, 0.7673, 0.7827, 0.7556, 0.6321]
+  log hl=2.0           per split: [0.6491, 0.6607, 0.6836, 0.707, 0.7415, 0.744, 0.7341, 0.6344]
+  log hl=none          per split: [0.5907, 0.6828, 0.6127, 0.6636, 0.7534, 0.7338, 0.762, 0.6675]

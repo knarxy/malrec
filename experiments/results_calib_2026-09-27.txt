@@ -1,0 +1,44 @@
+
+== sampled users with 25 list entries (92 users) ==
+                 recall@50    IPS     KL  genres
+safe penalty         0.202  0.127  1.061    48.2
+safe calib 0.3       0.208  0.129  1.005    45.6
+safe calib 0.5       0.209  0.129  0.885    45.9
+safe calib 0.7       0.208  0.131  0.744    46.6
+disc penalty         0.039  0.031  1.139    50.4
+disc calib 0.3       0.047  0.042  1.130    47.6
+disc calib 0.5       0.046  0.042  1.045    48.0
+disc calib 0.7       0.047  0.042  0.924    48.3
+
+== sampled users with 150 list entries (79 users) ==
+                 recall@50    IPS     KL  genres
+safe penalty         0.238  0.140  1.078    49.0
+safe calib 0.3       0.246  0.142  1.145    45.9
+safe calib 0.5       0.248  0.144  1.035    46.8
+safe calib 0.7       0.245  0.141  0.883    47.9
+disc penalty         0.071  0.058  1.044    49.6
+disc calib 0.3       0.072  0.059  1.090    46.8
+disc calib 0.5       0.072  0.059  1.006    47.4
+disc calib 0.7       0.072  0.059  0.851    48.7
+
+== sampled users with 400 list entries (48 users) ==
+                 recall@50    IPS     KL  genres
+safe penalty         0.194  0.099  1.281    48.2
+safe calib 0.3       0.195  0.100  1.371    45.4
+safe calib 0.5       0.197  0.101  1.249    46.4
+safe calib 0.7       0.196  0.101  1.074    48.0
+disc penalty         0.067  0.053  1.116    50.4
+disc calib 0.3       0.067  0.052  1.171    47.4
+disc calib 0.5       0.065  0.051  1.111    48.0
+disc calib 0.7       0.072  0.058  1.008    49.1
+
+== reference profile, 8 temporal splits ==
+                 recall@50    IPS     KL  genres
+safe penalty         0.336  0.236  1.093    46.4
+safe calib 0.3       0.368  0.265  1.105    43.2
+safe calib 0.5       0.368  0.266  1.046    43.4
+safe calib 0.7       0.368  0.267  0.876    44.0
+disc penalty         0.078  0.084  0.845    47.5
+disc calib 0.3       0.100  0.105  0.852    44.1
+disc calib 0.5       0.100  0.105  0.788    44.4
+disc calib 0.7       0.100  0.105  0.628    45.4

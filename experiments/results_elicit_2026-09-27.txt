@@ -1,0 +1,13 @@
+4563 users; 1500 candidate cards [183s]
+
+200 users [709s]
+                      rho  recall@50    IPS  cards  users
+no round            0.494      0.120  0.079           400
+popular k=5         0.487      0.203  0.097   14.0    195
+popular k=10        0.496      0.223  0.105   23.6    178
+popular k=15        0.501      0.239  0.115   32.8    165
+popular reached 15                                    82%
+smart k=5           0.490      0.159  0.092   13.8    198
+smart k=10          0.489      0.167  0.098   24.7    187
+smart k=15          0.484      0.178  0.104   36.8    180
+smart reached 15                                      90%

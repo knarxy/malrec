@@ -1,0 +1,126 @@
+4810 users (3463 fit / 625 stack / 722 eval); pools: safe 4841, gems 6344; 3938 side stories / recaps left out [212s]
+
+== sampled users, 25 list entries (90 users with liked targets) [406s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+A.6 e.1        0.543  1.380  0.258  0.167  0.214  0.027  0.482  0.337  0.099  0.128   |              0.062  0.016  0.652  0.378  0.021  0.151
+A1 e.1         0.543  1.380  0.258  0.167  0.214  0.027  0.482  0.337  0.099  0.128   |              0.062  0.016  0.652  0.378  0.021  0.151
+A1.5 e.1       0.543  1.380  0.258  0.167  0.214  0.027  0.482  0.337  0.099  0.128   |              0.062  0.016  0.652  0.378  0.021  0.151
+A.6 e.05       0.543  1.380  0.258  0.167  0.214  0.027  0.482  0.337  0.099  0.128   |              0.062  0.016  0.652  0.378  0.021  0.151
+A.6 e.2        0.543  1.380  0.258  0.167  0.214  0.027  0.482  0.337  0.099  0.128   |              0.062  0.016  0.652  0.378  0.021  0.151
+A1 e.05        0.543  1.380  0.258  0.167  0.214  0.027  0.482  0.337  0.099  0.128   |              0.062  0.016  0.652  0.378  0.021  0.151
+A1 e.2         0.543  1.380  0.258  0.167  0.214  0.027  0.482  0.337  0.099  0.128   |              0.062  0.016  0.652  0.378  0.021  0.151
+
+== sampled users, 60 list entries (94 users with liked targets) [611s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+A.6 e.1        0.524  1.277  0.271  0.161  0.236  0.033  0.332  0.173  0.099  0.111   |              0.085  0.010  0.541  0.256  0.017  0.104
+A1 e.1         0.524  1.277  0.271  0.161  0.236  0.033  0.332  0.173  0.099  0.111   |              0.085  0.010  0.541  0.256  0.017  0.104
+A1.5 e.1       0.524  1.277  0.271  0.161  0.236  0.033  0.332  0.173  0.099  0.111   |              0.084  0.010  0.540  0.255  0.017  0.104
+A.6 e.05       0.524  1.277  0.271  0.161  0.236  0.033  0.332  0.173  0.099  0.111   |              0.085  0.010  0.541  0.256  0.017  0.104
+A.6 e.2        0.524  1.277  0.271  0.161  0.236  0.033  0.332  0.173  0.099  0.111   |              0.085  0.010  0.541  0.256  0.017  0.104
+A1 e.05        0.524  1.277  0.271  0.161  0.236  0.033  0.332  0.173  0.099  0.111   |              0.085  0.010  0.541  0.256  0.017  0.104
+A1 e.2         0.524  1.277  0.271  0.161  0.236  0.033  0.332  0.173  0.099  0.111   |              0.085  0.010  0.541  0.256  0.017  0.104
+
+== sampled users, 150 list entries (73 users with liked targets) [773s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+A.6 e.1        0.574  1.205  0.255  0.168  0.275  0.018  0.273  0.066  0.079  0.114   |              0.115  0.003  0.458  0.100  0.012  0.126
+A1 e.1         0.574  1.205  0.256  0.169  0.278  0.019  0.252  0.060  0.077  0.115   |              0.114  0.003  0.449  0.097  0.011  0.129
+A1.5 e.1       0.574  1.205  0.258  0.172  0.284  0.016  0.237  0.060  0.077  0.112   |              0.105  0.003  0.432  0.095  0.011  0.129
+A.6 e.05       0.574  1.205  0.255  0.168  0.275  0.018  0.270  0.066  0.079  0.114   |              0.114  0.003  0.453  0.100  0.012  0.127
+A.6 e.2        0.574  1.205  0.255  0.169  0.275  0.018  0.274  0.066  0.079  0.114   |              0.114  0.003  0.463  0.096  0.012  0.126
+A1 e.05        0.574  1.205  0.256  0.168  0.278  0.016  0.252  0.062  0.078  0.114   |              0.114  0.003  0.440  0.103  0.011  0.129
+A1 e.2         0.574  1.205  0.255  0.170  0.279  0.019  0.256  0.060  0.077  0.111   |              0.111  0.003  0.455  0.096  0.011  0.127
+
+== sampled users, 400 list entries (49 users with liked targets) [928s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+A.6 e.1        0.595  1.112  0.268  0.185  0.431  0.022  0.057  0.004  0.039  0.090   |              0.137  0.004  0.214  0.010  0.008  0.088
+A1 e.1         0.595  1.112  0.271  0.188  0.441  0.024  0.027  0.006  0.033  0.090   |              0.149  0.002  0.192  0.010  0.008  0.090
+A1.5 e.1       0.595  1.112  0.270  0.189  0.455  0.024  0.024  0.008  0.033  0.080   |              0.147  0.002  0.196  0.010  0.012  0.090
+A.6 e.05       0.595  1.112  0.269  0.186  0.429  0.022  0.053  0.004  0.041  0.090   |              0.131  0.004  0.210  0.010  0.012  0.080
+A.6 e.2        0.595  1.112  0.269  0.186  0.437  0.024  0.065  0.004  0.035  0.094   |              0.139  0.004  0.231  0.010  0.008  0.086
+A1 e.05        0.595  1.112  0.270  0.187  0.445  0.022  0.029  0.004  0.037  0.094   |              0.149  0.002  0.188  0.010  0.008  0.082
+A1 e.2         0.595  1.112  0.268  0.186  0.451  0.022  0.043  0.004  0.031  0.086   |              0.141  0.002  0.220  0.008  0.006  0.094
+
+== reference profile, 8 temporal splits (151 ratings, calibration (1.243, -2.3612)) ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+A.6 e.1        0.788  0.824  0.503  0.379  0.412  0.000  0.000  0.000  0.000  0.000   |              0.025  0.000  0.488  0.038  0.000  0.000
+A1 e.1         0.788  0.824  0.505  0.381  0.387  0.000  0.000  0.000  0.000  0.000   |              0.025  0.000  0.375  0.062  0.000  0.000
+A1.5 e.1       0.788  0.824  0.499  0.377  0.388  0.000  0.000  0.000  0.000  0.000   |              0.000  0.000  0.450  0.062  0.000  0.000
+A.6 e.05       0.788  0.824  0.503  0.379  0.412  0.000  0.000  0.000  0.000  0.000   |              0.025  0.000  0.450  0.025  0.000  0.000
+A.6 e.2        0.788  0.824  0.508  0.381  0.375  0.000  0.000  0.000  0.000  0.000   |              0.025  0.000  0.512  0.038  0.000  0.000
+A1 e.05        0.788  0.824  0.512  0.386  0.412  0.000  0.000  0.000  0.000  0.000   |              0.025  0.000  0.362  0.075  0.000  0.000
+A1 e.2         0.788  0.824  0.499  0.377  0.388  0.000  0.000  0.000  0.000  0.000   |              0.013  0.000  0.450  0.050  0.000  0.000
+
+reference profile today, Safe Bets top 10 per configuration:
+  A.6 e.1      Shingeki no Kyojin S | Violet Evergarden Mo | Shingeki no Kyojin S | Shiguang Dailiren II | Code Geass: Fukkatsu | Angel Beats! | Shingeki no Kyojin:  | One Punch Man | Gosick | No Game No Life: Zer
+  A1 e.1       Shingeki no Kyojin S | Violet Evergarden Mo | Code Geass: Fukkatsu | Angel Beats! | Shingeki no Kyojin S | Gosick | Shingeki no Kyojin:  | Seishun Buta Yarou w | No Game No Life: Zer | One Punch Man
+  A1.5 e.1     Shingeki no Kyojin S | Code Geass: Fukkatsu | Angel Beats! | Violet Evergarden Mo | Gosick | Shingeki no Kyojin S | Shingeki no Kyojin:  | Seishun Buta Yarou w | No Game No Life: Zer | One Punch Man
+  A.6 e.05     Shingeki no Kyojin S | Violet Evergarden Mo | Shingeki no Kyojin S | Shiguang Dailiren II | Shingeki no Kyojin:  | Angel Beats! | One Punch Man | Code Geass: Fukkatsu | No Game No Life: Zer | Seishun Buta Yarou w
+  A.6 e.2      Shingeki no Kyojin S | Violet Evergarden Mo | Code Geass: Fukkatsu | Shiguang Dailiren II | Angel Beats! | Gosick | Shingeki no Kyojin S | No Game No Life: Zer | Shingeki no Kyojin:  | Seishun Buta Yarou w
+  A1 e.05      Shingeki no Kyojin S | Violet Evergarden Mo | Shingeki no Kyojin S | Angel Beats! | Code Geass: Fukkatsu | Shingeki no Kyojin:  | One Punch Man | Gosick | Seishun Buta Yarou w | No Game No Life: Zer
+  A1 e.2       Shingeki no Kyojin S | Code Geass: Fukkatsu | Angel Beats! | Gosick | Violet Evergarden Mo | No Game No Life: Zer | Shingeki no Kyojin S | Shingeki no Kyojin:  | Seishun Buta Yarou w | Shiguang Dailiren II
+
+[949s]
+==== SEED 4
+4810 users (3463 fit / 625 stack / 722 eval); pools: safe 4841, gems 6344; 3938 side stories / recaps left out [219s]
+
+== sampled users, 25 list entries (88 users with liked targets) [406s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+A.6 e.1        0.499  1.411  0.299  0.207  0.248  0.025  0.484  0.336  0.101  0.077   |              0.062  0.009  0.662  0.423  0.028  0.101
+A1 e.1         0.499  1.411  0.299  0.207  0.248  0.025  0.484  0.336  0.101  0.077   |              0.062  0.009  0.662  0.423  0.028  0.101
+A1.5 e.1       0.499  1.411  0.299  0.207  0.248  0.025  0.484  0.336  0.101  0.077   |              0.062  0.009  0.662  0.423  0.028  0.101
+A.6 e.05       0.499  1.411  0.299  0.207  0.248  0.025  0.484  0.336  0.101  0.077   |              0.062  0.009  0.662  0.423  0.028  0.101
+A.6 e.2        0.499  1.411  0.299  0.207  0.248  0.025  0.484  0.336  0.101  0.077   |              0.062  0.009  0.662  0.423  0.028  0.101
+A1 e.05        0.499  1.411  0.299  0.207  0.248  0.025  0.484  0.336  0.101  0.077   |              0.062  0.009  0.662  0.423  0.028  0.101
+A1 e.2         0.499  1.411  0.299  0.207  0.248  0.025  0.484  0.336  0.101  0.077   |              0.062  0.009  0.662  0.423  0.028  0.101
+
+== sampled users, 60 list entries (93 users with liked targets) [603s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+A.6 e.1        0.481  1.367  0.345  0.238  0.285  0.031  0.322  0.220  0.095  0.103   |              0.073  0.009  0.469  0.256  0.025  0.124
+A1 e.1         0.481  1.367  0.345  0.238  0.285  0.031  0.322  0.220  0.095  0.103   |              0.073  0.009  0.469  0.256  0.025  0.124
+A1.5 e.1       0.481  1.367  0.345  0.238  0.285  0.031  0.322  0.220  0.095  0.103   |              0.073  0.009  0.469  0.256  0.025  0.124
+A.6 e.05       0.481  1.367  0.345  0.238  0.285  0.031  0.322  0.220  0.095  0.103   |              0.073  0.009  0.469  0.256  0.025  0.124
+A.6 e.2        0.481  1.367  0.345  0.238  0.285  0.031  0.322  0.220  0.095  0.103   |              0.073  0.009  0.469  0.256  0.025  0.124
+A1 e.05        0.481  1.367  0.345  0.238  0.285  0.031  0.322  0.220  0.095  0.103   |              0.073  0.009  0.469  0.256  0.025  0.124
+A1 e.2         0.481  1.367  0.345  0.238  0.285  0.031  0.322  0.220  0.095  0.103   |              0.073  0.009  0.469  0.256  0.025  0.124
+
+== sampled users, 150 list entries (82 users with liked targets) [775s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+A.6 e.1        0.538  1.233  0.331  0.220  0.311  0.021  0.196  0.070  0.080  0.088   |              0.094  0.004  0.417  0.095  0.011  0.106
+A1 e.1         0.538  1.233  0.331  0.220  0.312  0.021  0.194  0.070  0.079  0.090   |              0.095  0.004  0.406  0.091  0.011  0.109
+A1.5 e.1       0.538  1.233  0.333  0.222  0.315  0.021  0.189  0.070  0.077  0.091   |              0.096  0.004  0.393  0.093  0.011  0.109
+A.6 e.05       0.538  1.233  0.329  0.218  0.310  0.021  0.195  0.068  0.082  0.088   |              0.094  0.004  0.420  0.096  0.012  0.107
+A.6 e.2        0.538  1.233  0.330  0.219  0.312  0.021  0.199  0.070  0.079  0.089   |              0.093  0.004  0.420  0.095  0.011  0.106
+A1 e.05        0.538  1.233  0.331  0.219  0.311  0.021  0.191  0.070  0.080  0.089   |              0.093  0.004  0.400  0.095  0.011  0.105
+A1 e.2         0.538  1.233  0.333  0.222  0.315  0.021  0.194  0.068  0.078  0.089   |              0.099  0.004  0.409  0.090  0.011  0.110
+
+== sampled users, 400 list entries (47 users with liked targets) [904s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+A.6 e.1        0.560  1.183  0.310  0.211  0.411  0.011  0.079  0.004  0.053  0.104   |              0.145  0.009  0.228  0.009  0.006  0.119
+A1 e.1         0.560  1.183  0.314  0.216  0.411  0.013  0.070  0.004  0.047  0.104   |              0.157  0.011  0.213  0.006  0.006  0.111
+A1.5 e.1       0.560  1.183  0.319  0.222  0.417  0.013  0.066  0.004  0.043  0.109   |              0.153  0.011  0.204  0.004  0.006  0.117
+A.6 e.05       0.560  1.183  0.305  0.207  0.396  0.011  0.083  0.004  0.051  0.100   |              0.143  0.009  0.223  0.009  0.006  0.106
+A.6 e.2        0.560  1.183  0.312  0.213  0.411  0.013  0.081  0.004  0.047  0.100   |              0.153  0.011  0.236  0.009  0.006  0.115
+A1 e.05        0.560  1.183  0.310  0.213  0.413  0.011  0.066  0.004  0.051  0.104   |              0.151  0.009  0.206  0.009  0.006  0.113
+A1 e.2         0.560  1.183  0.319  0.222  0.417  0.013  0.072  0.004  0.040  0.111   |              0.157  0.011  0.226  0.004  0.006  0.117
+
+== reference profile, 8 temporal splits (151 ratings, calibration (1.1914, -1.9331)) ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+A.6 e.1        0.789  0.840  0.517  0.391  0.450  0.000  0.013  0.000  0.000  0.000   |              0.000  0.000  0.400  0.050  0.000  0.000
+A1 e.1         0.789  0.840  0.523  0.395  0.438  0.000  0.013  0.000  0.000  0.000   |              0.000  0.000  0.362  0.038  0.000  0.000
+A1.5 e.1       0.789  0.840  0.532  0.401  0.450  0.000  0.000  0.000  0.000  0.000   |              0.000  0.000  0.375  0.025  0.000  0.000
+A.6 e.05       0.789  0.840  0.508  0.383  0.425  0.000  0.013  0.000  0.000  0.000   |              0.000  0.000  0.375  0.062  0.000  0.000
+A.6 e.2        0.789  0.840  0.523  0.395  0.450  0.000  0.013  0.000  0.000  0.000   |              0.000  0.000  0.412  0.025  0.000  0.000
+A1 e.05        0.789  0.840  0.517  0.391  0.450  0.000  0.013  0.000  0.000  0.000   |              0.000  0.000  0.325  0.050  0.000  0.000
+A1 e.2         0.789  0.840  0.521  0.391  0.450  0.000  0.013  0.000  0.000  0.000   |              0.000  0.000  0.387  0.025  0.000  0.000
+
+reference profile today, Safe Bets top 10 per configuration:
+  A.6 e.1      Shingeki no Kyojin S | Violet Evergarden Mo | Shiguang Dailiren II | Angel Beats! | Code Geass: Fukkatsu | Gosick | Shingeki no Kyojin S | Durarara!! | One Punch Man | Fate/stay night: Unl
+  A1 e.1       Shingeki no Kyojin S | Violet Evergarden Mo | Code Geass: Fukkatsu | Angel Beats! | Gosick | Shiguang Dailiren II | Durarara!! | Shingeki no Kyojin S | Fate/stay night: Unl | One Punch Man
+  A1.5 e.1     Shingeki no Kyojin S | Violet Evergarden Mo | Code Geass: Fukkatsu | Angel Beats! | Gosick | Fate/stay night: Unl | Durarara!! | Shiguang Dailiren II | Shingeki no Kyojin S | One Punch Man
+  A.6 e.05     Shingeki no Kyojin S | Violet Evergarden Mo | Shiguang Dailiren II | Angel Beats! | Gosick | Code Geass: Fukkatsu | Shingeki no Kyojin S | Durarara!! | One Punch Man | Odd Taxi
+  A.6 e.2      Shingeki no Kyojin S | Violet Evergarden Mo | Shiguang Dailiren II | Code Geass: Fukkatsu | Angel Beats! | Gosick | Durarara!! | Shingeki no Kyojin S | Fate/stay night: Unl | One Punch Man
+  A1 e.05      Shingeki no Kyojin S | Violet Evergarden Mo | Shiguang Dailiren II | Angel Beats! | Code Geass: Fukkatsu | Gosick | Shingeki no Kyojin S | Durarara!! | One Punch Man | Fate/stay night: Unl
+  A1 e.2       Shingeki no Kyojin S | Violet Evergarden Mo | Code Geass: Fukkatsu | Gosick | Angel Beats! | Shiguang Dailiren II | Durarara!! | Fate/stay night: Unl | Shingeki no Kyojin S | One Punch Man
+
+[924s]
+[exit 0]

@@ -1,0 +1,22 @@
+# secrets and local settings
+.env
+.make.local
+
+# python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# node / frontend build
+node_modules/
+app/dist/
+app/tsconfig.tsbuildinfo
+.vite/
+
+# misc
+data/
+*.log

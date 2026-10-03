@@ -1,0 +1,45 @@
+4563 sampled users (3285 fit / 593 stack / 685 eval), pool 5570 [127s]
+config: relevance 0.5 / personal 0.0, novelty 1.0 (ref sd 0.3)
+
+== sampled users with 10 list entries (179 users) ==
+              rho  nDCG@10   RMSE  recall@50 recall@100  overlap  med pop#
+TODAY       0.278    0.558  1.582      0.027      0.043    0.050      5175
+SHIPPED     0.464    0.650  1.504      0.125      0.189    0.010       807
+
+== sampled users with 25 list entries (191 users) ==
+              rho  nDCG@10   RMSE  recall@50 recall@100  overlap  med pop#
+TODAY       0.360    0.590  1.508      0.053      0.090    0.045      3252
+SHIPPED     0.463    0.653  1.425      0.145      0.226    0.013       694
+
+== sampled users with 60 list entries (189 users) ==
+              rho  nDCG@10   RMSE  recall@50 recall@100  overlap  med pop#
+TODAY       0.407    0.612  1.426      0.076      0.128    0.038      1976
+SHIPPED     0.483    0.660  1.360      0.195      0.296    0.017       580
+
+== sampled users with 150 list entries (161 users) ==
+              rho  nDCG@10   RMSE  recall@50 recall@100  overlap  med pop#
+TODAY       0.462    0.604  1.359      0.108      0.163    0.047      1377
+SHIPPED     0.497    0.627  1.323      0.174      0.265    0.033       698
+
+== sampled users with 400 list entries (91 users) ==
+              rho  nDCG@10   RMSE  recall@50 recall@100  overlap  med pop#
+TODAY       0.532    0.600  1.279      0.099      0.152    0.047      1504
+SHIPPED     0.538    0.599  1.271      0.128      0.203    0.046      1000
+
+== reference profile, 8 temporal splits, blend weight at his real size (n=143): personal share 0.99 ==
+              rho  nDCG@10   RMSE  recall@20  recall@50 recall@100  med pop#   rho wins
+TODAY      0.7625   0.7610  0.916      0.065      0.122      0.136       860
+SHIPPED    0.7647   0.7623  0.913      0.071      0.122      0.142       788   5/8 better, 2/8 equal
+dial 0.25  0.7647   0.7623  0.913      0.107      0.149      0.240       467   5/8 better, 2/8 equal
+dial 0.5   0.7647   0.7623  0.913      0.112      0.177      0.369       350   5/8 better, 2/8 equal
+dial 1     0.7647   0.7623  0.913      0.112      0.230      0.423       302   5/8 better, 2/8 equal
+
+== reference profile, 8 temporal splits, blend weight at the truncated window's size: personal share 0.76 ==
+              rho  nDCG@10   RMSE  recall@20  recall@50 recall@100  med pop#   rho wins
+TODAY      0.7625   0.7610  0.916      0.065      0.122      0.136       860
+SHIPPED    0.7725   0.7533  0.896      0.089      0.147      0.273       619   5/8 better, 1/8 equal
+dial 0.25  0.7725   0.7533  0.896      0.136      0.200      0.359       410   5/8 better, 1/8 equal
+dial 0.5   0.7725   0.7533  0.896      0.136      0.249      0.443       374   5/8 better, 1/8 equal
+dial 1     0.7725   0.7533  0.896      0.136      0.273      0.534       316   5/8 better, 1/8 equal
+
+[1152s]

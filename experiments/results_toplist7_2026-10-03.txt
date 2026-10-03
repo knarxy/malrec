@@ -1,0 +1,126 @@
+4810 users (3463 fit / 625 stack / 722 eval); pools: safe 4841, gems 6344; 3938 side stories / recaps left out [210s]
+
+== sampled users, 25 list entries (90 users with liked targets) [404s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+PROD           0.543  1.380  0.258  0.167  0.214  0.027  0.482  0.337  0.099  0.128   |              0.062  0.016  0.652  0.377  0.021  0.151
+ACC .15        0.543  1.380  0.258  0.167  0.214  0.027  0.482  0.337  0.099  0.128   |              0.062  0.016  0.652  0.377  0.021  0.151
+ACC .3         0.543  1.380  0.258  0.167  0.214  0.027  0.482  0.337  0.099  0.128   |              0.062  0.016  0.652  0.377  0.021  0.151
+ACCEV .3       0.543  1.380  0.258  0.167  0.214  0.027  0.482  0.337  0.099  0.128   |              0.062  0.016  0.652  0.377  0.021  0.151
+ACCEV .6       0.543  1.380  0.258  0.167  0.214  0.027  0.482  0.337  0.099  0.128   |              0.062  0.016  0.652  0.378  0.021  0.151
+ACCC .3        0.543  1.380  0.258  0.167  0.214  0.027  0.482  0.337  0.099  0.128   |              0.062  0.016  0.652  0.377  0.021  0.151
+ACCC .6        0.543  1.380  0.258  0.167  0.214  0.027  0.482  0.337  0.099  0.128   |              0.062  0.016  0.652  0.377  0.021  0.151
+
+== sampled users, 60 list entries (94 users with liked targets) [612s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+PROD           0.524  1.277  0.271  0.161  0.236  0.033  0.332  0.173  0.099  0.111   |              0.085  0.010  0.541  0.256  0.017  0.104
+ACC .15        0.524  1.277  0.271  0.161  0.236  0.033  0.332  0.173  0.099  0.111   |              0.085  0.010  0.541  0.256  0.017  0.104
+ACC .3         0.524  1.277  0.271  0.161  0.236  0.033  0.332  0.173  0.099  0.111   |              0.085  0.010  0.541  0.256  0.017  0.104
+ACCEV .3       0.524  1.277  0.271  0.161  0.236  0.033  0.332  0.173  0.099  0.111   |              0.085  0.010  0.541  0.256  0.017  0.104
+ACCEV .6       0.524  1.277  0.271  0.161  0.236  0.033  0.332  0.173  0.099  0.111   |              0.085  0.010  0.541  0.256  0.017  0.104
+ACCC .3        0.524  1.277  0.271  0.161  0.236  0.033  0.332  0.173  0.099  0.111   |              0.085  0.010  0.541  0.256  0.017  0.104
+ACCC .6        0.524  1.277  0.271  0.161  0.236  0.033  0.332  0.173  0.099  0.111   |              0.085  0.010  0.541  0.256  0.017  0.104
+
+== sampled users, 150 list entries (73 users with liked targets) [781s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+PROD           0.574  1.205  0.252  0.167  0.268  0.016  0.293  0.066  0.079  0.114   |              0.104  0.003  0.474  0.101  0.012  0.122
+ACC .15        0.574  1.205  0.249  0.165  0.270  0.018  0.290  0.066  0.079  0.108   |              0.107  0.003  0.473  0.100  0.012  0.122
+ACC .3         0.574  1.205  0.251  0.167  0.268  0.018  0.288  0.064  0.079  0.108   |              0.110  0.003  0.474  0.097  0.012  0.122
+ACCEV .3       0.574  1.205  0.254  0.168  0.271  0.018  0.279  0.067  0.079  0.115   |              0.108  0.003  0.466  0.100  0.012  0.125
+ACCEV .6       0.574  1.205  0.255  0.168  0.275  0.018  0.273  0.066  0.079  0.114   |              0.115  0.003  0.458  0.100  0.012  0.126
+ACCC .3        0.574  1.205  0.253  0.168  0.268  0.018  0.279  0.066  0.079  0.110   |              0.105  0.003  0.474  0.100  0.012  0.122
+ACCC .6        0.574  1.205  0.255  0.169  0.270  0.019  0.275  0.063  0.079  0.112   |              0.110  0.003  0.468  0.100  0.014  0.127
+
+== sampled users, 400 list entries (49 users with liked targets) [930s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+PROD           0.595  1.112  0.257  0.177  0.386  0.018  0.114  0.002  0.043  0.094   |              0.118  0.002  0.290  0.012  0.010  0.080
+ACC .15        0.595  1.112  0.258  0.180  0.392  0.022  0.114  0.002  0.039  0.094   |              0.114  0.004  0.288  0.012  0.008  0.090
+ACC .3         0.595  1.112  0.259  0.182  0.390  0.024  0.114  0.002  0.033  0.094   |              0.118  0.004  0.290  0.008  0.010  0.094
+ACCEV .3       0.595  1.112  0.263  0.181  0.408  0.020  0.084  0.002  0.041  0.090   |              0.124  0.004  0.247  0.010  0.010  0.080
+ACCEV .6       0.595  1.112  0.268  0.185  0.431  0.022  0.057  0.004  0.039  0.090   |              0.137  0.004  0.214  0.010  0.008  0.088
+ACCC .3        0.595  1.112  0.259  0.179  0.410  0.020  0.090  0.004  0.043  0.094   |              0.124  0.004  0.269  0.012  0.010  0.084
+ACCC .6        0.595  1.112  0.263  0.183  0.422  0.022  0.084  0.006  0.041  0.102   |              0.133  0.004  0.253  0.010  0.012  0.088
+
+== reference profile, 8 temporal splits (151 ratings, calibration (1.243, -2.3612)) ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+PROD           0.788  0.824  0.492  0.372  0.375  0.000  0.000  0.000  0.000  0.062   |              0.025  0.000  0.613  0.038  0.000  0.000
+ACC .15        0.788  0.824  0.497  0.375  0.375  0.000  0.000  0.000  0.000  0.038   |              0.025  0.000  0.600  0.038  0.000  0.000
+ACC .3         0.788  0.824  0.497  0.372  0.363  0.000  0.000  0.000  0.000  0.025   |              0.025  0.000  0.575  0.050  0.000  0.000
+ACCEV .3       0.788  0.824  0.503  0.379  0.412  0.000  0.000  0.000  0.000  0.013   |              0.025  0.000  0.575  0.050  0.000  0.000
+ACCEV .6       0.788  0.824  0.503  0.379  0.412  0.000  0.000  0.000  0.000  0.000   |              0.025  0.000  0.488  0.038  0.000  0.000
+ACCC .3        0.788  0.824  0.503  0.379  0.387  0.000  0.000  0.000  0.000  0.038   |              0.025  0.000  0.550  0.062  0.000  0.000
+ACCC .6        0.788  0.824  0.503  0.379  0.375  0.000  0.000  0.000  0.000  0.013   |              0.025  0.000  0.562  0.062  0.000  0.000
+
+reference profile today, Safe Bets top 10 per configuration:
+  PROD         Shingeki no Kyojin S | Shiguang Dailiren II | Violet Evergarden Mo | Cowboy Bebop | Shingeki no Kyojin S | One Punch Man | Shingeki no Kyojin:  | Re:Zero kara Hajimer | No Game No Life: Zer | Angel Beats!
+  ACC .15      Shingeki no Kyojin S | Shiguang Dailiren II | Violet Evergarden Mo | Cowboy Bebop | Code Geass: Fukkatsu | No Game No Life: Zer | Gosick | Angel Beats! | Shingeki no Kyojin S | One Punch Man
+  ACC .3       Shingeki no Kyojin S | Shiguang Dailiren II | Code Geass: Fukkatsu | Violet Evergarden Mo | Gosick | No Game No Life: Zer | Angel Beats! | Cowboy Bebop | Yahari Ore no Seishu | Seishun Buta Yarou w
+  ACCEV .3     Shingeki no Kyojin S | Violet Evergarden Mo | Shiguang Dailiren II | Shingeki no Kyojin S | One Punch Man | Shingeki no Kyojin:  | Angel Beats! | Code Geass: Fukkatsu | No Game No Life: Zer | Seishun Buta Yarou w
+  ACCEV .6     Shingeki no Kyojin S | Violet Evergarden Mo | Shingeki no Kyojin S | Shiguang Dailiren II | Code Geass: Fukkatsu | Angel Beats! | Shingeki no Kyojin:  | One Punch Man | Gosick | No Game No Life: Zer
+  ACCC .3      Shingeki no Kyojin S | Shiguang Dailiren II | Violet Evergarden Mo | Shingeki no Kyojin S | One Punch Man | Angel Beats! | No Game No Life: Zer | Shingeki no Kyojin:  | Code Geass: Fukkatsu | Gosick
+  ACCC .6      Shingeki no Kyojin S | Shiguang Dailiren II | Violet Evergarden Mo | Angel Beats! | No Game No Life: Zer | Code Geass: Fukkatsu | Shingeki no Kyojin S | Gosick | One Punch Man | Shingeki no Kyojin: 
+
+[952s]
+==== SEED 4
+4810 users (3463 fit / 625 stack / 722 eval); pools: safe 4841, gems 6344; 3938 side stories / recaps left out [227s]
+
+== sampled users, 25 list entries (88 users with liked targets) [416s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+PROD           0.499  1.411  0.299  0.207  0.248  0.025  0.484  0.336  0.101  0.077   |              0.062  0.009  0.662  0.423  0.028  0.101
+ACC .15        0.499  1.411  0.299  0.207  0.248  0.025  0.484  0.336  0.101  0.077   |              0.062  0.009  0.662  0.423  0.028  0.101
+ACC .3         0.499  1.411  0.299  0.207  0.248  0.025  0.484  0.336  0.101  0.077   |              0.062  0.009  0.662  0.423  0.028  0.101
+ACCEV .3       0.499  1.411  0.299  0.207  0.248  0.025  0.484  0.336  0.101  0.077   |              0.062  0.009  0.662  0.423  0.028  0.101
+ACCEV .6       0.499  1.411  0.299  0.207  0.248  0.025  0.484  0.336  0.101  0.077   |              0.062  0.009  0.662  0.423  0.028  0.101
+ACCC .3        0.499  1.411  0.299  0.207  0.248  0.025  0.484  0.336  0.101  0.077   |              0.062  0.009  0.662  0.423  0.028  0.101
+ACCC .6        0.499  1.411  0.299  0.207  0.248  0.025  0.484  0.336  0.101  0.077   |              0.062  0.009  0.662  0.423  0.028  0.101
+
+== sampled users, 60 list entries (93 users with liked targets) [624s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+PROD           0.481  1.367  0.345  0.238  0.285  0.031  0.322  0.220  0.095  0.103   |              0.073  0.009  0.469  0.256  0.025  0.124
+ACC .15        0.481  1.367  0.345  0.238  0.285  0.031  0.322  0.220  0.095  0.103   |              0.073  0.009  0.469  0.256  0.025  0.124
+ACC .3         0.481  1.367  0.345  0.238  0.285  0.031  0.322  0.220  0.095  0.103   |              0.073  0.009  0.469  0.256  0.025  0.124
+ACCEV .3       0.481  1.367  0.345  0.238  0.285  0.031  0.322  0.220  0.095  0.103   |              0.073  0.009  0.469  0.256  0.025  0.124
+ACCEV .6       0.481  1.367  0.345  0.238  0.285  0.031  0.322  0.220  0.095  0.103   |              0.073  0.009  0.469  0.256  0.025  0.124
+ACCC .3        0.481  1.367  0.345  0.238  0.285  0.031  0.322  0.220  0.095  0.103   |              0.073  0.009  0.469  0.256  0.025  0.124
+ACCC .6        0.481  1.367  0.345  0.238  0.285  0.031  0.322  0.220  0.095  0.103   |              0.073  0.009  0.469  0.256  0.025  0.124
+
+== sampled users, 150 list entries (82 users with liked targets) [811s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+PROD           0.538  1.233  0.328  0.215  0.300  0.021  0.210  0.067  0.085  0.091   |              0.088  0.004  0.441  0.099  0.012  0.105
+ACC .15        0.538  1.233  0.329  0.219  0.306  0.020  0.207  0.068  0.085  0.094   |              0.089  0.004  0.435  0.096  0.011  0.105
+ACC .3         0.538  1.233  0.327  0.218  0.309  0.020  0.204  0.068  0.083  0.093   |              0.093  0.004  0.435  0.095  0.012  0.109
+ACCEV .3       0.538  1.233  0.331  0.220  0.306  0.021  0.201  0.068  0.083  0.089   |              0.094  0.004  0.426  0.096  0.011  0.105
+ACCEV .6       0.538  1.233  0.331  0.220  0.311  0.021  0.196  0.070  0.080  0.088   |              0.094  0.004  0.417  0.095  0.011  0.106
+ACCC .3        0.538  1.233  0.330  0.219  0.306  0.020  0.204  0.068  0.084  0.090   |              0.093  0.004  0.434  0.099  0.012  0.105
+ACCC .6        0.538  1.233  0.329  0.218  0.309  0.020  0.202  0.070  0.082  0.090   |              0.094  0.004  0.427  0.098  0.012  0.106
+
+== sampled users, 400 list entries (47 users with liked targets) [949s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+PROD           0.560  1.183  0.299  0.201  0.379  0.011  0.113  0.006  0.055  0.102   |              0.123  0.009  0.266  0.011  0.004  0.106
+ACC .15        0.560  1.183  0.301  0.205  0.381  0.011  0.111  0.006  0.051  0.102   |              0.134  0.009  0.270  0.009  0.004  0.115
+ACC .3         0.560  1.183  0.302  0.206  0.385  0.013  0.113  0.006  0.049  0.106   |              0.140  0.009  0.268  0.006  0.004  0.117
+ACCEV .3       0.560  1.183  0.302  0.205  0.387  0.011  0.091  0.004  0.051  0.100   |              0.136  0.009  0.243  0.009  0.002  0.104
+ACCEV .6       0.560  1.183  0.310  0.211  0.411  0.011  0.079  0.004  0.053  0.104   |              0.145  0.009  0.228  0.009  0.006  0.119
+ACCC .3        0.560  1.183  0.301  0.204  0.387  0.011  0.100  0.006  0.053  0.098   |              0.123  0.009  0.257  0.009  0.004  0.106
+ACCC .6        0.560  1.183  0.302  0.205  0.402  0.011  0.081  0.006  0.053  0.102   |              0.134  0.009  0.260  0.009  0.006  0.113
+
+== reference profile, 8 temporal splits (151 ratings, calibration (1.1914, -1.9331)) ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+PROD           0.789  0.840  0.494  0.372  0.400  0.000  0.038  0.000  0.000  0.013   |              0.013  0.000  0.463  0.050  0.000  0.000
+ACC .15        0.789  0.840  0.494  0.372  0.425  0.000  0.025  0.000  0.000  0.025   |              0.000  0.000  0.488  0.038  0.000  0.000
+ACC .3         0.789  0.840  0.499  0.373  0.400  0.000  0.038  0.000  0.000  0.025   |              0.000  0.000  0.438  0.025  0.000  0.000
+ACCEV .3       0.789  0.840  0.494  0.372  0.425  0.000  0.013  0.000  0.000  0.013   |              0.000  0.000  0.412  0.050  0.000  0.000
+ACCEV .6       0.789  0.840  0.517  0.391  0.450  0.000  0.013  0.000  0.000  0.000   |              0.000  0.000  0.400  0.050  0.000  0.000
+ACCC .3        0.789  0.840  0.494  0.372  0.425  0.000  0.013  0.000  0.000  0.013   |              0.000  0.000  0.438  0.050  0.000  0.000
+ACCC .6        0.789  0.840  0.511  0.385  0.413  0.000  0.025  0.000  0.000  0.013   |              0.000  0.000  0.450  0.038  0.000  0.000
+
+reference profile today, Safe Bets top 10 per configuration:
+  PROD         Shingeki no Kyojin S | Violet Evergarden Mo | Shiguang Dailiren II | Cowboy Bebop | Angel Beats! | Shingeki no Kyojin S | Gosick | Durarara!! | One Punch Man | Ansatsu Kyoushitsu 2
+  ACC .15      Shingeki no Kyojin S | Shiguang Dailiren II | Violet Evergarden Mo | Gosick | Code Geass: Fukkatsu | Angel Beats! | Durarara!! | Cowboy Bebop | No Game No Life: Zer | Odd Taxi
+  ACC .3       Shiguang Dailiren II | Shingeki no Kyojin S | Violet Evergarden Mo | Code Geass: Fukkatsu | Gosick | Angel Beats! | Durarara!! | No Game No Life: Zer | Odd Taxi | Cowboy Bebop
+  ACCEV .3     Shingeki no Kyojin S | Violet Evergarden Mo | Shiguang Dailiren II | Angel Beats! | Gosick | Code Geass: Fukkatsu | Shingeki no Kyojin S | Durarara!! | One Punch Man | Odd Taxi
+  ACCEV .6     Shingeki no Kyojin S | Violet Evergarden Mo | Shiguang Dailiren II | Angel Beats! | Code Geass: Fukkatsu | Gosick | Shingeki no Kyojin S | Durarara!! | One Punch Man | Fate/stay night: Unl
+  ACCC .3      Shingeki no Kyojin S | Violet Evergarden Mo | Shiguang Dailiren II | Angel Beats! | Gosick | Code Geass: Fukkatsu | Durarara!! | Shingeki no Kyojin S | One Punch Man | Odd Taxi
+  ACCC .6      Shingeki no Kyojin S | Shiguang Dailiren II | Violet Evergarden Mo | Angel Beats! | Gosick | Code Geass: Fukkatsu | Durarara!! | Shingeki no Kyojin S | One Punch Man | Odd Taxi
+
+[970s]
+[exit 0]

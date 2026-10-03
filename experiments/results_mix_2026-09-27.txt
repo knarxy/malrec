@@ -1,0 +1,40 @@
+stacker (base): [0.752, 0.983, 1.027, -0.025, 0.352, 0.188, 0.133, 0.113, -0.044]
+4563 users (3285 fit / 593 stack / 685 eval) [128s]
+
+== sampled users with 150 list entries (96 users) [495s] ==
+                        rho  nDCG@10   RMSE  recall@50   rho wins vs base
+base                 0.5100   0.6557  1.265      0.238
+hl=0.25              0.5079   0.6516  1.271      0.227   44/95 better, 46 worse
+hl=0.35              0.5083   0.6550  1.267      0.232   43/95 better, 45 worse
+hl=0.75              0.5100   0.6569  1.262      0.240   41/95 better, 49 worse
+mix nodecay w=0.3    0.5100   0.6557  1.265      0.239   0/95 better, 0 worse
+mix nodecay w=0.5    0.5100   0.6557  1.265      0.245   0/95 better, 0 worse
+mix nodecay w=0.7    0.5100   0.6557  1.265      0.245   0/95 better, 0 worse
+
+== sampled users with 400 list entries (54 users) [883s] ==
+                        rho  nDCG@10   RMSE  recall@50   rho wins vs base
+base                 0.5395   0.6385  1.256      0.179
+hl=0.25              0.5392   0.6345  1.263      0.168   28/53 better, 25 worse
+hl=0.35              0.5408   0.6351  1.259      0.171   27/53 better, 26 worse
+hl=0.75              0.5347   0.6455  1.252      0.178   29/53 better, 24 worse
+mix nodecay w=0.3    0.5395   0.6385  1.256      0.186   0/53 better, 0 worse
+mix nodecay w=0.5    0.5395   0.6385  1.256      0.193   0/53 better, 0 worse
+mix nodecay w=0.7    0.5395   0.6385  1.256      0.190   0/53 better, 0 worse
+
+== reference profile, 8 temporal splits at his real size [912s] ==
+                        rho  nDCG@10   RMSE  recall@50   rho wins vs base
+base                 0.7647   0.7623  0.912      0.187
+hl=0.25              0.7805   0.7859  0.953      0.200   5/8 better, 3 worse
+hl=0.35              0.7795   0.7835  0.921      0.177   7/8 better, 1 worse
+hl=0.75              0.7470   0.7469  0.919      0.204   0/8 better, 8 worse
+mix nodecay w=0.3    0.7647   0.7623  0.912      0.236   0/8 better, 0 worse
+mix nodecay w=0.5    0.7647   0.7623  0.912      0.266   0/8 better, 0 worse
+mix nodecay w=0.7    0.7647   0.7623  0.912      0.286   0/8 better, 0 worse
+  TODAY                per split: [0.7179, 0.7799, 0.7676, 0.7822, 0.8021, 0.8196, 0.7955, 0.6321]
+  base                 per split: [0.7297, 0.7799, 0.7676, 0.7846, 0.8053, 0.8179, 0.7986, 0.6334]
+  hl=0.25              per split: [0.7078, 0.7657, 0.7653, 0.7933, 0.8395, 0.8699, 0.8089, 0.6933]
+  hl=0.35              per split: [0.7269, 0.7951, 0.7713, 0.8039, 0.8318, 0.8426, 0.807, 0.6574]
+  hl=0.75              per split: [0.6872, 0.7727, 0.7603, 0.7628, 0.7877, 0.8018, 0.773, 0.6306]
+  mix nodecay w=0.3    per split: [0.7297, 0.7799, 0.7676, 0.7846, 0.8053, 0.8179, 0.7986, 0.6334]
+  mix nodecay w=0.5    per split: [0.7297, 0.7799, 0.7676, 0.7846, 0.8053, 0.8179, 0.7986, 0.6334]
+  mix nodecay w=0.7    per split: [0.7297, 0.7799, 0.7676, 0.7846, 0.8053, 0.8179, 0.7986, 0.6334]

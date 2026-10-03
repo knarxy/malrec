@@ -1,0 +1,11 @@
+# malrec: nightly list sync of app users (so scores and status changes made on
+# MyAnimeList itself reach the model), nightly database backup, weekly "coming
+# soon" refresh (~30-60 MAL requests), monthly population refresh (scripts/).
+# Install as /etc/cron.d/malrec on the server.
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+30 3 1 * * root /opt/malrec/scripts/monthly_refresh.sh
+15 4 * * * root /opt/malrec/scripts/backup.sh
+# shares the refresh lock, so the two MAL jobs never run at once (1 req/s total)
+45 3 * * 1 root cd /opt/malrec && flock -w 14400 logs/refresh.lock docker compose --profile lab run --rm -T lab malrec sync upcoming >> /opt/malrec/logs/upcoming.log 2>&1
+15 3 * * * root cd /opt/malrec && flock -w 14400 logs/refresh.lock docker compose --profile lab run --rm -T lab malrec sync users >> /opt/malrec/logs/users.log 2>&1

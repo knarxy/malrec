@@ -1,0 +1,37 @@
+EASE: 9500 items (>= 50 lists), lambda 400.0
+stacker (base): [0.752, 0.983, 1.027, -0.025, 0.352, 0.188, 0.133, 0.113, -0.044]
+4563 users (3285 fit / 593 stack / 685 eval) [188s]
+
+== sampled users with 10 list entries (133 users) [361s] ==
+                        rho  nDCG@10   RMSE  recall@50   rho wins vs base
+base                 0.4589   0.6750  1.461      0.125
+ease replace         0.4589   0.6750  1.461      0.111   0/130 better, 0 worse
+ease mix             0.4589   0.6750  1.461      0.133   0/130 better, 0 worse
+
+== sampled users with 25 list entries (143 users) [563s] ==
+                        rho  nDCG@10   RMSE  recall@50   rho wins vs base
+base                 0.4657   0.6741  1.415      0.151
+ease replace         0.4657   0.6741  1.415      0.147   0/143 better, 0 worse
+ease mix             0.4657   0.6741  1.415      0.172   0/143 better, 0 worse
+
+== sampled users with 60 list entries (141 users) [774s] ==
+                        rho  nDCG@10   RMSE  recall@50   rho wins vs base
+base                 0.4821   0.6775  1.338      0.214
+ease replace         0.4821   0.6775  1.338      0.192   0/141 better, 0 worse
+ease mix             0.4821   0.6775  1.338      0.225   0/141 better, 0 worse
+
+== sampled users with 150 list entries (120 users) [985s] ==
+                        rho  nDCG@10   RMSE  recall@50   rho wins vs base
+base                 0.5123   0.6517  1.306      0.216
+ease replace         0.5123   0.6517  1.306      0.218   0/119 better, 0 worse
+ease mix             0.5123   0.6517  1.306      0.233   0/119 better, 0 worse
+
+== reference profile, 8 temporal splits at his real size [996s] ==
+                        rho  nDCG@10   RMSE  recall@50   rho wins vs base
+base                 0.7647   0.7623  0.912      0.187
+ease replace         0.7647   0.7623  0.912      0.308   0/8 better, 0 worse
+ease mix             0.7647   0.7623  0.912      0.226   0/8 better, 0 worse
+  TODAY                per split: [0.7179, 0.7799, 0.7676, 0.7822, 0.8021, 0.8196, 0.7955, 0.6321]
+  base                 per split: [0.7297, 0.7799, 0.7676, 0.7846, 0.8053, 0.8179, 0.7986, 0.6334]
+  ease replace         per split: [0.7297, 0.7799, 0.7676, 0.7846, 0.8053, 0.8179, 0.7986, 0.6334]
+  ease mix             per split: [0.7297, 0.7799, 0.7676, 0.7846, 0.8053, 0.8179, 0.7986, 0.6334]

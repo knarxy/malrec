@@ -1,0 +1,43 @@
+4810 users (3463 fit / 625 stack / 722 eval); pools: safe 4841, gems 6344; 3938 side stories / recaps left out [195s]
+
+== sampled users, 150 list entries (0 users) [322s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+SHIPPED        0.573  1.222  0.267  0.179  0.311  0.025  0.208  0.055  0.072  0.109   |              0.097  0.002  0.476  0.095  0.015  0.118
+FLOOR mean     0.573  1.222  0.265  0.178  0.311  0.024  0.206  0.055  0.070  0.108   |              0.097  0.002  0.476  0.095  0.015  0.118
+FLOOR mean-.25  0.573  1.222  0.268  0.180  0.311  0.025  0.207  0.055  0.072  0.109   |              0.097  0.002  0.476  0.095  0.015  0.118
+MEMCAP .3      0.573  1.222  0.265  0.178  0.308  0.026  0.208  0.055  0.069  0.107   |              0.099  0.003  0.469  0.098  0.015  0.111
+MEMCAP .15     0.573  1.222  0.264  0.179  0.302  0.024  0.198  0.053  0.069  0.108   |              0.099  0.005  0.465  0.101  0.011  0.114
+
+== sampled users, 250 list entries (0 users) [451s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+SHIPPED        0.559  1.199  0.251  0.168  0.315  0.019  0.160  0.013  0.053  0.115   |              0.093  0.003  0.376  0.032  0.012  0.101
+FLOOR mean     0.559  1.199  0.243  0.160  0.315  0.016  0.161  0.013  0.053  0.117   |              0.093  0.003  0.376  0.032  0.012  0.101
+FLOOR mean-.25  0.559  1.199  0.246  0.163  0.315  0.017  0.161  0.013  0.053  0.117   |              0.093  0.003  0.376  0.032  0.012  0.101
+MEMCAP .3      0.559  1.199  0.252  0.169  0.312  0.020  0.156  0.012  0.052  0.112   |              0.093  0.003  0.371  0.032  0.012  0.097
+MEMCAP .15     0.559  1.199  0.249  0.168  0.316  0.021  0.152  0.013  0.047  0.104   |              0.092  0.003  0.377  0.037  0.013  0.093
+
+== sampled users, 400 list entries (0 users) [575s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+SHIPPED        0.579  1.138  0.250  0.163  0.373  0.023  0.116  0.007  0.046  0.111   |              0.129  0.002  0.296  0.016  0.009  0.095
+FLOOR mean     0.579  1.138  0.248  0.162  0.375  0.021  0.116  0.007  0.048  0.111   |              0.129  0.002  0.296  0.016  0.009  0.095
+FLOOR mean-.25  0.579  1.138  0.250  0.163  0.373  0.023  0.116  0.007  0.046  0.111   |              0.129  0.002  0.296  0.016  0.009  0.095
+MEMCAP .3      0.579  1.138  0.252  0.166  0.380  0.023  0.118  0.007  0.048  0.105   |              0.127  0.002  0.295  0.018  0.007  0.088
+MEMCAP .15     0.579  1.138  0.254  0.168  0.380  0.025  0.111  0.005  0.037  0.093   |              0.127  0.002  0.282  0.020  0.009  0.082
+
+== reference profile, 8 temporal splits (146 ratings, calibration (1.1918, -2.0863)) ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   long    old   | Hidden Gems  hit10  bad10   noev    unf   long    old
+SHIPPED        0.781  0.830  0.432  0.331  0.225  0.000  0.000  0.000  0.000  0.000   |              0.025  0.000  0.637  0.050  0.000  0.000
+FLOOR mean     0.781  0.830  0.432  0.331  0.225  0.000  0.000  0.000  0.000  0.000   |              0.025  0.000  0.637  0.050  0.000  0.000
+FLOOR mean-.25  0.781  0.830  0.432  0.331  0.225  0.000  0.000  0.000  0.000  0.000   |              0.025  0.000  0.637  0.050  0.000  0.000
+MEMCAP .3      0.781  0.830  0.432  0.331  0.225  0.000  0.000  0.000  0.000  0.000   |              0.025  0.000  0.625  0.050  0.000  0.000
+MEMCAP .15     0.781  0.830  0.460  0.357  0.263  0.000  0.000  0.013  0.000  0.025   |              0.025  0.000  0.637  0.075  0.000  0.000
+
+reference profile today, Safe Bets top 10 per configuration:
+  SHIPPED      Shingeki no Kyojin S | Shiguang Dailiren II | Violet Evergarden Mo | Re:Zero kara Hajimer | No Game No Life: Zer | Seishun Buta Yarou w | Shingeki no Kyojin S | Hunter x Hunter (201 | Ansatsu Kyoushitsu 2 | One Punch Man
+  FLOOR mean   Shingeki no Kyojin S | Shiguang Dailiren II | Violet Evergarden Mo | Re:Zero kara Hajimer | No Game No Life: Zer | Seishun Buta Yarou w | Shingeki no Kyojin S | Hunter x Hunter (201 | Ansatsu Kyoushitsu 2 | One Punch Man
+  FLOOR mean-.25 Shingeki no Kyojin S | Shiguang Dailiren II | Violet Evergarden Mo | Re:Zero kara Hajimer | No Game No Life: Zer | Seishun Buta Yarou w | Shingeki no Kyojin S | Hunter x Hunter (201 | Ansatsu Kyoushitsu 2 | One Punch Man
+  MEMCAP .3    Shingeki no Kyojin S | Shiguang Dailiren II | Violet Evergarden Mo | Re:Zero kara Hajimer | No Game No Life: Zer | Seishun Buta Yarou w | Shingeki no Kyojin S | Hunter x Hunter (201 | Ansatsu Kyoushitsu 2 | One Punch Man
+  MEMCAP .15   Shingeki no Kyojin S | Shiguang Dailiren II | Violet Evergarden Mo | Re:Zero kara Hajimer | Hunter x Hunter (201 | Seishun Buta Yarou w | Shingeki no Kyojin S | No Game No Life: Zer | Cowboy Bebop | Ansatsu Kyoushitsu 2
+
+[589s]
+[exit 0]

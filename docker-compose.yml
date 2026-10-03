@@ -1,0 +1,130 @@
+name: malrec
+
+# Every published port binds to an explicit address - loopback by default -
+# so nothing is reachable from outside the host unless deliberately set.
+#   BIND_ADDR   address for the app and API (127.0.0.1, or e.g. a VPN
+#               interface address to reach them over a private network only)
+#   The database is always loopback-only.
+#
+# Resource caps keep this stack from competing with anything else the host
+# runs; they are generous for this workload.
+
+services:
+  db:
+    image: docker.io/pgvector/pgvector:pg17
+    container_name: malrec-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-malrec}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-malrec}
+      POSTGRES_DB: ${POSTGRES_DB:-malrec}
+      # deterministic collation so ORDER BY is stable across hosts
+      POSTGRES_INITDB_ARGS: "--locale=C --encoding=UTF8"
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-malrec} -d ${POSTGRES_DB:-malrec}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    command:
+      - postgres
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - work_mem=32MB
+      - -c
+      - max_parallel_workers_per_gather=2
+    cpus: ${DB_CPUS:-2}
+    mem_limit: ${DB_MEM:-2g}
+
+  api:
+    build: .
+    container_name: malrec-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment: &env
+      DATABASE_URL: postgresql://${POSTGRES_USER:-malrec}:${POSTGRES_PASSWORD:-malrec}@db:5432/${POSTGRES_DB:-malrec}
+      MAL_CLIENT_ID: ${MAL_CLIENT_ID}
+      # needed for "Sign in with MyAnimeList"; never sent to the browser
+      MAL_CLIENT_SECRET: ${MAL_CLIENT_SECRET:-}
+      MAL_REDIRECT_URI: ${MAL_REDIRECT_URI:-http://localhost:3000/api/auth/callback}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      MALREC_USER: ${MALREC_USER:-}
+      MODEL_MODE: ${MODEL_MODE:-personal}
+      RELEVANCE_WEIGHT_PERSONAL: ${RELEVANCE_WEIGHT_PERSONAL:-0}
+      ADMIN_USERS: ${ADMIN_USERS:-}
+      TOKEN_KEY: ${TOKEN_KEY:-}
+      SAFE_BETS_MEMORY_MIX: ${SAFE_BETS_MEMORY_MIX:-0}
+      SAFE_BETS_POPULARITY: ${SAFE_BETS_POPULARITY:-0.5}
+      SAFE_BETS_MEMORY_CAP: ${SAFE_BETS_MEMORY_CAP:-0.15}
+      SAFE_BETS_FLOOR: ${SAFE_BETS_FLOOR:--99}
+      # blend handover, personal-share cap, and the list size the ranking dials
+      # follow (experiments/exp_handover.py, 2026-10-03)
+      BLEND_SIZE_N0: ${BLEND_SIZE_N0:-150}
+      BLEND_LAM_MAX: ${BLEND_LAM_MAX:-0.5}
+      RANKING_SHARE_N0: ${RANKING_SHARE_N0:-80}
+      DISAGREEMENT_PENALTY: ${DISAGREEMENT_PENALTY:-0.25}
+      UNFAMILIAR_GENRE_PENALTY: ${UNFAMILIAR_GENRE_PENALTY:-0.3}
+      LONG_SERIES_PENALTY: ${LONG_SERIES_PENALTY:-0.3}
+      ACCLAIM_PENALTY: ${ACCLAIM_PENALTY:-0.6}
+      ACCLAIM_EVIDENCE_E0: ${ACCLAIM_EVIDENCE_E0:-0.1}
+      CHOSEN_BLEND_MIN: ${CHOSEN_BLEND_MIN:-300}
+      MALREC_MIGRATIONS: /app/db/migrations
+    # job logs, read-only, for the admin panel's status page
+    volumes:
+      - ./logs:/app/logs:ro
+    # Published so the CLI and the tests can reach it. The app does not need
+    # it: nginx proxies /api over the internal network.
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:${API_PORT:-8000}:8000"
+    command: >
+      sh -c "malrec init && uvicorn malrec.api:app --host 0.0.0.0 --port 8000"
+    cpus: ${API_CPUS:-2}
+    mem_limit: ${API_MEM:-2g}
+
+  app:
+    build: ./app
+    container_name: malrec-app
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:${APP_PORT:-3000}:80"
+    cpus: 0.5
+    mem_limit: 256m
+
+  # Experiments and long-running ingest jobs, against the working tree:
+  #   docker compose run --rm lab python -u experiments/exp_arch.py
+  #   docker compose run -d --name malrec-fetch lab malrec sync full --part mal
+  # Runs at low CPU priority with capped BLAS threads, so it yields to
+  # everything else on the host.
+  lab:
+    build: .
+    profiles: ["lab"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      <<: *env
+      PYTHONPATH: /work/src:/work
+      MALREC_MIGRATIONS: /work/db/migrations
+      OMP_NUM_THREADS: ${LAB_THREADS:-4}
+      OPENBLAS_NUM_THREADS: ${LAB_THREADS:-4}
+      MKL_NUM_THREADS: ${LAB_THREADS:-4}
+    volumes:
+      - .:/work
+    working_dir: /work
+    entrypoint: ["nice", "-n", "10"]
+    healthcheck:
+      disable: true            # the image's check probes the API, not a job
+    cpus: ${LAB_CPUS:-4}
+    mem_limit: ${LAB_MEM:-5g}
+
+volumes:
+  pgdata:

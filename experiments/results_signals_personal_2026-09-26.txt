@@ -1,0 +1,34 @@
+stacker (base): [0.751, 0.983, 1.027, -0.025, 0.352, 0.189, 0.133, 0.113, -0.043]
+4563 users (3285 fit / 593 stack / 685 eval) [125s]
+
+== sampled users with 150 list entries (120 users) [408s] ==
+                        rho  nDCG@10   RMSE  recall@50   rho wins vs base
+base                 0.5045   0.6562  1.302      0.194
+pers+staff tokens    0.5050   0.6575  1.302      0.196   45/119 better, 30 worse
+pers+audience        0.5099   0.6567  1.295      0.199   64/119 better, 42 worse
+pers+staff_aff       0.5053   0.6577  1.301      0.192   38/119 better, 29 worse
+pers+all             0.5104   0.6569  1.294      0.197   70/119 better, 37 worse
+
+== sampled users with 400 list entries (67 users) [708s] ==
+                        rho  nDCG@10   RMSE  recall@50   rho wins vs base
+base                 0.5348   0.6416  1.284      0.145
+pers+staff tokens    0.5370   0.6424  1.284      0.147   38/66 better, 22 worse
+pers+audience        0.5350   0.6362  1.276      0.150   36/66 better, 28 worse
+pers+staff_aff       0.5359   0.6367  1.284      0.147   31/66 better, 19 worse
+pers+all             0.5379   0.6337  1.274      0.153   42/66 better, 22 worse
+
+== reference profile, 8 temporal splits at his real size [726s] ==
+                        rho  nDCG@10   RMSE  recall@50   rho wins vs base
+base                 0.7686   0.7624  0.924      0.121
+pers+staff tokens    0.7701   0.7666  0.929      0.121   5/8 better, 2 worse
+pers+audience        0.7376   0.7698  0.953      0.115   1/8 better, 7 worse
+pers+staff_aff       0.7669   0.7819  0.927      0.103   1/8 better, 5 worse
+pers+all             0.7357   0.7765  0.957      0.096   0/8 better, 8 worse
+dropped negative     0.7686   0.7624  0.924      0.121   0/8 better, 0 worse
+  TODAY                per split: [0.7179, 0.7799, 0.7676, 0.7822, 0.8021, 0.8513, 0.7955, 0.6321]
+  base                 per split: [0.7297, 0.7799, 0.7676, 0.7846, 0.8053, 0.8498, 0.7986, 0.6334]
+  pers+staff tokens    per split: [0.7163, 0.785, 0.7757, 0.7878, 0.8103, 0.8498, 0.7967, 0.6391]
+  pers+audience        per split: [0.7107, 0.7843, 0.6906, 0.7151, 0.7461, 0.8326, 0.7907, 0.6304]
+  pers+staff_aff       per split: [0.7179, 0.779, 0.7698, 0.783, 0.8048, 0.8498, 0.7974, 0.6334]
+  pers+all             per split: [0.6884, 0.7769, 0.6983, 0.7143, 0.754, 0.8349, 0.7901, 0.6289]
+  dropped negative     per split: [0.7297, 0.7799, 0.7676, 0.7846, 0.8053, 0.8498, 0.7986, 0.6334]

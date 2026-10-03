@@ -1,0 +1,10 @@
+4877 sequel pairs, 607855 population pair-ratings, global delta -0.15 [179s]
+
+3000 held-out sequel ratings [3012s]
+                 RMSE   bias    rho   thin-data RMSE (70 pairs)
+model           1.187  +0.10  0.749     0.980
+blend 0.25      1.089  +0.09  0.792     0.903
+blend 0.5       1.052  +0.09  0.800     0.908
+blend 0.65      1.061  +0.08  0.792     0.951
+blend 0.8       1.094  +0.08  0.778     1.020
+anchor          1.171  +0.07  0.755     1.143
