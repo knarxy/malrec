@@ -294,12 +294,14 @@ export const api = {
 
   logout: () => req<AuthState>('/auth/logout', { method: 'POST', headers: CSRF }),
 
-  queue: (mal_id: number) =>
-    req<{ mal_id: number; list_status: string | null }>(`/me/queue/${mal_id}`,
+  queue: (mal_id: number, surface?: string) =>
+    req<{ mal_id: number; list_status: string | null }>(
+      `/me/queue/${mal_id}${surface ? `?surface=${encodeURIComponent(surface)}` : ''}`,
       { method: 'POST', headers: CSRF }),
 
-  unqueue: (mal_id: number) =>
-    req<{ mal_id: number; list_status: string | null }>(`/me/queue/${mal_id}`,
+  unqueue: (mal_id: number, surface?: string) =>
+    req<{ mal_id: number; list_status: string | null }>(
+      `/me/queue/${mal_id}${surface ? `?surface=${encodeURIComponent(surface)}` : ''}`,
       { method: 'DELETE', headers: CSRF }),
 
 

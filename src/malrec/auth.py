@@ -401,13 +401,13 @@ def _mirror(user_id: int, mal_id: int, status: str | None) -> None:
         c.commit()
 
 
-def _log_action(user_id: int, mal_id: int, action: str) -> None:
-    execute("INSERT INTO feedback (user_id, mal_id, action) VALUES (%s,%s,%s)",
-            (user_id, mal_id, action))
+def _log_action(user_id: int, mal_id: int, action: str, surface: str | None = None) -> None:
+    execute("INSERT INTO feedback (user_id, mal_id, action, surface) VALUES (%s,%s,%s,%s)",
+            (user_id, mal_id, action, (surface or None) and surface[:40]))
 
 
 @router.post("/me/queue/{mal_id}", dependencies=[Depends(require_csrf), rate_limit("mal_write", 120, 600)])
-def queue(mal_id: int, s: ApprovedSession) -> dict:
+def queue(mal_id: int, s: ApprovedSession, surface: str | None = None) -> dict:
     with MalClient(token=s["access_token"]) as mal:
         try:
             current = mal.my_list_status(mal_id)
@@ -421,12 +421,14 @@ def queue(mal_id: int, s: ApprovedSession) -> dict:
         except MalApiError as e:
             raise _mal_error(e) from e
     _mirror(s["app_user_id"], mal_id, "plan_to_watch")
-    _log_action(s["app_user_id"], mal_id, "queued")
+    _log_action(s["app_user_id"], mal_id, "queued", surface)
+    # the Plan to Watch tab takes it in; quick clicks share one rebuild
+    tasks.enqueue("rebuild", s["app_user_id"])
     return {"mal_id": mal_id, "list_status": "plan_to_watch"}
 
 
 @router.delete("/me/queue/{mal_id}", dependencies=[Depends(require_csrf), rate_limit("mal_write", 120, 600)])
-def unqueue(mal_id: int, s: ApprovedSession) -> dict:
+def unqueue(mal_id: int, s: ApprovedSession, surface: str | None = None) -> dict:
     with MalClient(token=s["access_token"]) as mal:
         try:
             current = mal.my_list_status(mal_id)
@@ -440,7 +442,8 @@ def unqueue(mal_id: int, s: ApprovedSession) -> dict:
         except MalApiError as e:
             raise _mal_error(e) from e
     _mirror(s["app_user_id"], mal_id, None)
-    _log_action(s["app_user_id"], mal_id, "unqueued")
+    _log_action(s["app_user_id"], mal_id, "unqueued", surface)
+    tasks.enqueue("rebuild", s["app_user_id"])
     return {"mal_id": mal_id, "list_status": None}
 
 

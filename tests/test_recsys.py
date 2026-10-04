@@ -589,3 +589,14 @@ def test_other_tabs_tag_titles_safe_bets_also_lists(monkeypatch):
     assert [it.get("also_in") for it in out] == [None, "safe_bets"]
     # Safe Bets itself carries no tag
     assert surfaces.mark_shared(7, "safe_bets", [{"mal_id": 2}]) == [{"mal_id": 2}]
+
+
+def test_planned_titles_leave_the_other_tabs(monkeypatch):
+    """A title queued from a card moves to the Plan to Watch tab at the next
+    load; only Plan to Watch itself keeps it."""
+    from malrec import surfaces
+    rows = [{"mal_id": 1, "list_status": None}, {"mal_id": 2, "list_status": "plan_to_watch"}]
+    monkeypatch.setattr(surfaces, "query", lambda sql, p=None: [])
+    monkeypatch.setattr(surfaces, "read_surface", lambda *a, **k: [dict(r) for r in rows])
+    assert [r["mal_id"] for r in surfaces.read_ranked(7, "safe_bets")] == [1]
+    assert [r["mal_id"] for r in surfaces.read_ranked(7, "plan_to_watch")] == [1, 2]

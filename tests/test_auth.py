@@ -251,3 +251,15 @@ def test_quiz_rating_is_tagged(signed_in):
     assert one("SELECT surface FROM feedback WHERE user_id=%s AND action='rated'",
                (uid,))["surface"] == "quiz"
     assert client.get("/me/quiz").json()["rated_in_round"] == 1
+
+
+def test_queue_records_the_tab_and_rebuilds_the_lists(signed_in, monkeypatch):
+    client, uid = signed_in
+    queued = []
+    monkeypatch.setattr(auth.tasks, "enqueue", lambda kind, u: queued.append((kind, u)))
+    r = client.post("/me/queue/5114?surface=safe_bets", headers=CSRF)
+    assert r.status_code == 200
+    row = one("SELECT surface FROM feedback WHERE user_id=%s AND mal_id=5114 AND action='queued'"
+              " ORDER BY id DESC LIMIT 1", (uid,))
+    assert row["surface"] == "safe_bets"
+    assert queued == [("rebuild", uid)], "the Plan to Watch tab takes the title in"

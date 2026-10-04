@@ -622,15 +622,17 @@ def read_ranked(user_id: int, surface: str, limit: int = 30, offset: int = 0,
                 filters: Filters | None = None) -> list[dict]:
     """The surface narrowed by filters, re-ranked the way it was built.
 
-    Titles that have since landed on the list (rated from the app, marked
-    watching...) drop out at once; Plan to Watch ones stay, showing as planned.
+    Titles that have since landed on the list drop out of every other tab at
+    the next load - planned ones too, which move to the Plan to Watch tab.
     """
     rows = query(CAND_SQL, (user_id, surface))
     if not rows:
-        return read_surface(user_id, surface, limit, offset)
+        items = read_surface(user_id, surface, limit, offset)
+        return items if surface == "plan_to_watch" else [
+            it for it in items if it.get("list_status") is None]
     filters = filters or Filters()
     if surface != "plan_to_watch":
-        rows = [r for r in rows if r["list_status"] in (None, "plan_to_watch")]
+        rows = [r for r in rows if r["list_status"] is None]
     else:
         rows = [r for r in rows if r["list_status"] == "plan_to_watch"]
     rows = [r for r in rows if filters.keep(r)]

@@ -106,8 +106,8 @@ export function Card({
     setMessage(null)
     try {
       const r = listStatus === 'plan_to_watch'
-        ? await api.unqueue(item.mal_id)
-        : await api.queue(item.mal_id)
+        ? await api.unqueue(item.mal_id, surface)
+        : await api.queue(item.mal_id, surface)
       setListStatus(r.list_status)
     } catch (e) {
       setMessage(e instanceof ApiError ? e.message : t('Could not reach MyAnimeList.'))
