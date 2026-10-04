@@ -25,7 +25,7 @@ from .config import settings
 from .db import one, query, scalar
 from .model import cached_model, feature_importance, load_latest
 from .rank import familiar_genres, relevance_bonus
-from .surfaces import SPECS, SURFACES, Filters, _Share, build_surface, read_ranked
+from .surfaces import SPECS, SURFACES, Filters, _Share, build_surface, mark_shared, read_ranked
 
 log = logging.getLogger(__name__)
 
@@ -118,6 +118,7 @@ def recommendations(
             "SELECT count(*) FROM rec_candidate WHERE user_id=%s AND surface=%s", (uid, surface)):
         build_surface(uid, surface, limit=max(limit + offset, 50))
         items = read_ranked(uid, surface, limit, offset, filters)
+    mark_shared(uid, surface, items)
     return {"surface": surface, "description": SPECS[surface].description,
             "count": len(items), "items": items}
 

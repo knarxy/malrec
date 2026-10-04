@@ -11,6 +11,7 @@ export const LANGS: { code: Lang; label: string }[] = [
 ]
 
 const de: Record<string, string> = {
+  'card.also_in': 'Auch in {tab}',
   'adm.auto': 'Automatische Freischaltung',
   'adm.auto.on': 'Automatische Freischaltung aktiv: noch {left} Plätze frei (bis {limit} freigeschaltete Konten). Neue Konten sind sofort dabei.',
   'adm.auto.full': 'Alle {limit} Plätze der automatischen Freischaltung sind vergeben: neue Konten warten wieder auf deine Freigabe.',
@@ -408,6 +409,7 @@ const de: Record<string, string> = {
 }
 
 const en: Record<string, string> = {
+  'card.also_in': 'Also in {tab}',
   'adm.auto': 'Automatic approval',
   'adm.auto.on': 'Automatic approval is on: {left} slots left (up to {limit} approved accounts). New accounts get in right away.',
   'adm.auto.full': 'All {limit} automatic-approval slots are taken: new accounts wait for your approval again.',

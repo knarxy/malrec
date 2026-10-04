@@ -40,6 +40,8 @@ export interface Recommendation {
   /** the viewer's own MAL list status for this title, if any */
   list_status: string | null
   list_score?: number | null
+  /** Safe Bets also lists this title (shown on the other tabs' cards) */
+  also_in?: string
   /** 80 % range of the user's actual rating, and the chance it is 9+ */
   likely?: { low: number; high: number; p9: number } | null
 }

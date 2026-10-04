@@ -146,6 +146,9 @@ export function Card({
           {bits.map((b, i) => <span key={i}>{b}</span>)}
           {item.mal_mean && <span>★ {item.mal_mean.toFixed(2)}</span>}
         </div>
+        {item.also_in && (
+          <span className="also-in"><Sparkle />{t('card.also_in', { tab: t(`tab.${item.also_in}`) })}</span>
+        )}
         {!unaired(item) && <Likely item={item} />}
         <Why reasons={item.reasons ?? []} />
         {message && <div className="card-msg">{message}</div>}

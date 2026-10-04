@@ -601,6 +601,23 @@ class _Share:
         self.personal_share = lam
 
 
+# Other tabs may show a title Safe Bets also lists (Hidden Gems most of
+# all): leaving them out lost more good picks than it saved (exp_toplist.py
+# round 10), so the card says it is in Safe Bets too. Safe Bets, the primary
+# list, carries no such tag.
+def mark_shared(user_id: int, surface: str, items: list[dict]) -> list[dict]:
+    """Tag each item Safe Bets also lists with also_in='safe_bets'."""
+    if surface == "safe_bets" or not items:
+        return items
+    ids = {r["mal_id"] for r in query(
+        "SELECT mal_id FROM recommendation WHERE user_id=%s AND surface='safe_bets'"
+        " AND mal_id = ANY(%s)", (user_id, [it["mal_id"] for it in items]))}
+    for it in items:
+        if it["mal_id"] in ids:
+            it["also_in"] = "safe_bets"
+    return items
+
+
 def read_ranked(user_id: int, surface: str, limit: int = 30, offset: int = 0,
                 filters: Filters | None = None) -> list[dict]:
     """The surface narrowed by filters, re-ranked the way it was built.

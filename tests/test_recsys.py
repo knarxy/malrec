@@ -580,3 +580,12 @@ def test_predict_parts_puts_each_prediction_at_its_item():
     st, pe = UserModel.predict_parts(um, [1, 2, 3, 4])
     assert np.allclose(st[[0, 1, 3]], [1.5, 2.5, 4.5]) and np.isnan(st[2])
     assert np.allclose(pe[[0, 1, 3]], [10, 20, 40]) and np.isnan(pe[2])
+
+
+def test_other_tabs_tag_titles_safe_bets_also_lists(monkeypatch):
+    from malrec import surfaces
+    monkeypatch.setattr(surfaces, "query", lambda sql, p=None: [{"mal_id": 2}])
+    out = surfaces.mark_shared(7, "hidden_gems", [{"mal_id": 1}, {"mal_id": 2}])
+    assert [it.get("also_in") for it in out] == [None, "safe_bets"]
+    # Safe Bets itself carries no tag
+    assert surfaces.mark_shared(7, "safe_bets", [{"mal_id": 2}]) == [{"mal_id": 2}]
