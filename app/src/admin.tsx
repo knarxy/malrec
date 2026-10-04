@@ -64,8 +64,10 @@ function Users() {
   const [users, setUsers] = useState<AdminUser[] | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
   const [busy, setBusy] = useState<number | null>(null)
+  const [auto, setAuto] = useState<AdminSystem['auto_approve'] | null>(null)
 
   const load = useCallback(() => {
+    api.adminSystem().then((s) => setAuto(s.auto_approve ?? null)).catch(() => {})
     api.adminUsers().then(setUsers)
       .catch((e) => setMsg(e instanceof ApiError ? e.message : t('adm.error')))
   }, [t])
@@ -93,6 +95,12 @@ function Users() {
   return (
     <>
       {msg && <div className="notice">{msg}</div>}
+      {auto && auto.limit > 0 && (
+        <div className="notice" style={{ marginTop: 18 }}>
+          {auto.left ? t('adm.auto.on', { left: auto.left, limit: auto.limit })
+            : t('adm.auto.full', { limit: auto.limit })}
+        </div>
+      )}
       <h3>{t('adm.pending', { n: pending.length })}</h3>
       {pending.length === 0 && <p className="surface-note">{t('adm.pending.none')}</p>}
       {pending.map((u) => (
@@ -175,6 +183,7 @@ function System() {
   }, [t])
   if (!s) return <p className="surface-note">{err ?? t('Loading…')}</p>
   const w = s.worker
+  const aa = s.auto_approve
   return (
     <>
       {w && (
@@ -200,6 +209,16 @@ function System() {
               )}
             </div>
           </div>
+        </>
+      )}
+      {aa && (
+        <>
+          <h3>{t('adm.auto')}</h3>
+          <p className="surface-note">
+            {aa.limit <= 0 ? t('adm.auto.off')
+              : aa.left ? t('adm.auto.on', { left: aa.left, limit: aa.limit })
+              : t('adm.auto.full', { limit: aa.limit })}
+          </p>
         </>
       )}
       <h3>{t('adm.jobs')}</h3>

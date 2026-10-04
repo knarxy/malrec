@@ -170,6 +170,7 @@ export interface AdminSystem {
   last_backup: string
   jobs: Record<string, { label: string; ok: boolean | null; state: string;
     last_run?: string; tail?: string[] }>
+  auto_approve?: { limit: number; approved: number; left: number | null }
   worker?: {
     state: 'ok' | 'stalled' | 'stuck' | 'never'
     started_at: string | null; last_seen: string | null; threads: number | null

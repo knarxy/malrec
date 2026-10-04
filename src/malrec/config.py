@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     smtp_from: str = ""
     admin_email: str = ""
     notify_timezone: str = "UTC"
+    # Test phase: approve new accounts automatically while fewer than this many
+    # accounts are approved; after that they wait for the admin again. 0 = off.
+    auto_approve_limit: int = 0
     # How users reach whoever runs this instance (a URL or an address), shown
     # on the privacy page. Empty: the page says "the operator of this site".
     operator_contact: str = ""

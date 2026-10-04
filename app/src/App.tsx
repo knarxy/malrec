@@ -176,10 +176,28 @@ function SignIn({ authError, onLang }: { authError: string | null; onLang: (l: L
 }
 
 /** Signed in, but the admin has not approved the account yet. */
-function Pending({ username, onLang, onLogout, hasInvite }: {
+const PENDING_POLL_MS = 15_000
+
+/** Signed in, waiting for approval. Checks back on its own (and whenever the
+ *  tab returns), so an approval moves the user straight on to their lists. */
+function Pending({ username, onLang, onLogout, hasInvite, onApproved }: {
   username: string; onLang: (l: Lang) => void; onLogout: () => void; hasInvite: boolean
+  onApproved: (a: AuthState) => void
 }) {
   const { t } = useI18n()
+  useEffect(() => {
+    const check = () => {
+      if (document.visibilityState !== 'visible') return
+      api.authMe().then((a) => { if (a.signed_in && a.status === 'approved') onApproved(a) })
+        .catch(() => {})
+    }
+    const id = window.setInterval(check, PENDING_POLL_MS)
+    document.addEventListener('visibilitychange', check)
+    return () => {
+      window.clearInterval(id)
+      document.removeEventListener('visibilitychange', check)
+    }
+  }, [onApproved])
   return (
     <div className="center">
       <div className="panel">
@@ -188,6 +206,7 @@ function Pending({ username, onLang, onLogout, hasInvite }: {
           <LangPicker onChange={onLang} />
         </div>
         <p className="sub">{t('pending.text', { user: username })}</p>
+        <p className="sub pending-live"><span className="pending-dot" aria-hidden="true" />{t('pending.live')}</p>
         {hasInvite && <p className="sub">{t('together.link_wait')}</p>}
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 8 }}>
           <button onClick={onLogout}>{t('Sign out')}</button>
@@ -465,7 +484,8 @@ function Main({ lang, setLangState }: { lang: Lang; setLangState: (l: Lang) => v
   if (!auth.signed_in) return <SignIn authError={authError} onLang={changeLang} />
   if (auth.status !== 'approved' || !user) {
     return <Pending username={auth.username ?? ''} onLang={changeLang} onLogout={logout}
-                    hasInvite={linkToken !== null} />
+                    hasInvite={linkToken !== null}
+                    onApproved={(a) => { setAuth(a); setUser(a.username ?? null) }} />
   }
   if (adminView && auth.is_admin) return <Admin onClose={() => setAdminView(false)} />
   if (!ready) {

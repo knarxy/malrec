@@ -182,6 +182,13 @@ def _job_status(path: Path, max_age_h: float) -> dict:
             "tail": last[-6:]}
 
 
+def _auto_approve_status() -> dict:
+    limit = settings().auto_approve_limit
+    approved = scalar("SELECT count(*) FROM app_user WHERE status='approved'") or 0
+    return {"limit": limit, "approved": approved,
+            "left": max(limit - approved, 0) if limit > 0 else None}
+
+
 @router.get("/system")
 def system(v: Admin) -> dict:
     logs = Path(settings().logs_dir)
@@ -205,6 +212,7 @@ def system(v: Admin) -> dict:
                  for name, (label, h) in JOBS.items()},
         "version": os.environ.get("MALREC_VERSION", ""),
         "worker": tasks.status(),
+        "auto_approve": _auto_approve_status(),
     }
 
 

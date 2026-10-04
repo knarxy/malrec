@@ -17,3 +17,5 @@ def _no_real_mail(monkeypatch):
     own fake server."""
     from malrec.config import settings
     monkeypatch.setattr(settings(), "smtp_host", "")
+    # nor do they depend on the server's test-phase auto-approval
+    monkeypatch.setattr(settings(), "auto_approve_limit", 0)

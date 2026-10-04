@@ -11,6 +11,10 @@ export const LANGS: { code: Lang; label: string }[] = [
 ]
 
 const de: Record<string, string> = {
+  'adm.auto': 'Automatische Freischaltung',
+  'adm.auto.on': 'Automatische Freischaltung aktiv: noch {left} Plätze frei (bis {limit} freigeschaltete Konten). Neue Konten sind sofort dabei.',
+  'adm.auto.full': 'Alle {limit} Plätze der automatischen Freischaltung sind vergeben: neue Konten warten wieder auf deine Freigabe.',
+  'adm.auto.off': 'Aus: Jedes neue Konto wartet auf deine Freigabe (AUTO_APPROVE_LIMIT).',
   'adm.worker': 'Hintergrund-Aufgaben',
   'adm.worker.name': 'Worker',
   'adm.worker.state.ok': 'läuft',
@@ -212,7 +216,8 @@ const de: Record<string, string> = {
   'together.link_wait': 'Du hast einen Einladungslink geöffnet. Sobald dein Konto freigeschaltet ist, kannst du ihn hier annehmen.',
   'signin.approval': 'Neue Konten werden manuell freigeschaltet. Nach der ersten Anmeldung bekommst du Zugang, sobald dein Konto bestätigt ist.',
   'pending.title': 'Zugang angefragt',
-  'pending.text': 'Hallo {user}! Dein Konto wartet auf Freischaltung. Sobald es bestätigt ist, lesen wir deine Liste und erstellen deine Empfehlungen – schau einfach später wieder vorbei.',
+  'pending.text': 'Hallo {user}! Dein Konto wartet auf Freischaltung. Sobald es bestätigt ist, lesen wir deine Liste und erstellen deine Empfehlungen.',
+  'pending.live': 'Diese Seite prüft das von selbst und geht weiter, sobald es so weit ist. Du kannst sie auch schließen: Du bleibst 30 Tage angemeldet.',
   'back.own': 'Zurück zu meinem Profil',
   'auth.blocked': 'Dieses Konto hat keinen Zugang.',
   'Rate titles': 'Titel bewerten',
@@ -403,6 +408,10 @@ const de: Record<string, string> = {
 }
 
 const en: Record<string, string> = {
+  'adm.auto': 'Automatic approval',
+  'adm.auto.on': 'Automatic approval is on: {left} slots left (up to {limit} approved accounts). New accounts get in right away.',
+  'adm.auto.full': 'All {limit} automatic-approval slots are taken: new accounts wait for your approval again.',
+  'adm.auto.off': 'Off: every new account waits for your approval (AUTO_APPROVE_LIMIT).',
   'adm.worker': 'Background tasks',
   'adm.worker.name': 'Worker',
   'adm.worker.state.ok': 'running',
@@ -603,7 +612,8 @@ const en: Record<string, string> = {
   'together.link_wait': 'You opened an invitation link. Once your account is approved you can accept it here.',
   'signin.approval': 'New accounts are approved by hand. After your first sign-in you get access as soon as your account is confirmed.',
   'pending.title': 'Access requested',
-  'pending.text': 'Hi {user}! Your account is waiting for approval. Once it is confirmed we read your list and build your recommendations - just check back later.',
+  'pending.text': 'Hi {user}! Your account is waiting for approval. Once it is confirmed we read your list and build your recommendations.',
+  'pending.live': 'This page checks by itself and moves on as soon as you are in. You can also close it: you stay signed in for 30 days.',
   'back.own': 'Back to my profile',
   'auth.blocked': 'This account does not have access.',
   'quiz.title': 'What have you already seen?',

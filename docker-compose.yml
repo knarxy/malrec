@@ -61,6 +61,7 @@ services:
       MODEL_MODE: ${MODEL_MODE:-sized}
       RELEVANCE_WEIGHT_PERSONAL: ${RELEVANCE_WEIGHT_PERSONAL:-0.5}
       ADMIN_USERS: ${ADMIN_USERS:-}
+      AUTO_APPROVE_LIMIT: ${AUTO_APPROVE_LIMIT:-0}
       OPERATOR_CONTACT: ${OPERATOR_CONTACT:-}
       # admin e-mails (malrec.notify); off while SMTP_HOST is empty
       SMTP_HOST: ${SMTP_HOST:-}

@@ -272,12 +272,19 @@ def callback(code: str | None = None, state: str | None = None,
             execute("UPDATE app_user SET status='approved', approved_at=now() WHERE id=%s",
                     (uid,))
             status = "approved"
-    if status == "pending" and acct and acct["fresh"]:
+    slots_left = _auto_approve(uid) if status == "pending" else None
+    if slots_left is not None:
+        status = "approved"
+    if slots_left is not None or (status == "pending" and acct and acct["fresh"]):
         # tell the admin by mail, off the request path (malrec.notify)
         import threading
 
         from . import notify
-        threading.Thread(target=notify.pending_signup, args=(uid,), daemon=True).start()
+        if slots_left is not None:
+            threading.Thread(target=notify.auto_approved, args=(uid, slots_left),
+                             daemon=True).start()
+        else:
+            threading.Thread(target=notify.pending_signup, args=(uid,), daemon=True).start()
     if status in ("rejected", "blocked"):
         # no session at all: nothing is fetched or stored for them
         return RedirectResponse(f"{base}/?auth_error=blocked", status_code=302)
@@ -303,6 +310,25 @@ def callback(code: str | None = None, state: str | None = None,
                     secure=cfg.session_cookie_secure,
                     max_age=cfg.session_days * 86400, path="/")
     return resp
+
+
+def _auto_approve(uid: int) -> int | None:
+    """Approve a waiting account while fewer than AUTO_APPROVE_LIMIT accounts
+    are approved (a test phase without the approval wait). Returns the slots
+    left afterwards, or None when it stays waiting. Under an advisory lock, so
+    two sign-ins at once cannot both take the last slot."""
+    limit = settings().auto_approve_limit
+    if limit <= 0:
+        return None
+    with conn() as c:
+        c.execute("SELECT pg_advisory_xact_lock(hashtext('malrec_auto_approve'))")
+        n = c.execute("SELECT count(*) AS n FROM app_user WHERE status='approved'").fetchone()["n"]
+        if n >= limit:
+            return None
+        c.execute("UPDATE app_user SET status='approved', approved_at=now()"
+                  " WHERE id=%s AND status='pending'", (uid,))
+    log.info("account %s approved automatically (%s of %s)", uid, n + 1, limit)
+    return limit - n - 1
 
 
 @router.get("/auth/config")

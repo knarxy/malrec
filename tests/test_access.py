@@ -258,3 +258,46 @@ def test_nobody_can_delete_someone_elses_account(accounts):
     assert cl["user"].request("DELETE", f"/admin/users/{ids['other']}", headers=CSRF).status_code == 403
     assert scalar("SELECT count(*) FROM app_user WHERE id IN (%s, %s)",
                   (ids["other"], ids["user"])) == 2
+
+
+def test_auto_approval_fills_the_free_slots_then_stops(accounts, monkeypatch):
+    names = ["malrec_t_auto1", "malrec_t_auto2"]
+    queued, mails = [], []
+    monkeypatch.setattr(auth, "_token_request",
+                        lambda data: {"access_token": "a", "refresh_token": "r", "expires_in": 3600})
+    who = {"name": names[0]}
+
+    class Me:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *e): pass
+        def me(self): return {"name": who["name"], "id": 77}
+    monkeypatch.setattr(auth, "MalClient", Me)
+    monkeypatch.setattr(auth.tasks, "enqueue", lambda kind, uid: queued.append((kind, uid)))
+    from malrec import notify
+    monkeypatch.setattr(notify, "auto_approved", lambda uid, left: mails.append(("auto", left)))
+    monkeypatch.setattr(notify, "pending_signup", lambda uid: mails.append(("pending", uid)))
+    approved = scalar("SELECT count(*) FROM app_user WHERE status='approved'")
+    monkeypatch.setattr(settings(), "auto_approve_limit", approved + 1)      # one free slot
+
+    def callback():
+        st = secrets.token_urlsafe(16)
+        execute("INSERT INTO oauth_state (state, code_verifier, return_to) VALUES (%s,'v','/')",
+                (st,))
+        return TestClient(app).get(f"/auth/callback?code=c&state={st}", follow_redirects=False)
+    try:
+        callback()
+        import time
+        time.sleep(0.3)                                  # mails go out on a thread
+        assert one("SELECT status FROM app_user WHERE mal_username=%s", (names[0],))["status"] \
+            == "approved"
+        assert [k for k, _ in queued] == ["onboard"] and mails == [("auto", 0)]
+        who["name"] = names[1]                           # the slots are gone now
+        callback()
+        time.sleep(0.3)
+        assert one("SELECT status FROM app_user WHERE mal_username=%s", (names[1],))["status"] \
+            == "pending"
+        assert len(queued) == 1 and mails[-1][0] == "pending"
+    finally:
+        for n in names:
+            execute("DELETE FROM app_user WHERE mal_username=%s", (n,))

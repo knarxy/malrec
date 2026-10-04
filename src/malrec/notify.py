@@ -65,6 +65,13 @@ STRINGS: dict[str, dict[str, str]] = {
         "pending.when": "Angefragt",
         "pending.queue": "Wartend insgesamt",
         "pending.others": "Außerdem wartend",
+        "auto.subject": "Automatisch freigeschaltet: {user} (noch {left} Plätze)",
+        "auto.subject.last": "Automatisch freigeschaltet: {user} (letzter freier Platz)",
+        "auto.title": "{user} ist dabei",
+        "auto.lead": "Ein neues Konto wurde automatisch freigeschaltet, seine Empfehlungen werden gerade erstellt. "
+                     "Sperren oder löschen kannst du es jederzeit im Admin-Bereich.",
+        "auto.left": "Freie Plätze",
+        "auto.full": "Alle Plätze sind vergeben: neue Konten warten ab jetzt wieder auf deine Freigabe.",
         "failures.subject": "{n} Hintergrund-Aufgabe(n) fehlgeschlagen",
         "failures.title": "Hintergrund-Aufgaben fehlgeschlagen",
         "failures.lead": "Diese Aufgaben sind seit der letzten Meldung fehlgeschlagen. Weitere Fehler werden "
@@ -130,6 +137,13 @@ STRINGS: dict[str, dict[str, str]] = {
         "pending.when": "Requested",
         "pending.queue": "Waiting in total",
         "pending.others": "Also waiting",
+        "auto.subject": "Approved automatically: {user} ({left} slots left)",
+        "auto.subject.last": "Approved automatically: {user} (last free slot)",
+        "auto.title": "{user} is in",
+        "auto.lead": "A new account was approved automatically, and its recommendations are being built. "
+                     "You can block or delete it any time in the admin panel.",
+        "auto.left": "Free slots",
+        "auto.full": "All slots are taken: new accounts wait for your approval again from now on.",
         "failures.subject": "{n} background task(s) failed",
         "failures.title": "Background tasks failed",
         "failures.lead": "These tasks failed since the last report. Further failures are reported together, "
@@ -396,6 +410,34 @@ def pending_signup(user_id: int, sample: bool = False) -> bool:
                         button=(settings().app_base_url, _t(lang, "open_app")))
     return _deliver("pending", f"sample:{dt.datetime.now(dt.UTC).isoformat()}" if sample else key,
                     _t(lang, "pending.subject", user=name), page, text)
+
+
+def auto_approved(user_id: int, left: int) -> bool:
+    """An account was approved automatically (AUTO_APPROVE_LIMIT); left is the
+    number of free slots after it."""
+    if not enabled():
+        return False
+    u = one("SELECT mal_username, requested_at FROM app_user WHERE id=%s", (user_id,))
+    if u is None:
+        return False
+    key = f"{user_id}:{u['requested_at'].isoformat() if u['requested_at'] else ''}"
+    if _already("auto_approved", key):
+        return False
+    lang = admin_lang()
+    name = u["mal_username"]
+    rows = [(_t(lang, "pending.who"), name),
+            (_t(lang, "pending.profile"), Link(f"https://myanimelist.net/profile/{name}")),
+            (_t(lang, "pending.when"), _when(u["requested_at"], lang)),
+            (_t(lang, "auto.left"), str(left))]
+    sections: list[dict] = [{"rows": rows}]
+    if left <= 0:
+        sections.append({"p": [_t(lang, "auto.full")]})
+    page, text = render(lang, _t(lang, "auto.title", user=name), _t(lang, "auto.lead"), sections,
+                        tone="warn" if left <= 0 else "ok",
+                        button=(settings().app_base_url, _t(lang, "open_app")))
+    subject = (_t(lang, "auto.subject.last", user=name) if left <= 0
+               else _t(lang, "auto.subject", user=name, left=left))
+    return _deliver("auto_approved", key, subject, page, text)
 
 
 def task_failures(sample_rows: list[dict] | None = None) -> bool:

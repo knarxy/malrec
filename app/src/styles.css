@@ -583,3 +583,12 @@ a.primary-link { background: var(--grad); color: var(--on-grad); font-weight: 70
   .credits-heart { animation: none; }
   .card, .card:hover { transition: none; transform: none; }
 }
+
+/* ------------------------------------------------------- waiting screen */
+.pending-live { display: flex; gap: 10px; align-items: flex-start; font-size: 13px !important; }
+.pending-dot {
+  flex: none; width: 8px; height: 8px; margin-top: 6px; border-radius: 999px; background: var(--good);
+  box-shadow: 0 0 0 0 rgb(87 217 163 / .6); animation: pending-pulse 2s ease-out infinite;
+}
+@keyframes pending-pulse { to { box-shadow: 0 0 0 9px rgb(87 217 163 / 0); } }
+@media (prefers-reduced-motion: reduce) { .pending-dot { animation: none; } }
