@@ -600,3 +600,22 @@ a.primary-link { background: var(--grad); color: var(--on-grad); font-weight: 70
   background: rgb(124 179 255 / .08); border: 1px solid rgb(124 179 255 / .3);
 }
 .also-in svg { width: 10px; height: 10px; }
+
+/* admin: the accounts table becomes one card per account on a phone */
+.last-action { font-weight: 600; }
+@media (max-width: 720px) {
+  .admin-users table, .admin-users tbody, .admin-users tr, .admin-users td { display: block; width: 100%; }
+  .admin-users thead { display: none; }
+  .admin-users tr {
+    margin-bottom: 12px; padding: 12px 14px; border-radius: 14px;
+    background: var(--panel); border: 1px solid var(--glass-line);
+  }
+  .admin-users td { border: 0; padding: 4px 0; }
+  .admin-users td[data-label] { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px; }
+  .admin-users td[data-label]::before { content: attr(data-label); color: var(--muted); font-size: 12px; }
+  .admin-users td[data-label] > * { justify-self: start; }
+  .admin-users td.admin-account { padding-bottom: 8px; font-size: 15px; }
+  .admin-users td .admin-actions { padding-top: 6px; }
+}
+.brand .brand-suffix { color: inherit; background: none; -webkit-text-fill-color: currentColor; }
+@media (max-width: 520px) { .brand-suffix { display: none; } }

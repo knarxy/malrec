@@ -43,7 +43,11 @@ USERS_SQL = """
            u.last_sync_at, u.created_at,
            count(le.mal_id) AS entries, count(*) FILTER (WHERE le.score > 0) AS scored,
            (SELECT count(*) FROM recommendation r WHERE r.user_id = u.id) AS recs,
-           (SELECT count(*) FROM mal_session s WHERE s.app_user_id = u.id) AS sessions
+           (SELECT count(*) FROM mal_session s WHERE s.app_user_id = u.id) AS sessions,
+           -- any request from a signed-in session, even just looking at the lists
+           (SELECT max(s.last_used_at) FROM mal_session s WHERE s.app_user_id = u.id)
+               AS last_active,
+           u.last_manual_sync_at
       FROM app_user u LEFT JOIN list_entry le ON le.user_id = u.id
      GROUP BY u.id
      ORDER BY (u.status = 'pending') DESC, u.requested_at DESC NULLS LAST, u.id
@@ -58,9 +62,50 @@ def pending(v: Admin) -> list[dict]:
                  " ORDER BY requested_at NULLS LAST, id")
 
 
+# the newest in-app action per account, with the title and (for a rating)
+# the score it was given
+LAST_ACTION_SQL = """
+    SELECT DISTINCT ON (f.user_id) f.user_id, f.action, f.created_at AS at,
+           coalesce(a.title_en, a.title) AS title,
+           CASE WHEN f.action = 'rated' THEN le.score END AS score
+      FROM feedback f
+      LEFT JOIN anime a ON a.mal_id = f.mal_id
+      LEFT JOIN list_entry le ON le.user_id = f.user_id AND le.mal_id = f.mal_id
+     ORDER BY f.user_id, f.created_at DESC
+"""
+WEEK_SQL = """
+    SELECT user_id, action, count(*) AS n FROM feedback
+     WHERE created_at > now() - interval '7 days' GROUP BY 1, 2
+"""
+
+
+def _activity(rows: list[dict]) -> None:
+    """Adds last_action (newest of in-app actions and the manual sync) and
+    week (counts per action over 7 days) to each account row."""
+    import datetime as _dt
+    last = {r["user_id"]: r for r in query(LAST_ACTION_SQL)}
+    week: dict[int, dict[str, int]] = {}
+    for r in query(WEEK_SQL):
+        week.setdefault(r["user_id"], {})[r["action"]] = r["n"]
+    since = _dt.datetime.now(_dt.UTC) - _dt.timedelta(days=7)
+    for u in rows:
+        act = last.get(u["id"])
+        action = ({"kind": act["action"], "at": act["at"], "title": act["title"],
+                   "score": act["score"]} if act else None)
+        synced = u.pop("last_manual_sync_at", None)
+        if synced and (action is None or synced > action["at"]):
+            action = {"kind": "sync", "at": synced, "title": None, "score": None}
+        u["last_action"] = action
+        w = dict(week.get(u["id"], {}))
+        if synced and synced > since:
+            w["sync"] = w.get("sync", 0) + 1          # the last one; earlier ones are not kept
+        u["week"] = w
+
+
 @router.get("/users")
 def users(v: Admin) -> list[dict]:
     out = query(USERS_SQL)
+    _activity(out)
     for u in out:
         job = onboarding.current(u["mal_username"])
         u["onboarding"] = job["state"] if job else None

@@ -164,6 +164,11 @@ export interface AdminUser {
   sessions: number
   onboarding: string | null
   is_admin: boolean
+  /** any request from a signed-in session */
+  last_active: string | null
+  last_action: { kind: string; at: string; title: string | null; score: number | null } | null
+  /** actions per kind over the last 7 days */
+  week: Record<string, number>
 }
 
 export interface AdminSystem {

@@ -301,3 +301,27 @@ def test_auto_approval_fills_the_free_slots_then_stops(accounts, monkeypatch):
     finally:
         for n in names:
             execute("DELETE FROM app_user WHERE mal_username=%s", (n,))
+
+
+def test_admin_sees_each_accounts_latest_action(monkeypatch):
+    """Newest of in-app actions and the manual sync, plus 7-day counts."""
+    from malrec import admin
+    now = dt.datetime.now(dt.UTC)
+    rated = {"user_id": 1, "action": "rated", "at": now - dt.timedelta(hours=2),
+             "title": "Paprika", "score": 9}
+
+    def fake_query(sql, params=None):
+        if "DISTINCT ON" in sql:
+            return [rated]
+        return [{"user_id": 1, "action": "rated", "n": 12},
+                {"user_id": 1, "action": "not_interested", "n": 3}]
+    monkeypatch.setattr(admin, "query", fake_query)
+    rows = [{"id": 1, "last_manual_sync_at": now - dt.timedelta(hours=5)},
+            {"id": 2, "last_manual_sync_at": now - dt.timedelta(minutes=5)},
+            {"id": 3, "last_manual_sync_at": None}]
+    admin._activity(rows)
+    assert rows[0]["last_action"]["kind"] == "rated" and rows[0]["last_action"]["score"] == 9
+    assert rows[0]["week"] == {"rated": 12, "not_interested": 3, "sync": 1}
+    assert rows[1]["last_action"]["kind"] == "sync"            # only a sync, recently
+    assert rows[2]["last_action"] is None and rows[2]["week"] == {}
+    assert all("last_manual_sync_at" not in r for r in rows)

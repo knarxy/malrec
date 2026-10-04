@@ -37,9 +37,9 @@ export function Admin({ onClose }: { onClose: () => void }) {
     <>
       <header className="topbar">
         <div className="wrap topbar-inner">
-          <span className="brand"><BrandMark />mal<span>rec</span>&nbsp;· {t('adm.title')}</span>
+          <span className="brand"><BrandMark />mal<span>rec</span><span className="brand-suffix">&nbsp;· {t('adm.title')}</span></span>
           <span className="spacer" />
-          <button onClick={onClose}>{t('adm.back')}</button>
+          <button style={{ whiteSpace: 'nowrap' }} onClick={onClose}>{t('adm.back')}</button>
         </div>
       </header>
       <main className="wrap admin">
@@ -61,6 +61,17 @@ export function Admin({ onClose }: { onClose: () => void }) {
 function Users() {
   const { t } = useI18n()
   const when = useWhen()
+  const ago = useAgo()
+  const actionText = (a: NonNullable<AdminUser['last_action']>) => {
+    const label = t(`adm.do.${a.kind}`)
+    if (!a.title) return label
+    return a.score ? `${label}: ${a.title} (${a.score})` : `${label}: ${a.title}`
+  }
+  const weekSummary = (w: Record<string, number>) => {
+    const parts = Object.entries(w).sort((x, y) => y[1] - x[1])
+      .map(([k, n]) => `${n}× ${t(`adm.do.${k}`)}`)
+    return `${t('adm.week')}: ${parts.length ? parts.join(', ') : t('adm.week.none')}`
+  }
   const [users, setUsers] = useState<AdminUser[] | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
   const [busy, setBusy] = useState<number | null>(null)
@@ -122,28 +133,37 @@ function Users() {
       ))}
 
       <h3>{t('adm.accounts', { n: rest.length })}</h3>
-      <div className="admin-table">
+      <div className="admin-table admin-users">
         <table>
           <thead>
             <tr><th>{t('adm.col.account')}</th><th>{t('adm.col.status')}</th>
               <th>{t('adm.col.rated')}</th><th>{t('adm.col.recs')}</th>
+              <th>{t('adm.col.active')}</th><th>{t('adm.col.last_action')}</th>
               <th>{t('adm.col.login')}</th><th>{t('adm.col.sync')}</th>
               <th>{t('adm.col.actions')}</th></tr>
           </thead>
           <tbody>
             {rest.map((u) => (
               <tr key={u.id}>
-                <td>
+                <td className="admin-account">
                   <b>{u.mal_username}</b>{u.is_admin && <span className="chip" style={{ marginLeft: 6 }}>Admin</span>}
                   {u.onboarding === 'running' && <div className="surface-note">{t('adm.onboarding.running')}</div>}
                   {u.onboarding === 'failed' && <div className="surface-note">{t('adm.onboarding.failed')}</div>}
                 </td>
-                <td><span className={`badge ${u.status}`}>{t(`adm.status.${u.status}`)}</span></td>
-                <td>{u.scored} / {u.entries}</td>
-                <td>{u.recs}</td>
-                <td>{when(u.last_login_at)}</td>
-                <td>{when(u.last_sync_at)}</td>
-                <td className="admin-actions">
+                <td data-label={t('adm.col.status')}>
+                  <span className={`badge ${u.status}`}>{t(`adm.status.${u.status}`)}</span></td>
+                <td data-label={t('adm.col.rated')}>{u.scored} / {u.entries}</td>
+                <td data-label={t('adm.col.recs')}>{u.recs}</td>
+                <td data-label={t('adm.col.active')} title={when(u.last_active)}>{ago(u.last_active)}</td>
+                <td data-label={t('adm.col.last_action')} title={weekSummary(u.week)}>
+                  {u.last_action ? <span>
+                    <span className="last-action">{actionText(u.last_action)}</span>
+                    <span className="surface-note"> · {ago(u.last_action.at)}</span>
+                  </span> : '—'}
+                </td>
+                <td data-label={t('adm.col.login')}>{when(u.last_login_at)}</td>
+                <td data-label={t('adm.col.sync')}>{when(u.last_sync_at)}</td>
+                <td><div className="admin-actions">
                   {u.status === 'approved' && <>
                     <a className="button-link" href={`/?user=${encodeURIComponent(u.mal_username)}`}>{t('adm.view')}</a>
                     <button disabled={busy === u.id} onClick={() => act(u, 'sync')}>{t('adm.sync')}</button>
@@ -163,7 +183,7 @@ function Users() {
                       {t('adm.delete')}
                     </button>
                   </>}
-                </td>
+                </div></td>
               </tr>
             ))}
           </tbody>

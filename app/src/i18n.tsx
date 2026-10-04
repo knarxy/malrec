@@ -11,6 +11,21 @@ export const LANGS: { code: Lang; label: string }[] = [
 ]
 
 const de: Record<string, string> = {
+  'adm.col.active': 'Zuletzt aktiv',
+  'adm.col.last_action': 'Letzte Aktion',
+  'adm.week': 'Letzte 7 Tage',
+  'adm.week.none': 'keine Aktionen',
+  'adm.do.rated': 'Bewertet',
+  'adm.do.not_interested': 'Nichts für mich',
+  'adm.do.queued': 'Vorgemerkt',
+  'adm.do.unqueued': 'Aus Plan to Watch entfernt',
+  'adm.do.quiz_unseen': 'Bewertungsrunde: nicht gesehen',
+  'adm.do.quiz_skip': 'Bewertungsrunde: übersprungen',
+  'adm.do.hidden': 'Ausgeblendet',
+  'adm.do.seen_it': 'Schon gesehen',
+  'adm.do.liked': 'Gefällt mir',
+  'adm.do.clicked': 'Geöffnet',
+  'adm.do.sync': 'Manueller Abgleich',
   'card.also_in': 'Auch in {tab}',
   'adm.auto': 'Automatische Freischaltung',
   'adm.auto.on': 'Automatische Freischaltung aktiv: noch {left} Plätze frei (bis {limit} freigeschaltete Konten). Neue Konten sind sofort dabei.',
@@ -409,6 +424,21 @@ const de: Record<string, string> = {
 }
 
 const en: Record<string, string> = {
+  'adm.col.active': 'Last active',
+  'adm.col.last_action': 'Last action',
+  'adm.week': 'Last 7 days',
+  'adm.week.none': 'no actions',
+  'adm.do.rated': 'Rated',
+  'adm.do.not_interested': 'Not for me',
+  'adm.do.queued': 'Planned',
+  'adm.do.unqueued': 'Removed from Plan to Watch',
+  'adm.do.quiz_unseen': 'Rating round: not seen',
+  'adm.do.quiz_skip': 'Rating round: skipped',
+  'adm.do.hidden': 'Hidden',
+  'adm.do.seen_it': 'Already seen',
+  'adm.do.liked': 'Liked',
+  'adm.do.clicked': 'Opened',
+  'adm.do.sync': 'Manual sync',
   'card.also_in': 'Also in {tab}',
   'adm.auto': 'Automatic approval',
   'adm.auto.on': 'Automatic approval is on: {left} slots left (up to {limit} approved accounts). New accounts get in right away.',
