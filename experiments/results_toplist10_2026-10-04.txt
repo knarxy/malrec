@@ -1,0 +1,73 @@
+4810 users (3463 fit / 625 stack / 722 eval); pools: safe 4841, gems 6344; 3938 side stories / recaps left out [228s]
+
+== sampled users, 25 list entries (90 users with liked targets) [387s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   unfg   long    old   both    dup   | Hidden Gems  hit10  bad10   noev    unf   long    old
+PROD           0.543  1.380  0.258  0.167  0.214  0.027  0.482  0.337  0.053  0.099  0.128  0.135  0.097   |              0.062  0.016  0.652  0.377  0.021  0.151
+GEMS -SB60     0.543  1.380  0.258  0.167  0.214  0.027  0.482  0.337  0.053  0.099  0.128  0.131  0.000   |              0.047  0.013  0.739  0.463  0.021  0.146
+GEMS -SB30     0.543  1.380  0.258  0.167  0.214  0.027  0.482  0.337  0.053  0.099  0.128  0.136  0.000   |              0.058  0.014  0.707  0.433  0.020  0.157
+
+== sampled users, 60 list entries (94 users with liked targets) [560s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   unfg   long    old   both    dup   | Hidden Gems  hit10  bad10   noev    unf   long    old
+PROD           0.524  1.277  0.271  0.161  0.236  0.033  0.332  0.173  0.017  0.099  0.111  0.156  0.052   |              0.085  0.010  0.541  0.256  0.017  0.104
+GEMS -SB60     0.524  1.277  0.271  0.161  0.236  0.033  0.332  0.173  0.017  0.099  0.111  0.151  0.000   |              0.066  0.009  0.611  0.272  0.027  0.110
+GEMS -SB30     0.524  1.277  0.271  0.161  0.236  0.033  0.332  0.173  0.017  0.099  0.111  0.153  0.000   |              0.070  0.010  0.570  0.268  0.021  0.104
+
+== sampled users, 150 list entries (73 users with liked targets) [698s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   unfg   long    old   both    dup   | Hidden Gems  hit10  bad10   noev    unf   long    old
+PROD           0.574  1.205  0.255  0.168  0.275  0.018  0.273  0.066  0.001  0.079  0.114  0.185  0.090   |              0.115  0.003  0.458  0.100  0.012  0.126
+GEMS -SB60     0.574  1.205  0.255  0.168  0.275  0.018  0.273  0.066  0.001  0.079  0.114  0.173  0.000   |              0.070  0.004  0.548  0.104  0.018  0.153
+GEMS -SB30     0.574  1.205  0.255  0.168  0.275  0.018  0.273  0.066  0.001  0.079  0.114  0.184  0.000   |              0.093  0.004  0.508  0.111  0.021  0.138
+
+== sampled users, 400 list entries (49 users with liked targets) [820s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   unfg   long    old   both    dup   | Hidden Gems  hit10  bad10   noev    unf   long    old
+PROD           0.595  1.112  0.268  0.185  0.431  0.022  0.057  0.004  0.000  0.039  0.090  0.260  0.137   |              0.137  0.004  0.214  0.010  0.008  0.088
+GEMS -SB60     0.595  1.112  0.268  0.185  0.431  0.022  0.057  0.004  0.000  0.039  0.090  0.248  0.000   |              0.065  0.004  0.290  0.016  0.018  0.118
+GEMS -SB30     0.595  1.112  0.268  0.185  0.431  0.022  0.057  0.004  0.000  0.039  0.090  0.256  0.000   |              0.082  0.002  0.265  0.016  0.016  0.090
+
+== reference profile, 8 temporal splits (207 ratings, calibration (1.0358, -0.0598)) ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   unfg   long    old   both    dup   | Hidden Gems  hit10  bad10   noev    unf   long    old
+PROD           0.760  0.713  0.467  0.442  0.312  0.000  0.013  0.000  0.000  0.025  0.250  0.169  0.200   |              0.125  0.000  0.212  0.000  0.000  0.450
+GEMS -SB60     0.760  0.713  0.467  0.442  0.312  0.000  0.013  0.000  0.000  0.025  0.250  0.156  0.000   |              0.000  0.000  0.425  0.000  0.000  0.575
+GEMS -SB30     0.760  0.713  0.467  0.442  0.312  0.000  0.013  0.000  0.000  0.025  0.250  0.163  0.000   |              0.013  0.000  0.325  0.000  0.000  0.525
+
+reference profile today, Safe Bets top 10 per configuration:
+  PROD         Tengen Toppa Gurren  | Koe no Katachi | Kono Sekai no Katasu | Mushishi Zoku Shou | Koukaku Kidoutai: St | Ookami Kodomo no Ame | 3-gatsu no Lion | Mahou Shoujo Madoka★ | Violet Evergarden | Macross: Do You Reme
+               Apothecary #100, Oshi no Ko #256, Angel Beats #320
+  GEMS -SB60   Tengen Toppa Gurren  | Koe no Katachi | Kono Sekai no Katasu | Mushishi Zoku Shou | Koukaku Kidoutai: St | Ookami Kodomo no Ame | 3-gatsu no Lion | Mahou Shoujo Madoka★ | Violet Evergarden | Macross: Do You Reme
+               Apothecary #100, Oshi no Ko #256, Angel Beats #320
+  GEMS -SB30   Tengen Toppa Gurren  | Koe no Katachi | Kono Sekai no Katasu | Mushishi Zoku Shou | Koukaku Kidoutai: St | Ookami Kodomo no Ame | 3-gatsu no Lion | Mahou Shoujo Madoka★ | Violet Evergarden | Macross: Do You Reme
+               Apothecary #100, Oshi no Ko #256, Angel Beats #320
+
+[838s]
+==== SEED 4
+4810 users (3463 fit / 625 stack / 722 eval); pools: safe 4841, gems 6344; 3938 side stories / recaps left out [234s]
+
+== sampled users, 150 list entries (82 users with liked targets) [400s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   unfg   long    old   both    dup   | Hidden Gems  hit10  bad10   noev    unf   long    old
+PROD           0.534  1.251  0.321  0.215  0.300  0.015  0.229  0.065  0.002  0.080  0.096  0.194  0.050   |              0.098  0.002  0.407  0.099  0.017  0.107
+GEMS -SB60     0.534  1.251  0.321  0.215  0.300  0.015  0.229  0.065  0.002  0.080  0.096  0.180  0.000   |              0.061  0.005  0.477  0.091  0.020  0.109
+GEMS -SB30     0.534  1.251  0.321  0.215  0.300  0.015  0.229  0.065  0.002  0.080  0.096  0.185  0.000   |              0.070  0.004  0.451  0.094  0.018  0.106
+
+== sampled users, 400 list entries (47 users with liked targets) [528s] ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   unfg   long    old   both    dup   | Hidden Gems  hit10  bad10   noev    unf   long    old
+PROD           0.568  1.162  0.308  0.207  0.394  0.011  0.068  0.006  0.000  0.045  0.089  0.248  0.113   |              0.149  0.004  0.251  0.015  0.009  0.102
+GEMS -SB60     0.568  1.162  0.308  0.207  0.394  0.011  0.068  0.006  0.000  0.045  0.089  0.228  0.000   |              0.062  0.015  0.309  0.011  0.004  0.087
+GEMS -SB30     0.568  1.162  0.308  0.207  0.394  0.011  0.068  0.006  0.000  0.045  0.089  0.235  0.000   |              0.077  0.006  0.294  0.011  0.009  0.096
+
+== reference profile, 8 temporal splits (207 ratings, calibration (0.9033, 0.8912)) ==
+Safe Bets        rho   rmse    r50    ips  hit10  bad10   noev    unf   unfg   long    old   both    dup   | Hidden Gems  hit10  bad10   noev    unf   long    old
+PROD           0.725  0.737  0.494  0.464  0.288  0.000  0.025  0.000  0.000  0.013  0.250  0.144  0.113   |              0.088  0.000  0.262  0.000  0.000  0.587
+GEMS -SB60     0.725  0.737  0.494  0.464  0.288  0.000  0.025  0.000  0.000  0.013  0.250  0.150  0.000   |              0.013  0.000  0.500  0.000  0.000  0.550
+GEMS -SB30     0.725  0.737  0.494  0.464  0.288  0.000  0.025  0.000  0.000  0.013  0.250  0.144  0.000   |              0.000  0.000  0.438  0.000  0.000  0.650
+
+reference profile today, Safe Bets top 10 per configuration:
+  PROD         3-gatsu no Lion | Mushishi Zoku Shou | Koukaku Kidoutai: St | Koukaku Kidoutai: St | Kono Sekai no Katasu | Ikoku Nikki | Aria the Origination | Koe no Katachi | Mahou Shoujo Madoka★ | Ookami Kodomo no Ame
+               Apothecary #186, Oshi no Ko #262, Angel Beats #340
+  GEMS -SB60   3-gatsu no Lion | Mushishi Zoku Shou | Koukaku Kidoutai: St | Koukaku Kidoutai: St | Kono Sekai no Katasu | Ikoku Nikki | Aria the Origination | Koe no Katachi | Mahou Shoujo Madoka★ | Ookami Kodomo no Ame
+               Apothecary #186, Oshi no Ko #262, Angel Beats #340
+  GEMS -SB30   3-gatsu no Lion | Mushishi Zoku Shou | Koukaku Kidoutai: St | Koukaku Kidoutai: St | Kono Sekai no Katasu | Ikoku Nikki | Aria the Origination | Koe no Katachi | Mahou Shoujo Madoka★ | Ookami Kodomo no Ame
+               Apothecary #186, Oshi no Ko #262, Angel Beats #340
+
+[548s]
+==== DONE
+[exit 0]

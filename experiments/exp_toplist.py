@@ -167,6 +167,13 @@ ROUND9 = {
     "UG .5": {**SHIPPED7, "ugen": True, "unfam": 0.5},
     "U off": {**SHIPPED7, "unfam": 0.0},
 }
+# round 10: Hidden Gems leaving out what Safe Bets already shows (as Discover
+# does). For a long, niche list 8 of the gems' top 10 also sat in Safe Bets.
+ROUND10 = {
+    "PROD": SHIPPED7,
+    "GEMS -SB60": {**SHIPPED7, "gems_skip": 60},
+    "GEMS -SB30": {**SHIPPED7, "gems_skip": 30},
+}
 WATCH = {58514: "Apothecary", 52034: "Oshi no Ko", 50265: "Spy x Family", 6547: "Angel Beats"}
 CONFIGS = ROUND1
 
@@ -314,6 +321,7 @@ def score_user(short, long_, ids, items, truth, pools, liked, disliked, prop, po
         if truth.std() > 0:
             M["rho"].append(spearman(p, truth))
             M["rmse"].append(float(np.sqrt(np.mean((p - truth) ** 2))))
+        safe_top: list[int] = []
         for tag, pool, nov_w in (("", pools[0], 0.0), ("g:", pools[1], GEMS_NOVELTY)):
             if tag:
                 cfg = {x: v for x, v in cfg.items() if x != "floor"}
@@ -330,13 +338,26 @@ def score_user(short, long_, ids, items, truth, pools, liked, disliked, prop, po
                 sd = float(np.nanstd(shown))
                 key = key + nov_w * min(1.0, sd / CFG.novelty_ref_sd) * np.array(
                     [novelty(popul.get(m)) for m in pool])
+                if cfg.get("gems_skip"):
+                    taken = set(safe_top[:cfg["gems_skip"]])
+                    key = np.where([m in taken for m in pool], -np.inf, key)
+            order = np.argsort(-np.where(np.isfinite(key), key, -np.inf))
+            if not tag:
+                safe_top = [pool[i] for i in order[:60]]
+            else:
+                # distinct liked titles across both tabs' top 10, out of 20 shown
+                gems10 = [pool[i] for i in order[:10] if np.isfinite(key[i])]
+                both = set(safe_top[:10]) | set(gems10)
+                M["both"].append(len(both & liked) / 20)
+                M["dup"].append(len(set(safe_top[:10]) & set(gems10)) / 10)
             top_metrics(key, pool, k, short, liked & set(pool), disliked, prop, store,
                         unfam, M, tag, unfam_g)
 
 
 def report(title, R):
     print(f"\n== {title} ==", flush=True)
-    cols = ["rho", "rmse", "r50", "ips", "hit10", "bad10", "noev", "unf", "unfg", "long", "old"]
+    cols = ["rho", "rmse", "r50", "ips", "hit10", "bad10", "noev", "unf", "unfg", "long", "old",
+            "both", "dup"]
     print(f"{'Safe Bets':<13}" + "".join(f"{c:>7}" for c in cols)
           + "   | Hidden Gems" + "".join(f"{c:>7}" for c in ("hit10", "bad10", "noev", "unf",
                                                              "long", "old")))
@@ -509,5 +530,5 @@ if __name__ == "__main__":
     ap.add_argument("--budgets", default=",".join(map(str, BUDGETS)))
     a = ap.parse_args()
     CONFIGS = {1: ROUND1, 2: ROUND2, 3: ROUND3, 4: ROUND4, 5: ROUND5, 6: ROUND6,
-               7: ROUND7, 8: ROUND8, 9: ROUND9}[a.round]
+               7: ROUND7, 8: ROUND8, 9: ROUND9, 10: ROUND10}[a.round]
     main(a.max_eval, a.seed, tuple(int(x) for x in a.budgets.split(",")))

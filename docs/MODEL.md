@@ -364,6 +364,14 @@ list lacks a whole genre - and cost the reference profile top-10 hits
 (.412 -> .375 and .450 -> .375 on the two splits), with held-out users level.
 Themes new to a list do predict misses, so the rule stays as it is.
 
+Round 10 tried leaving Safe Bets' titles out of Hidden Gems, as Discover
+does - for a long, niche list 8 of the gems' top 10 also stood in Safe Bets.
+Distinct liked titles across both tabs' top 10 fell instead of rising
+(400 entries .260 -> .248 and .248 -> .228; the niche profile level), and
+the gems' own hit rate about halved: the shared titles are the best
+lesser-known picks, and what moves up in their place rarely lands. Both
+tabs keep them.
+
 Safe Bets' long-memory adjustment is capped at +-0.15 points
 (`safe_bets_memory_cap`): uncapped, it carried Mahouka (predicted 6.90,
 the user's mean 7.51) to #8 on +0.65 alone. Two user splits: reference
