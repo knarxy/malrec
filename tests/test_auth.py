@@ -263,3 +263,11 @@ def test_queue_records_the_tab_and_rebuilds_the_lists(signed_in, monkeypatch):
               " ORDER BY id DESC LIMIT 1", (uid,))
     assert row["surface"] == "safe_bets"
     assert queued == [("rebuild", uid)], "the Plan to Watch tab takes the title in"
+
+
+def test_the_first_visit_hint_stays_dismissed(signed_in):
+    client, _ = signed_in
+    assert client.get("/me/prefs").json().get("intro_seen") is None
+    r = client.put("/me/prefs", headers=CSRF, json={"intro_seen": True})
+    assert r.status_code == 200 and r.json()["intro_seen"] is True
+    assert client.get("/me/prefs").json()["intro_seen"] is True

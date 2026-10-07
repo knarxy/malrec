@@ -619,3 +619,17 @@ a.primary-link { background: var(--grad); color: var(--on-grad); font-weight: 70
 }
 .brand .brand-suffix { color: inherit; background: none; -webkit-text-fill-color: currentColor; }
 @media (max-width: 520px) { .brand-suffix { display: none; } }
+
+/* first-visit hint above the lists */
+.intro {
+  margin: 18px 0 4px; padding: 18px 20px; border-radius: var(--radius);
+  border: 1px solid transparent;
+  background: linear-gradient(var(--panel), var(--panel)) padding-box, var(--grad-edge) border-box;
+  display: grid; gap: 12px;
+}
+.intro-head { display: flex; align-items: center; gap: 10px; }
+.intro-head .brand-mark { margin-right: 0; }
+.intro h2 { margin: 0; font-size: 17px; letter-spacing: -0.01em; }
+.intro ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; color: #c9cfdb; font-size: 14px; line-height: 1.55; }
+.intro li b { color: var(--text); }
+.intro .primary { justify-self: start; }

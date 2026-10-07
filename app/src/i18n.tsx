@@ -11,6 +11,13 @@ export const LANGS: { code: Lang; label: string }[] = [
 ]
 
 const de: Record<string, string> = {
+  'intro.title': 'So holst du das meiste raus',
+  'intro.plan': 'setzt den Titel auf deiner MyAnimeList auf „Plan to Watch“. Er wandert dann in den Tab Plan to Watch.',
+  'intro.notforme': 'blendet den Titel aus. malrec merkt sich das und zeigt dir weniger davon.',
+  'intro.rate_label': 'Schon gesehen? Bewerte ihn',
+  'intro.rate': 'direkt auf der Karte. Die Wertung landet auf MyAnimeList, und deine Empfehlungen werden sofort neu berechnet.',
+  'intro.why': 'Ein Klick aufs Bild zeigt, was deine eigenen Bewertungen sagen und warum ein Titel dort steht, wo er steht.',
+  'intro.ok': 'Verstanden',
   'adm.col.active': 'Zuletzt aktiv',
   'adm.col.last_action': 'Letzte Aktion',
   'adm.week': 'Letzte 7 Tage',
@@ -424,6 +431,13 @@ const de: Record<string, string> = {
 }
 
 const en: Record<string, string> = {
+  'intro.title': 'Getting the most out of malrec',
+  'intro.plan': 'puts the title on your MyAnimeList as “Plan to Watch”. It then moves to the Plan to Watch tab.',
+  'intro.notforme': 'hides the title. malrec remembers and shows you less like it.',
+  'intro.rate_label': 'Seen it already? Rate it',
+  'intro.rate': 'right on the card. The score goes to MyAnimeList, and your recommendations are rebuilt at once.',
+  'intro.why': 'Click a cover to see what your own ratings say and why a title sits where it does.',
+  'intro.ok': 'Got it',
   'adm.col.active': 'Last active',
   'adm.col.last_action': 'Last action',
   'adm.week': 'Last 7 days',

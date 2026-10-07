@@ -572,6 +572,23 @@ function Main({ lang, setLangState }: { lang: Lang; setLangState: (l: Lang) => v
           <div className="notice">{t('refining', { step: t(status?.step ?? '') })}</div>
         )}
         {refresh && <div className="notice">{refresh}</div>}
+        {isOwn && !prefs.intro_seen && (
+          <section className="intro" aria-labelledby="intro-title">
+            <div className="intro-head">
+              <BrandMark size={28} />
+              <h2 id="intro-title">{t('intro.title')}</h2>
+            </div>
+            <ul>
+              <li><b>{t('+ Plan to watch')}</b> {t('intro.plan')}</li>
+              <li><b>{t('Not for me')}</b> {t('intro.notforme')}</li>
+              <li><b>{t('intro.rate_label')}</b> {t('intro.rate')}</li>
+              <li><b>{t('Why this?')}</b> {t('intro.why')}</li>
+            </ul>
+            <button className="primary" onClick={() => savePrefs({ intro_seen: true })}>
+              {t('intro.ok')}
+            </button>
+          </section>
+        )}
         {isOwn && profile && profile.scored < 60 && !refresh && (
           <div className="notice">
             {t('quiz.banner')}{' '}

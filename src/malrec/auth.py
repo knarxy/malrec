@@ -563,6 +563,7 @@ def sync_status(s: ApprovedSession) -> dict:
 class PrefsIn(BaseModel):
     lang: str | None = None
     filters: dict | None = None
+    intro_seen: bool | None = None       # the first-visit hint was dismissed
 
 
 FILTER_KEYS = {"media_types": list, "exclude_genres": list, "eps_min": int, "eps_max": int,
@@ -603,6 +604,8 @@ def put_prefs(body: PrefsIn, s: AnySession) -> dict:
         patch["lang"] = body.lang
     if body.filters is not None:
         patch["filters"] = _clean_filters(body.filters)
+    if body.intro_seen is not None:
+        patch["intro_seen"] = bool(body.intro_seen)
     row = one("UPDATE app_user SET prefs = prefs || %s WHERE id=%s RETURNING prefs",
               (Jsonb(patch), s["app_user_id"]))
     return row["prefs"]

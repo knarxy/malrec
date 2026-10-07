@@ -58,6 +58,8 @@ export interface Filters {
 export interface Prefs {
   lang?: 'en' | 'de'
   filters?: Filters
+  /** the first-visit hint was dismissed */
+  intro_seen?: boolean
 }
 
 export interface Pair { id: number; status: string; outgoing: boolean; other: string }
