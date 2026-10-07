@@ -158,6 +158,18 @@ def choose_half_life(user_id: int) -> float:
     return best
 
 
+def kept_half_life(user_id: int) -> float | None:
+    """The half-life the user's last training chose, while their list has
+    not outgrown that run (RETRAIN_GROWTH / RETRAIN_MIN_NEW). It describes
+    how fast their taste drifts, which barely changes between runs, and the
+    search costs 16 refits: for a list of ~2,500 ratings over 20 minutes."""
+    row = one("SELECT id, params->>'half_life' AS hl FROM model_run WHERE user_id=%s"
+              " AND params ? 'half_life' ORDER BY id DESC LIMIT 1", (user_id,))
+    if row is None or row["hl"] is None or outgrown(user_id, row["id"]):
+        return None
+    return float(row["hl"])
+
+
 def _uncertainty(user_id: int, preds, truth, cal: dict) -> dict | None:
     """Error quantiles behind the "likely 7-9" range: the user's own holdout
     errors when there are enough, else those of population users with a list
@@ -173,6 +185,26 @@ def _uncertainty(user_id: int, preds, truth, cal: dict) -> dict | None:
     return {"q": q, "source": f"population, {n} ratings"} if q else None
 
 
+# The own display calibration is fitted on the user's newest ratings. When
+# that holdout carries no signal - a list imported in one go, its newest
+# ratings nearly all the same score - the line squeezes every prediction to
+# about one value and the ordering bonuses alone decide the lists (a new
+# account: rho 0.03, slope 0.23, every pick shown 8.1-8.3). Below these the
+# population line for the list size is used instead (experiments/
+# exp_calgate.py, 400 sampled users: 4.8% are affected, and on their later
+# ratings RMSE falls 1.47 -> 1.34).
+OWN_CAL_MIN_RHO = 0.3
+OWN_CAL_MIN_SLOPE = 0.5
+
+
+def own_calibration_usable(metrics: dict, cal: dict) -> bool:
+    """Whether the line fitted on the user's own holdout may be shown."""
+    if "rmse_raw" not in cal:                 # nothing fitted (too short, or inverted)
+        return False
+    return (metrics.get("spearman", 1.0) >= OWN_CAL_MIN_RHO
+            and cal.get("slope", 1.0) >= OWN_CAL_MIN_SLOPE)
+
+
 def train_hybrid(user_id: int, persist: bool = True):
     """Evaluate on the user's own newest ratings, calibrate on those
     out-of-sample predictions, then fit on everything."""
@@ -183,14 +215,19 @@ def train_hybrid(user_id: int, persist: bool = True):
         temporal_holdout,
     )
     mode = settings().model_mode
-    half_life = choose_half_life(user_id)
+    kept = kept_half_life(user_id)
+    half_life = kept if kept is not None else choose_half_life(user_id)
     metrics = temporal_holdout(user_id, half_life=half_life)
     preds, truth = metrics.pop("_preds", []), metrics.pop("_truth", [])
     cal = calibration_from(preds, truth)
+    rejected = None
+    if "rmse_raw" in cal and not own_calibration_usable(metrics, cal):
+        rejected = {"slope": cal["slope"], "spearman": metrics.get("spearman")}
+        cal = {"slope": 1.0, "intercept": 0.0}
     if "rmse_raw" not in cal:
-        # No usable holdout of their own (too new, or one that would invert
-        # the order): use the map measured on population users with a list
-        # this size.
+        # No usable holdout of their own (too new, one that would invert the
+        # order, or one without signal - see OWN_CAL_MIN_*): use the map
+        # measured on population users with a list this size.
         n = scalar("SELECT count(*) FROM list_entry WHERE user_id=%s AND score>0",
                    (user_id,)) or 0
         gm = active_global()
@@ -199,6 +236,8 @@ def train_hybrid(user_id: int, persist: bool = True):
         if pc is not None:
             cal = {"slope": round(pc[0], 4), "intercept": round(pc[1], 4),
                    "source": f"population, {n} ratings"}
+            if rejected:
+                cal["own_rejected"] = rejected
             top = size_calibration(table, n, prefix="top_")
             if top is not None:
                 cal |= {"top_slope": round(top[0], 4), "top_intercept": round(top[1], 4)}

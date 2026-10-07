@@ -600,3 +600,25 @@ def test_planned_titles_leave_the_other_tabs(monkeypatch):
     monkeypatch.setattr(surfaces, "read_surface", lambda *a, **k: [dict(r) for r in rows])
     assert [r["mal_id"] for r in surfaces.read_ranked(7, "safe_bets")] == [1]
     assert [r["mal_id"] for r in surfaces.read_ranked(7, "plan_to_watch")] == [1, 2]
+
+
+def test_own_calibration_needs_a_holdout_with_signal():
+    from malrec.model import own_calibration_usable
+    good = {"slope": 1.1, "intercept": -0.5, "rmse_raw": 0.9}
+    assert own_calibration_usable({"spearman": 0.78}, good)
+    # an imported list: newest ratings all alike, the line squeezes everything
+    assert not own_calibration_usable({"spearman": 0.03}, {**good, "slope": 0.23})
+    assert not own_calibration_usable({"spearman": 0.6}, {**good, "slope": 0.4})
+    assert not own_calibration_usable({"spearman": 0.2}, good)
+    assert not own_calibration_usable({"spearman": 0.9}, {"slope": 1.0, "intercept": 0.0})
+
+
+def test_training_reuses_the_half_life_until_the_list_outgrows_it(monkeypatch):
+    from malrec import model
+    monkeypatch.setattr(model, "one", lambda sql, p=None: {"id": 9, "hl": "0.35"})
+    monkeypatch.setattr(model, "outgrown", lambda uid, run_id: False)
+    assert model.kept_half_life(1) == 0.35
+    monkeypatch.setattr(model, "outgrown", lambda uid, run_id: True)
+    assert model.kept_half_life(1) is None                 # grown: search again
+    monkeypatch.setattr(model, "one", lambda sql, p=None: None)
+    assert model.kept_half_life(1) is None                 # first training: search
