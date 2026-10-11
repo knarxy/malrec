@@ -13,13 +13,17 @@ import pickle
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 import numpy as np
 from sklearn.linear_model import Ridge
 
 from .config import settings
-from .db import conn, one, scalar
+from .db import conn, one, returned, scalar
 from .features import Vocabulary, training_set, vectorise
+
+if TYPE_CHECKING:
+    from .recsys.scorer import HybridScorer
 
 log = logging.getLogger(__name__)
 
@@ -28,7 +32,7 @@ RIDGE_ALPHAS = (10.0, 30.0, 100.0, 300.0, 1000.0)
 
 @dataclass
 class TasteModel:
-    estimator: object
+    estimator: Any                        # a fitted sklearn Ridge or LightGBM regressor
     vocab: Vocabulary
     algo: str
     params: dict
@@ -73,6 +77,11 @@ class TasteModel:
         return TasteModel(**d)
 
 
+#: What training and loading hand out: the hybrid scorer (every account
+#: today), or the legacy per-user model (model_mode = "personal").
+Model: TypeAlias = "TasteModel | HybridScorer"
+
+
 def _fit_ridge(X, y, w, alpha: float) -> Ridge:
     return Ridge(alpha=alpha).fit(X, y, sample_weight=w)
 
@@ -89,19 +98,34 @@ def _fit_lgbm(X, y, w, **kw):
 def choose_alpha(X, y, w, alphas=RIDGE_ALPHAS, folds: int = 10) -> float:
     """Pick the ridge penalty by weighted CV error. Uses plain K-fold because
     this is a variance question, not the drift question the temporal holdout
-    in eval.py answers."""
+    in eval.py answers.
+
+    Ridge with an intercept and sample weights solves
+    (Xc' W Xc + a I) b = Xc' W yc on weighted-centred data, so one
+    eigendecomposition per fold gives the solution for every alpha. Same
+    folds, same errors as a sklearn fit per alpha and fold (to ~1e-15; the
+    chosen alpha matched in 30/30 calls on every app account), 3x faster on
+    a large list - experiments/exp_fastalpha.py."""
     from sklearn.model_selection import KFold
-    best, best_err = alphas[0], float("inf")
-    for a in alphas:
-        errs = []
-        for tr, te in KFold(min(folds, len(y)), shuffle=True, random_state=0).split(X):
-            m = _fit_ridge(X[tr], y[tr], w[tr], a)
-            r = m.predict(X[te]) - y[te]
-            errs.append(float(np.average(r ** 2, weights=w[te])))
-        err = float(np.mean(errs))
-        if err < best_err:
-            best, best_err = a, err
-    return best
+    X = X.toarray() if hasattr(X, "toarray") else np.asarray(X, dtype=float)
+    y, w = np.asarray(y, dtype=float), np.asarray(w, dtype=float)
+    err = np.zeros(len(alphas))
+    n_folds = 0
+    for tr, te in KFold(min(folds, len(y)), shuffle=True, random_state=0).split(X):
+        Xt, yt, wt = X[tr], y[tr], w[tr]
+        sw = wt / wt.sum()
+        xm, ym = sw @ Xt, sw @ yt
+        s = np.sqrt(wt)
+        A = (Xt - xm) * s[:, None]
+        evals, V = np.linalg.eigh(A.T @ A)
+        proj = V.T @ (A.T @ ((yt - ym) * s))
+        Xte = (X[te] - xm) @ V
+        for k, a in enumerate(alphas):
+            r = Xte @ (proj / (evals + a)) + ym - y[te]
+            err[k] += float(np.average(r ** 2, weights=w[te]))
+        n_folds += 1
+    # first of equals wins, as the loop over alphas used to decide
+    return alphas[int(np.argmin(err / max(n_folds, 1)))]
 
 
 def _hybrid_available() -> bool:
@@ -205,7 +229,7 @@ def own_calibration_usable(metrics: dict, cal: dict) -> bool:
             and cal.get("slope", 1.0) >= OWN_CAL_MIN_SLOPE)
 
 
-def train_hybrid(user_id: int, persist: bool = True):
+def train_hybrid(user_id: int, persist: bool = True) -> tuple[HybridScorer, int | None]:
     """Evaluate on the user's own newest ratings, calibrate on those
     out-of-sample predictions, then fit on everything."""
     from .recsys.service import (
@@ -264,13 +288,13 @@ def train_hybrid(user_id: int, persist: bool = True):
                 "INSERT INTO model_run (user_id, algo, params, metrics, feature_names,"
                 " n_train, artifact) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id",
                 (user_id, mode, Jsonb(params), Jsonb(metrics), [], params["n_scored"], blob))
-            run_id = cur.fetchone()["id"]
+            run_id = returned(cur)["id"]
             c.commit()
     return scorer, run_id
 
 
 def train(user_id: int, algo: str = "ridge", persist: bool = True,
-          half_life: float | None = None) -> tuple[TasteModel, int | None]:
+          half_life: float | None = None) -> tuple[Model, int | None]:
     if algo == "ridge" and half_life is None and _hybrid_available():
         return train_hybrid(user_id, persist=persist)
     X, y, w, vocab, _ = training_set(user_id, half_life=half_life)
@@ -304,12 +328,12 @@ def train(user_id: int, algo: str = "ridge", persist: bool = True,
                 (user_id, algo, Jsonb(params), Jsonb(metrics), vocab.names, len(y),
                  model.dumps()),
             )
-            run_id = cur.fetchone()["id"]
+            run_id = returned(cur)["id"]
             c.commit()
     return model, run_id
 
 
-def load_latest(user_id: int) -> tuple[TasteModel, int] | tuple[None, None]:
+def load_latest(user_id: int) -> tuple[Model, int] | tuple[None, None]:
     row = one(
         "SELECT id, artifact FROM model_run WHERE user_id=%s AND artifact IS NOT NULL"
         " ORDER BY trained_at DESC LIMIT 1",
@@ -331,7 +355,7 @@ def load_latest(user_id: int) -> tuple[TasteModel, int] | tuple[None, None]:
 
 
 _SCORER_TTL = 600.0
-_scorers: OrderedDict[int, tuple[float, tuple, object, int | None]] = OrderedDict()
+_scorers: OrderedDict[int, tuple[float, tuple | None, Model, int | None]] = OrderedDict()
 _scorer_lock = threading.Lock()
 
 _VERSION_SQL = """
@@ -342,7 +366,7 @@ _VERSION_SQL = """
 """
 
 
-def cached_model(user_id: int) -> tuple[object, int | None]:
+def cached_model(user_id: int) -> tuple[Model, int | None]:
     """load_or_train, remembered for a few minutes - for per-request work such
     as the "why this?" breakdown, where refitting on every click is waste.
 
@@ -393,7 +417,7 @@ def outgrown(user_id: int, run_id: int | None) -> bool:
     return was > 0 and now >= max(was + RETRAIN_MIN_NEW, was * RETRAIN_GROWTH)
 
 
-def load_or_train(user_id: int, algo: str = "ridge") -> tuple[TasteModel, int | None]:
+def load_or_train(user_id: int, algo: str = "ridge") -> tuple[Model, int | None]:
     model, run_id = load_latest(user_id)
     if model is None:
         return train(user_id, algo=algo)
@@ -404,18 +428,19 @@ def load_or_train(user_id: int, algo: str = "ridge") -> tuple[TasteModel, int | 
     return model, run_id
 
 
-def feature_importance(model: TasteModel, top: int = 25) -> list[tuple[str, float]]:
+def feature_importance(model: Model, top: int = 25) -> list[tuple[str, float]]:
     """What the model actually learned - used for the /explain endpoint and to
     sanity-check that a retrain has not gone sideways. Empty when there is
     no personal model: a short list whose blend gives it no weight (under
     ~40 ratings with the handover at 150) is never fitted one."""
-    if getattr(model, "vocab", None) is None or getattr(model, "estimator", None) is None:
+    vocab, est = getattr(model, "vocab", None), getattr(model, "estimator", None)
+    if vocab is None or est is None:
         return []
-    names = model.vocab.names
-    if hasattr(model.estimator, "coef_"):
-        vals = np.asarray(model.estimator.coef_, dtype=float)
-    elif hasattr(model.estimator, "feature_importances_"):
-        vals = np.asarray(model.estimator.feature_importances_, dtype=float)
+    names = vocab.names
+    if hasattr(est, "coef_"):
+        vals = np.asarray(est.coef_, dtype=float)
+    elif hasattr(est, "feature_importances_"):
+        vals = np.asarray(est.feature_importances_, dtype=float)
     else:
         return []
     order = np.argsort(-np.abs(vals))[:top]

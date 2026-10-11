@@ -1,9 +1,11 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
-import '@fontsource-variable/sora'
-import '@fontsource-variable/manrope'
+import { applyTheme, storedTheme } from './theme'
+import '@fontsource-variable/source-sans-3'
 import './styles.css'
+
+applyTheme(storedTheme())
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

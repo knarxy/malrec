@@ -12,19 +12,21 @@ away.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 import numpy as np
 from fastapi import Depends, FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from . import admin, auth, onboarding, tasks, together
+from . import admin, auth, onboarding, tasks, together, usage
 from . import feedback as fb
 from .access import Approved, rate_limit, target_user
 from .auth import require_csrf
 from .config import settings
-from .db import one, query, scalar
+from .db import one, query, require_one, scalar
 from .model import cached_model, feature_importance, load_latest
 from .rank import familiar_genres, relevance_bonus
+from .recsys.scorer import HybridScorer
 from .surfaces import SPECS, SURFACES, Filters, _Share, build_surface, mark_shared, read_ranked
 
 log = logging.getLogger(__name__)
@@ -49,6 +51,7 @@ if _docs:
 app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(together.router)
+app.include_router(usage.router)
 
 CSRF = [Depends(require_csrf)]
 
@@ -61,7 +64,7 @@ def onboard_status(username: str, v: Approved) -> dict:
     if not onboarding.valid_username(username):
         raise HTTPException(422, "invalid username")
     uid = target_user(v, username)
-    name = one("SELECT mal_username FROM app_user WHERE id=%s", (uid,))["mal_username"]
+    name = require_one("SELECT mal_username FROM app_user WHERE id=%s", (uid,))["mal_username"]
     job = onboarding.current(name)
     has_recs = bool(scalar("SELECT count(*) FROM recommendation WHERE user_id=%s", (uid,)))
     if (not job or job["state"] != "running") and tasks.pending(uid, "onboard"):
@@ -129,7 +132,7 @@ def explain(mal_id: int, v: Approved, user: str | None = None, surface: str = "d
     """The full "Why this?" breakdown for one title."""
     uid = target_user(v, user)
     model, _ = cached_model(uid)
-    if not hasattr(model, "breakdown"):
+    if not isinstance(model, HybridScorer):
         raise HTTPException(409, "No breakdown available for this profile.")
     out = model.breakdown(mal_id, on_list=on_list)
     if out is None:
@@ -148,7 +151,7 @@ def explain(mal_id: int, v: Approved, user: str | None = None, surface: str = "d
         # The list is sorted by this order score, not by the predicted score
         # alone; every term that went into it is reported, so the placement of
         # two neighbours can always be read off the panel.
-        out["ranking"] = {"relevance_z": round(float(cand["relevance_z"]), 2),
+        ranking: dict[str, Any] = {"relevance_z": round(float(cand["relevance_z"]), 2),
                           "relevance_bonus": round(rel, 3),
                           "novelty": round(float(cand["novelty"]), 2),
                           "novelty_bonus": round(nov, 3),
@@ -157,14 +160,15 @@ def explain(mal_id: int, v: Approved, user: str | None = None, surface: str = "d
                           "popularity_bonus": round(pop_b, 3),
                           "predicted": round(float(cand["predicted"]), 2),
                           "order_score": round(float(cand["predicted"]) + rel + bonus + nov, 2)}
-        if risk > 0.005 and hasattr(model, "risk_parts"):
+        out["ranking"] = ranking
+        if risk > 0.005 and isinstance(model, HybridScorer):
             # the stored penalty, split by reason in the proportions the
             # current model gives (scaled, so the parts add up to it)
             parts = {k: float(v[0]) for k, v in
                      model.risk_parts([mal_id], familiar_genres(uid)).items()}
             total = sum(parts.values())
             if total > 1e-9:
-                out["ranking"]["risk_parts"] = {k: round(-risk * v / total, 3)
+                ranking["risk_parts"] = {k: round(-risk * v / total, 3)
                                                 for k, v in parts.items() if v > 1e-9}
     return out
 
@@ -188,7 +192,7 @@ def rebuild(v: Approved) -> dict:
 def profile(v: Approved, user: str | None = None) -> dict:
     """Headline numbers plus the taste summary the app shows on the overview."""
     uid = target_user(v, user)
-    name = one("SELECT mal_username FROM app_user WHERE id=%s", (uid,))["mal_username"]
+    name = require_one("SELECT mal_username FROM app_user WHERE id=%s", (uid,))["mal_username"]
     stats = one(
         """
         SELECT count(*) AS entries,
@@ -246,7 +250,7 @@ def anime_detail(mal_id: int, v: Approved, user: str | None = None) -> dict:
         model, _ = cached_model(uid)
     except ValueError:
         model = None
-    if model is not None and hasattr(model, "predict_ids"):
+    if isinstance(model, HybridScorer):
         raw = model.predict_ids([mal_id])
         if not np.isnan(raw[0]):
             row["predicted_score"] = round(float(model.calibrate(raw)[0]), 2)
@@ -304,14 +308,22 @@ def post_feedback(body: FeedbackIn, v: Approved) -> dict:
     if body.action not in ("not_interested", "hidden", "seen_it", "liked", "clicked"):
         raise HTTPException(422, "unsupported action")
     try:
-        return fb.record(v.user_id, body.mal_id, body.action, body.surface)
+        out = fb.record(v.user_id, body.mal_id, body.action, body.surface)
     except ValueError as e:
         raise HTTPException(422, str(e)) from e
+    if body.action == "not_interested":
+        # the model learns from it (service.dismissal_examples); quick clicks
+        # share one rebuild, and the lists change in the background
+        tasks.enqueue("rebuild", v.user_id)
+    return out
 
 
 @app.delete("/feedback/{mal_id}", dependencies=CSRF + [rate_limit("feedback", 120, 600)])
 def delete_feedback(mal_id: int, v: Approved) -> dict:
-    return {"removed": fb.undo(v.user_id, mal_id)}
+    removed = fb.undo(v.user_id, mal_id)
+    if removed:
+        tasks.enqueue("rebuild", v.user_id)
+    return {"removed": removed}
 
 
 @app.get("/feedback")

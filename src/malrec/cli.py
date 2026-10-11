@@ -82,10 +82,12 @@ def sync_anilist(limit: int = typer.Option(None),
 
 
 @sync_app.command("all")
-def sync_all(user: str = typer.Option(None), graph_limit: int = typer.Option(None)) -> None:
+def sync_all(user: str = typer.Option(None),
+             catalog: bool = typer.Option(True, "--catalog/--no-catalog")) -> None:
     """Cold start: list, catalog, graph, AniList. Takes ~25 minutes."""
     _setup()
-    typer.echo(json.dumps(jobs.bootstrap(user, graph_limit), indent=2))
+    # (a --graph-limit number used to be passed here as with_catalog)
+    typer.echo(json.dumps(jobs.bootstrap(user, with_catalog=catalog), indent=2))
 
 
 @sync_app.command("full")
@@ -140,6 +142,22 @@ def sync_cf_refresh(new_users: int = typer.Option(800),
         typer.echo(json.dumps(cf_refresh(mal, new_users, retire_days), indent=2, default=str))
 
 
+@sync_app.command("cf-expand")
+def sync_cf_expand(chunk: int = typer.Option(2000, help="new users per step"),
+                   rps: float = typer.Option(None, help="MAL requests/s (default MAL_RPS)")
+                   ) -> None:
+    """Grow the population sample by one step: discover up to `chunk` new
+    forum posters, fetch their public lists (~1.3 MAL requests each).
+    scripts/expand_population.sh repeats it under the MAL lock, at 1.5/s -
+    the rate measured safe in the first full fetch; the scheduled jobs keep
+    MAL_RPS (1/s), which leaves room for the app's own requests."""
+    _setup()
+    from .clients.mal import MalClient
+    from .ingest.fullfetch import cf_expand
+    with MalClient(rps=rps) as mal:
+        typer.echo(json.dumps(cf_expand(mal, chunk), indent=2, default=str))
+
+
 @app.command("report")
 def report_cmd() -> None:
     """Gate vs baselines, range coverage and the prospective test, per user."""
@@ -165,6 +183,9 @@ def compare_prospective_cmd(candidate: int = typer.Option(
     _setup(verbose=False)
     from .recsys.service import active_global, load_global, prospective_compare
     current = active_global()
+    if current is None:
+        typer.echo("no active population model", err=True)
+        raise typer.Exit(1)
     other = load_global(candidate) if candidate else current
     typer.echo(json.dumps(prospective_compare(current, other, gate_user or settings().malrec_user),
                           indent=2, default=str))
@@ -192,16 +213,30 @@ app.add_typer(population_app, name="population")
 @population_app.command("fit")
 def population_fit(gate_user: str = typer.Option(
         None, help="activate only if this user's temporal holdout does not get worse"),
-        dry_run: bool = typer.Option(False, help="report the gate decision, activate nothing")
+        dry_run: bool = typer.Option(False, help="report the gate decision, activate nothing"),
+        refit_all: bool = typer.Option(False, help="after a passed exam, refit on every list "
+                                                   "(the exam's too) and activate that")
         ) -> None:
     """Fit item biases, co-rating similarities and latent factors from the CF
     sample, plus the stacker that blends them, and make it the active model
     (with --gate-user, only if it passes that user's holdout)."""
     from .recsys.service import fit_global, gated_fit
     _setup()
-    out = (gated_fit(gate_user, dry_run=dry_run) if gate_user
+    out = (gated_fit(gate_user, dry_run=dry_run, refit_all=refit_all) if gate_user
            else fit_global(activate=not dry_run))
     typer.echo(json.dumps(out, indent=2, default=str))
+
+
+@population_app.command("activate")
+def population_activate(model_id: int = typer.Argument(..., help="stored population model id")) -> None:
+    """Serve a stored population model (a refit kept inactive, or a fallback)."""
+    from .recsys.service import activate_global
+    _setup()
+    if not query("SELECT 1 FROM global_model WHERE id=%s", (model_id,)):
+        typer.echo(f"no population model #{model_id}", err=True)
+        raise typer.Exit(1)
+    activate_global(model_id)
+    typer.echo(f"#{model_id} active; rebuild users to serve it")
 
 
 @population_app.command("status")
@@ -211,6 +246,26 @@ def population_status() -> None:
         m = r["meta"]
         typer.echo(f"#{r['id']}{' (active)' if r['active'] else ''}  {r['created_at']:%Y-%m-%d %H:%M}"
                    f"  users={m.get('users')} items={m.get('items')} ratings={m.get('ratings')}")
+
+
+ranker_app = typer.Typer(help="The learned Safe Bets order (recsys/ltr.py)")
+app.add_typer(ranker_app, name="ranker")
+
+
+@ranker_app.command("train")
+def ranker_train(users: int = typer.Option(2400, help="stacker users to learn from"),
+                 if_missing: bool = typer.Option(
+                     False, help="only if the active population model has no ranker yet")
+                 ) -> None:
+    """Train the learned Safe Bets order for the active population model on
+    its stacker users (~25 minutes, a few hundred MB). Used only when
+    order_ranker_weight > 0."""
+    from .recsys.ltr import has_ranker, train_for_active
+    _setup()
+    if if_missing and has_ranker():
+        typer.echo("the active population model has a ranker; nothing to do")
+        return
+    typer.echo(json.dumps(train_for_active(users), indent=2, default=str))
 
 
 @app.command()
@@ -286,10 +341,18 @@ def recommend(user: str = typer.Option(None),
     """Produce recommendations and print them."""
     _setup(verbose)
     uid = _uid(user)
+    from types import SimpleNamespace
+    # the stored list, shaped like the Candidates a rebuild returns (reading
+    # it as raw rows failed: they have no title, row or predicted)
     cands = (build_surface(uid, surface, limit=limit) if rebuild
-             else [type("C", (), r)() for r in query(
-                 "SELECT * FROM recommendation WHERE user_id=%s AND surface=%s ORDER BY rank",
-                 (uid, surface))])
+             else [SimpleNamespace(title=r["title"], predicted=r["predicted_score"],
+                                   reasons=r["reasons"] or [],
+                                   row={"mal_mean": r["mal_mean"],
+                                        "mal_popularity": r["mal_popularity"]})
+                   for r in query(
+                 "SELECT r.predicted_score, r.reasons, a.title, a.mal_mean, a.mal_popularity"
+                 "  FROM recommendation r JOIN anime a ON a.mal_id = r.mal_id"
+                 " WHERE r.user_id=%s AND r.surface=%s ORDER BY r.rank", (uid, surface))])
     typer.echo(f"\n{surface}  ({len(cands)} results)\n")
     typer.echo(f"{'#':>3} {'pred':>5} {'MAL':>5} {'pop':>6}  {'title':<44}  why")
     typer.echo("-" * 120)
@@ -332,7 +395,8 @@ def notify_test(all_kinds: bool = typer.Option(False, "--all", help="also one sa
     _setup()
     from .notify import enabled, test
     if not enabled():
-        raise typer.Exit("SMTP_HOST / ADMIN_EMAIL not set")
+        typer.echo("SMTP_HOST / ADMIN_EMAIL not set", err=True)
+        raise typer.Exit(1)
     typer.echo(json.dumps(test(all_kinds)))
 
 

@@ -91,7 +91,8 @@ def ndcg_at(pred, truth, k: int = 10) -> float:
     return float(dcg / idcg) if idcg else 0.0
 
 
-def _fit_predict(user_id, train, test, half_life, floor, algo, alpha, cutoff):
+def _fit_predict(user_id, train, test, half_life, floor, algo, alpha, cutoff
+                 ) -> tuple[np.ndarray, np.ndarray] | tuple[None, None]:
     """Fit on `train` (plus implicit rows predating the cutoff) and score `test`.
 
     The implicit rows go through the identical path the product uses, so the
@@ -124,7 +125,7 @@ def _fit_predict(user_id, train, test, half_life, floor, algo, alpha, cutoff):
         est = _fit_lgbm(Xtr, ytr, w)
     else:
         est = Ridge(alpha=alpha).fit(Xtr, ytr, sample_weight=w)
-    return est.predict(Xte), yte
+    return np.asarray(est.predict(Xte), dtype=float), yte
 
 
 def temporal_holdout(user_id: int, holdouts: tuple[int, ...] = (30, 40, 50),
@@ -233,7 +234,7 @@ def fit_calibration(user_id: int, holdouts: tuple[int, ...] = (30, 40, 50),
         train, test = rated[:-h], rated[-h:]
         p, y = _fit_predict(user_id, train, test, half_life, floor, algo, alpha,
                             test[0]["at"])
-        if p is not None:
+        if p is not None and y is not None:
             preds.extend(p.tolist())
             truth.extend(y.tolist())
 

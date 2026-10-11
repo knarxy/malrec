@@ -19,6 +19,7 @@ the answer is noise, so nothing is suggested below `min_events`.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 import numpy as np
 
@@ -66,7 +67,7 @@ def learn_weights(min_events: int = 200, min_each: int = 30, boot: int = 200) ->
             if r["positive"] != r["negative"]]
     pos = sum(r["positive"] for r in rows)
     neg = len(rows) - pos
-    out = {"events": len(rows), "positive": pos, "negative": neg,
+    out: dict[str, Any] = {"events": len(rows), "positive": pos, "negative": neg,
            "users": len({r["user_id"] for r in rows})}
     if len(rows) < min_events or min(pos, neg) < min_each:
         out["status"] = (f"not enough feedback yet: need {min_events} events with at least "

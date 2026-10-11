@@ -102,6 +102,13 @@ def _activity(rows: list[dict]) -> None:
         u["week"] = w
 
 
+@router.get("/usage")
+def usage_funnel(v: Admin) -> dict:
+    """How far each account got, from sign-up to a first action (malrec.usage)."""
+    from .usage import funnel
+    return funnel()
+
+
 @router.get("/users")
 def users(v: Admin) -> list[dict]:
     out = query(USERS_SQL)

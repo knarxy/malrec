@@ -1,4 +1,6 @@
-FROM python:3.12-slim
+# exact base and exact dependency versions (requirements.lock, `make lock`):
+# a rebuild installs what was tested, not whatever is newest that day
+FROM docker.io/library/python:3.12.15-slim
 
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 
@@ -8,9 +10,11 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+COPY requirements.lock ./
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 COPY pyproject.toml README.md ./
 COPY src ./src
-RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir .
+RUN pip install --no-cache-dir --no-deps .
 
 COPY db ./db
 

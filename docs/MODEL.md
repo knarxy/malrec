@@ -392,8 +392,12 @@ lists' newest ratings. Every earlier batch the active model has not seen
 trains the candidate, so a refit after a failed gate still gains data. The
 candidate fails only if it loses more than .002 mean rank correlation *and*
 more than one standard error of the paired difference (two equally good
-refits differ by about .003); the gate user keeps a veto against a mean loss
-of more than .01 on their own 8 splits. Fewer than 100 lists in the batch:
+refits differ by about .003). The gate user vetoes a mean loss of more than
+.01 on their own 8 splits only while the exam gain is within two standard
+errors: on 2026-10-10 a fourfold sample won the exam by .010 and cost the
+reference profile .022, which is one taste pulled toward the mainstream, not
+a fault, and kept 20,000 lists out. A loss above .05 refuses regardless.
+Fewer than 100 lists in the batch:
 the older single-user rule. Refits are deterministic per user and title:
 who fits the population model or the stacker is a stable hash of the user,
 and each title's factorisation start comes from its id (one extra user used
@@ -481,7 +485,7 @@ Two uncomfortable results, both acted on:
 
 ### What was tried and rejected
 
-Three ideas were implemented, measured and thrown away. They live in
+These ideas were implemented, measured and thrown away. They live in
 [`experiments/`](experiments/) so the reasoning is reproducible rather than
 folklore.
 
@@ -492,6 +496,8 @@ folklore.
 | LambdaMART | ρ 0.547, nDCG 0.530 |
 | Synopsis embeddings, kNN feature | ±0.003, no consistent direction |
 | Synopsis embeddings, SVD columns | −0.05 to −0.15 at every alpha |
+| Like-minded lists (user kNN on 13k lists, `exp_uknn.py`) | ρ −.005 to −.037 for the reference profile, −.002 to −.023 sampled; lists unchanged. Left in the errors: .10 on 25-entry lists, .03 on long ones; for the reference profile its neighbours point the wrong way (ρ −.24 with the later ratings) |
+| The Up Next sequel anchor in every prediction (`exp_seqall.py`) | sampled sequels RMSE 1.13 -> 1.04 at 400 entries, overall ρ +.003 at most; the reference profile −.012 to −.022 at every weight and carry-over (flat, the population's .68, its own): its sequel ratings sit near its mean whatever the first season got. Up Next keeps its own 50/50 rule |
 
 The pattern in all of them is sample size. At ~180 training rows, ridge's
 shrinkage is worth more than a better-matched loss or a richer representation.

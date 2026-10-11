@@ -24,7 +24,7 @@ import threading
 import time
 
 from .config import settings
-from .db import execute, one, scalar
+from .db import execute, one, require_one, scalar
 
 log = logging.getLogger(__name__)
 
@@ -152,7 +152,7 @@ def status() -> dict:
     """For the admin panel: is the worker alive, what is waiting, what failed."""
     w = one("SELECT started_at, beat_at, threads,"
             " extract(epoch FROM now() - beat_at)::int AS silent_s FROM worker_status")
-    q = one("""SELECT count(*) FILTER (WHERE state = 'queued') AS queued,
+    q = require_one("""SELECT count(*) FILTER (WHERE state = 'queued') AS queued,
                       count(*) FILTER (WHERE state = 'running') AS running,
                       count(*) FILTER (WHERE state = 'failed'
                                          AND finished_at > now() - interval '1 day') AS failed_24h,
@@ -178,6 +178,8 @@ def status() -> dict:
 def housekeeping() -> None:
     execute("DELETE FROM task WHERE state IN ('done', 'failed')"
             " AND finished_at < now() - %s::interval", (f"{KEEP_DAYS} days",))
+    from .usage import prune
+    prune()
 
 
 def work_once() -> bool:

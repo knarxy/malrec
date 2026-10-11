@@ -1,0 +1,66 @@
+population model cached [3s]
+
+== sampled 25: 100 users, 4938 liked future titles, 4271 outside the top 50 (86%)
+   relevance                         1091   25.5%
+   popularity                        1079   25.3%
+   prediction                         882   20.7%
+   filter: not a main format          439   10.3%
+   filter: side story / recap         389    9.1%
+   filter: NSFW                       155    3.6%
+   filter: < 2000 MAL ratings         139    3.3%
+   rerank                              95    2.2%
+   risk                                 2    0.0%
+   order-key place of the scored misses: quartiles 172 / 402 / 965; within 51-100: 11%
+   [25s]
+
+== sampled 150: 100 users, 5183 liked future titles, 4351 outside the top 50 (84%)
+   relevance                         1465   33.7%
+   prediction                        1357   31.2%
+   filter: not a main format          484   11.1%
+   filter: side story / recap         403    9.3%
+   filter: < 2000 MAL ratings         161    3.7%
+   filter: NSFW                       160    3.7%
+   rerank                             150    3.4%
+   popularity                         112    2.6%
+   risk                                59    1.4%
+   order-key place of the scored misses: quartiles 165 / 393 / 929; within 51-100: 11%
+   [114s]
+
+== sampled 400: 100 users, 7178 liked future titles, 5963 outside the top 50 (83%)
+   prediction                        2268   38.0%
+   relevance                         1610   27.0%
+   filter: not a main format          719   12.1%
+   filter: side story / recap         533    8.9%
+   filter: NSFW                       264    4.4%
+   filter: < 2000 MAL ratings         236    4.0%
+   rerank                             205    3.4%
+   risk                               115    1.9%
+   popularity                          13    0.2%
+   order-key place of the scored misses: quartiles 154 / 353 / 926; within 51-100: 12%
+   [229s]
+
+== reference profile (8 splits, each title once): 8 splits, 26 liked future titles, 15 outside the top 50 (58%)
+   prediction                           9   60.0%
+   filter: not a main format            2   13.3%
+   rerank                               2   13.3%
+   relevance                            1    6.7%
+   filter: side story / recap           1    6.7%
+   order-key place of the scored misses: quartiles 102 / 114 / 220; within 51-100: 30%
+     filter: not a main format      #-      ReLIFE: Kanketsu-hen
+     filter: not a main format      #-      Steins;Gate: Oukoubakko no Poriomania
+     filter: side story / recap     #-      Steins;Gate Movie: Fuka Ryouiki no Déjà vu
+     prediction                     #75     ReLIFE
+     prediction                     #77     NHK ni Youkoso!
+     prediction                     #112    Jigokuraku
+     prediction                     #113    Plastic Memories
+     prediction                     #114    Ao no Exorcist
+     prediction                     #144    Hataraku Maou-sama!
+     prediction                     #245    Dead Mount Death Play
+     prediction                     #499    Ajin Part 2
+     prediction                     #981    Amagi Brilliant Park
+     relevance                      #99     Guimi Zhi Zhu: Xiaochou Pian
+     rerank                         #14     Shingeki no Kyojin
+     rerank                         #47     Dr. Stone
+
+[238s]
+==== DONE 0

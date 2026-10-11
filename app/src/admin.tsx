@@ -2,11 +2,12 @@
 // itself (malrec.admin), this is just the controls. Strings are in i18n.tsx
 // under "adm.*".
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, ApiError, type AdminSystem, type AdminUser, type PendingUser } from './api'
-import { BrandMark } from './components'
+import {
+  api, ApiError, type AdminSystem, type AdminUser, type PendingUser, type UsageFunnel,
+} from './api'
 import { useI18n } from './i18n'
 
-type Tab = 'users' | 'system' | 'report' | 'log'
+type Tab = 'users' | 'usage' | 'system' | 'report' | 'log'
 
 function useWhen() {
   const { lang } = useI18n()
@@ -37,19 +38,20 @@ export function Admin({ onClose }: { onClose: () => void }) {
     <>
       <header className="topbar">
         <div className="wrap topbar-inner">
-          <span className="brand"><BrandMark />mal<span>rec</span><span className="brand-suffix">&nbsp;· {t('adm.title')}</span></span>
+          <span className="brand">mal<span>rec</span><span className="brand-suffix">&nbsp;· {t('adm.title')}</span></span>
           <span className="spacer" />
           <button style={{ whiteSpace: 'nowrap' }} onClick={onClose}>{t('adm.back')}</button>
         </div>
       </header>
       <main className="wrap admin">
         <nav className="tabs" role="tablist">
-          {(['users', 'system', 'report', 'log'] as Tab[]).map((k) => (
+          {(['users', 'usage', 'system', 'report', 'log'] as Tab[]).map((k) => (
             <button key={k} role="tab" className="tab" aria-selected={tab === k}
                     onClick={() => setTab(k)}>{t(`adm.tab.${k}`)}</button>
           ))}
         </nav>
         {tab === 'users' && <Users />}
+        {tab === 'usage' && <Usage />}
         {tab === 'system' && <System />}
         {tab === 'report' && <Report />}
         {tab === 'log' && <Log />}
@@ -186,6 +188,66 @@ function Users() {
                 </div></td>
               </tr>
             ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  )
+}
+
+/** How far each account got: sign-up to a first action, and the last week. */
+function Usage() {
+  const { t } = useI18n()
+  const when = useWhen()
+  const ago = useAgo()
+  const [u, setU] = useState<UsageFunnel | null>(null)
+  const [msg, setMsg] = useState<string | null>(null)
+  useEffect(() => {
+    api.adminUsage().then(setU).catch((e) => setMsg(e instanceof ApiError ? e.message : t('adm.error')))
+  }, [t])
+  if (!u) return <p className="surface-note">{msg ?? t('Loading…')}</p>
+  const top = Math.max(1, u.steps[0]?.users ?? 1)
+  const missing = (row: UsageFunnel['users'][number]) =>
+    u.steps.find((s) => !row.steps[s.step])?.step
+  return (
+    <>
+      <p className="surface-note">
+        {u.since ? t('adm.usage.since', { when: when(u.since) }) : t('adm.usage.none')}
+      </p>
+      <h3>{t('adm.usage.funnel')}</h3>
+      <div className="funnel">
+        {u.steps.map((s) => (
+          <div className="funnel-row" key={s.step}>
+            <span className="funnel-label">{t(`adm.usage.step.${s.step}`)}</span>
+            <span className="funnel-bar"><span style={{ width: `${(s.users / top) * 100}%` }} /></span>
+            <b>{s.users}</b>
+          </div>
+        ))}
+      </div>
+      <h3>{t('adm.usage.accounts')}</h3>
+      <div className="admin-table">
+        <table>
+          <thead>
+            <tr><th>{t('adm.col.account')}</th><th>{t('adm.usage.stuck')}</th>
+              <th>{t('adm.usage.last_visit')}</th><th>{t('adm.usage.week')}</th></tr>
+          </thead>
+          <tbody>
+            {u.users.map((r) => {
+              const stop = missing(r)
+              return (
+                <tr key={r.id}>
+                  <td><b>{r.mal_username}</b><div className="surface-note" style={{ margin: 0 }}>
+                    {t('adm.requested', { when: when(r.signed_up) })}</div></td>
+                  <td>{stop ? t(`adm.usage.step.${stop}`) : t('adm.usage.all_done')}</td>
+                  <td>{ago(r.last_visit)}</td>
+                  <td style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {t('adm.usage.week_line', {
+                      d: r.days_7, c: r.cards_7, o: r.details_7, a: r.actions_7,
+                    })}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>

@@ -21,3 +21,7 @@ app/tsconfig.tsbuildinfo
 # misc
 data/
 *.log
+
+# benchmark output (the frozen data lives under experiments/bench/data on the server)
+experiments/bench/latest.json
+.torchlib/

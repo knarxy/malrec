@@ -76,6 +76,9 @@ services:
       SAFE_BETS_POPULARITY: ${SAFE_BETS_POPULARITY:-0.5}
       SAFE_BETS_MEMORY_CAP: ${SAFE_BETS_MEMORY_CAP:-0.15}
       SAFE_BETS_FLOOR: ${SAFE_BETS_FLOOR:--99}
+      # Safe Bets' learned order, this share of it (on dev; recsys/ltr.py,
+      # needs `malrec ranker train` for the active population model)
+      ORDER_RANKER_WEIGHT: ${ORDER_RANKER_WEIGHT:-0.5}
       # blend handover, personal-share cap, and the list size the ranking dials
       # follow (experiments/exp_handover.py, 2026-10-03)
       BLEND_SIZE_N0: ${BLEND_SIZE_N0:-150}

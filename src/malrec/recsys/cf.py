@@ -101,7 +101,8 @@ class PopulationModel:
         return self
 
     def fit_ease(self, user_ids: np.ndarray, item_ids: np.ndarray, min_users: int = 50,
-                 lam: float = 400.0, top_k: int = 100) -> PopulationModel:
+                 lam: float = 400.0, top_k: int = 100, max_items: int = 16_000
+                 ) -> PopulationModel:
         """EASE (Steck, WWW 2019) on list membership: B = I - P / diag(P) with
         P = (X'X + lam I)^-1, so a user's score for j is sum_i x_i B_ij. A
         closed-form item-item model and one of the strongest "what will they
@@ -111,16 +112,35 @@ class PopulationModel:
         pairs = np.unique(np.column_stack([user_ids, item_ids]), axis=0)
         items, counts = np.unique(pairs[:, 1], return_counts=True)
         keep = items[counts >= min_users]
+        if len(keep) > max_items:
+            # the dense matrices grow with the square of this: the most-listed
+            # `max_items` keep it near 1 GB each (float32) on a larger sample
+            keep = np.sort(items[np.argsort(-counts, kind="stable")[:max_items]])
         m = np.isin(pairs[:, 1], keep)
         u = np.unique(pairs[m, 0], return_inverse=True)[1]
         i = np.searchsorted(keep, pairs[m, 1])
-        X = sp.csr_matrix((np.ones(len(u)), (u, i)), shape=(u.max() + 1, len(keep)))
-        # Memory: ~10k items make each dense matrix ~0.8 GB, so the Gram matrix
-        # is inverted and turned into B in place, and the top-K selection runs
-        # in column blocks - peak ~2 full matrices instead of ~4.
-        G = (X.T @ X).toarray()
+        X = sp.csr_matrix((np.ones(len(u), dtype=np.float32), (u, i)),
+                          shape=(u.max() + 1, len(keep)))
+        # Memory: each dense matrix is items^2 floats, so the Gram matrix is
+        # inverted and turned into B in place, the top-K selection runs in
+        # column blocks (peak ~2 full matrices instead of ~4), and all of it is
+        # float32 - plenty for a ridge-regularised inverse (lam = 400), half
+        # the memory of float64.
+        # X'X straight into a dense matrix, a block of columns at a time: as a
+        # sparse product it held ~90M nonzeros on 3.5k users (3.5 GB peak).
+        # The entries are co-occurrence counts, exact in float32.
+        Xc, XT = X.tocsc(), X.T.tocsr()
+        nk = len(keep)
+        G = np.empty((nk, nk), dtype=np.float32)
+        for c0 in range(0, nk, 1024):
+            G[:, c0:c0 + 1024] = XT @ Xc[:, c0:c0 + 1024].toarray()
+        del Xc, XT
         G[np.diag_indices_from(G)] += lam
-        P = np.linalg.inv(G)
+        # scipy's LAPACK inverse stays in float32 and works in G's own memory;
+        # numpy.linalg.inv computes float32 in float64 with extra copies (+3 GB
+        # on 10k items, experiments/prof_popmem.py)
+        from scipy.linalg import inv
+        P = inv(G, overwrite_a=True, check_finite=False)
         del G
         d = np.diag(P).copy()
         P /= -d                          # B = -P / diag(P), column-wise
@@ -142,13 +162,19 @@ class PopulationModel:
         log.info("EASE: %d items, top-%d weights kept", len(keep), k)
         return self
 
+    def fitted_sim(self) -> sp.csr_matrix:
+        """The item-item similarity; only a fitted model has one."""
+        if self.sim is None:
+            raise RuntimeError("the population model has not been fitted")
+        return self.sim
+
     def _similarity(self, E: sp.csr_matrix, B: sp.csr_matrix) -> sp.csr_matrix:
         """Shrunk cosine over co-raters, top-K per item, computed in blocks so
         the full items x items matrix is never materialised."""
         p = self.p
         Ec, Bc = E.tocsc(), B.tocsc()
         norms = np.sqrt(np.asarray(Ec.multiply(Ec).sum(axis=0)).ravel()) + 1e-9
-        n = E.shape[1]
+        n = Ec.indptr.size - 1            # columns of the CSC copy = items
         rows, cols, vals = [], [], []
         for start in range(0, n, 512):
             stop = min(start + 512, n)
@@ -228,8 +254,8 @@ class FoldIn:
     d: np.ndarray            # their bias-free deviations
     w: np.ndarray            # their weights (recency)
     pvec: np.ndarray | None  # latent position
-    L: np.ndarray = None     # every listed item index known to the model
-    lw: np.ndarray = None    # their weights
+    L: np.ndarray | None = None     # every listed item index known to the model
+    lw: np.ndarray | None = None    # their weights
 
     def signals(self, mal_ids: list[int]) -> dict[str, np.ndarray]:
         """Per-item bias, kNN deviation, MF deviation and kNN support for the
@@ -246,13 +272,13 @@ class FoldIn:
         out["bias"][known] = m.bias[ki]
         out["support"][known] = np.log1p(m.n_raters[ki])
         if len(self.J):
-            S = m.sim[ki][:, self.J]                       # candidates x rated
+            S = m.fitted_sim()[ki][:, self.J]                       # candidates x rated
             num = S @ (self.w * self.d)
             den = np.abs(S) @ self.w
             out["knn"][known] = num / (den + m.p.knn_shrink)
             if self.pvec is not None:
                 out["mf"][known] = m.V[ki] @ self.pvec
-        if m.occ is not None and self.L is not None and len(self.L):
+        if m.occ is not None and self.L is not None and self.lw is not None and len(self.L):
             # weighted mean co-occurrence with the user's list
             out["rel"][known] = (m.occ[ki][:, self.L] @ self.lw) / max(self.lw.sum(), 1e-9)
         return out
@@ -270,7 +296,7 @@ class FoldIn:
         idx = np.array([m.index.get(x, -1) for x in mal_ids])
         known = idx >= 0
         if known.any():
-            out[known] = np.abs(m.sim[idx[known]][:, self.J]) @ self.w
+            out[known] = np.abs(m.fitted_sim()[idx[known]][:, self.J]) @ self.w
         return out
 
     def ease_scores(self, mal_ids: list[int]) -> np.ndarray | None:
@@ -278,7 +304,7 @@ class FoldIn:
         None when the population model has no EASE part."""
         m = self.model
         E, idx = getattr(m, "ease", None), getattr(m, "ease_index", {})
-        if E is None or self.L is None:
+        if E is None or self.L is None or self.lw is None:
             return None
         x = np.zeros(E.shape[0], dtype=np.float32)
         for j, w in zip(self.L.tolist(), self.lw.tolist()):
@@ -301,7 +327,7 @@ def knn_contributors(fold: FoldIn, mal_id: int, top: int = 3) -> list[tuple[int,
     i = m.index.get(mal_id)
     if i is None or not len(fold.J):
         return []
-    row = m.sim[i]
+    row = m.fitted_sim()[i]
     sims = dict(zip(row.indices.tolist(), row.data.tolist()))
     terms = [(int(m.items[j]), sims[j] * w * d)
              for j, w, d in zip(fold.J.tolist(), fold.w.tolist(), fold.d.tolist()) if j in sims]

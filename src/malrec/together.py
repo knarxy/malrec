@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 from .access import Approved, rate_limit
 from .auth import require_csrf
 from .config import settings
-from .db import execute, one, query
+from .db import execute, one, query, require_one
 
 router = APIRouter(prefix="/together")
 CSRF = [Depends(require_csrf)]
@@ -110,7 +110,7 @@ def accept_link(token: str, v: Approved) -> dict:
                ON CONFLICT ((least(inviter, invitee)), (greatest(inviter, invitee)))
                DO UPDATE SET status='accepted', accepted_at=coalesce(together_pair.accepted_at, now())""",
             (link["inviter"], v.user_id))
-    pair = one("""SELECT id FROM together_pair
+    pair = require_one("""SELECT id FROM together_pair
                    WHERE least(inviter, invitee)=least(%s::int, %s::int)
                      AND greatest(inviter, invitee)=greatest(%s::int, %s::int)""",
                (link["inviter"], v.user_id, link["inviter"], v.user_id))
@@ -163,11 +163,12 @@ def _predict(uid: int, ids: list[int]) -> tuple[np.ndarray, float]:
     """Displayed predictions for `ids` and the user's own average score."""
     from .model import cached_model
     model, _ = cached_model(uid)
-    if model is None or not hasattr(model, "predict_ids"):
+    from .recsys.scorer import HybridScorer
+    if not isinstance(model, HybridScorer):
         raise HTTPException(409, "No recommendations built yet for one of you.")
     raw = model.predict_ids(ids)
-    shown = model.calibrate_list(raw) if hasattr(model, "calibrate_list") else model.calibrate(raw)
-    mean = one("SELECT avg(score)::float m FROM list_entry WHERE user_id=%s AND score>0",
+    shown = model.calibrate_list(raw)
+    mean = require_one("SELECT avg(score)::float m FROM list_entry WHERE user_id=%s AND score>0",
                (uid,))["m"] or 7.0
     return np.asarray(shown, dtype=float), float(mean)
 
@@ -178,7 +179,7 @@ def shared_list(pid: int, v: Approved, limit: int = 40) -> dict:
     if p["status"] != "accepted":
         raise HTTPException(409, "The invitation has not been accepted yet.")
     other = p["invitee"] if p["inviter"] == v.user_id else p["inviter"]
-    if one("SELECT status FROM app_user WHERE id=%s", (other,))["status"] != "approved":
+    if require_one("SELECT status FROM app_user WHERE id=%s", (other,))["status"] != "approved":
         raise HTTPException(404, "unknown invitation")
     me = v.user_id
     ids = [r["mal_id"] for r in query(
@@ -202,7 +203,7 @@ def shared_list(pid: int, v: Approved, limit: int = 40) -> dict:
         """SELECT mal_id, title, title_en, media_type, num_episodes, season_year, season,
                   mal_mean, mal_popularity, picture_medium, picture_large, mal_genres, mal_studios
              FROM anime WHERE mal_id = ANY(%s)""", (top,))}
-    partner = one("SELECT mal_username FROM app_user WHERE id=%s", (other,))["mal_username"]
+    partner = require_one("SELECT mal_username FROM app_user WHERE id=%s", (other,))["mal_username"]
     items = []
     for rank, k in enumerate(order, 1):
         m = meta.get(ids[k])

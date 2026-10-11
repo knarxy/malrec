@@ -1,0 +1,6 @@
+{
+  "include": ["src/malrec"],
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "standard",
+  "reportMissingModuleSource": false
+}

@@ -33,7 +33,7 @@ from psycopg.types.json import Jsonb
 
 from .config import settings
 from .db import conn, query, scalar
-from .model import TasteModel, load_or_train
+from .model import Model, load_or_train
 from .rank import (
     Candidate,
     attach_reasons,
@@ -143,7 +143,7 @@ NEXT_UP_SQL = """
 """
 
 
-def _continuations(user_id: int, model: TasteModel, limit: int,
+def _continuations(user_id: int, model: Model, limit: int,
                    format_classes: list[str]) -> list[Candidate]:
     """Shared by next_up (main formats) and side_stories (side formats)."""
     mu = _user_mean(user_id)
@@ -219,7 +219,8 @@ def sequel_delta(deltas: dict, prequel: int, sequel: int) -> float:
 AIRING_WINDOW = "7 months"
 
 
-def _this_season(user_id: int, model: TasteModel, spec: SurfaceSpec, limit: int) -> list[Candidate]:
+def _this_season(user_id: int, model: Model, spec: SurfaceSpec, limit: int
+                 ) -> tuple[list[Candidate], list[Candidate], list[Candidate]]:
     """This season's titles plus anything still airing that began within
     AIRING_WINDOW - a second cour carries over the season boundary, and in a
     season's first weeks few new shows have the ratings to qualify yet
@@ -238,8 +239,8 @@ def _this_season(user_id: int, model: TasteModel, spec: SurfaceSpec, limit: int)
         """,
         (user_id, spec.min_scorers, spec.formats, year, season, AIRING_WINDOW),
     )
-    drop = derived_ids()
-    rows = [r for r in rows if r["mal_id"] not in drop]
+    drop, gone = derived_ids(), dismissed_franchises(user_id)
+    rows = [r for r in rows if r["mal_id"] not in drop and r["franchise_id"] not in gone]
     if not rows:
         return [], [], []
     pool = score_candidates(user_id, model, rows, shortlist=limit * 4)
@@ -267,6 +268,23 @@ def derived_ids() -> frozenset[int]:
     return _derived["ids"]
 
 
+def dismissed_franchises(user_id: int) -> set[int]:
+    """Franchises of titles marked "Not for me", unless something of the
+    franchise is on the user's list (then it was the one title, not the
+    franchise, they turned down)."""
+    if not settings().not_interested_franchise:
+        return set()
+    return {r["f"] for r in query(
+        """SELECT DISTINCT coalesce(fr.franchise_id, fb.mal_id) AS f
+             FROM feedback fb LEFT JOIN franchise fr ON fr.mal_id = fb.mal_id
+            WHERE fb.user_id = %(u)s AND fb.action = 'not_interested'
+              AND NOT EXISTS (
+                  SELECT 1 FROM list_entry le JOIN franchise f2 ON f2.mal_id = le.mal_id
+                   WHERE le.user_id = %(u)s
+                     AND f2.franchise_id = coalesce(fr.franchise_id, fb.mal_id))""",
+        {"u": user_id})}
+
+
 def continuation_ids(user_id: int) -> set[int]:
     """What next_up shows (build_all builds it first): the discovery lists
     leave these to it, so a continuation appears once, with its
@@ -276,11 +294,13 @@ def continuation_ids(user_id: int) -> set[int]:
         "SELECT mal_id FROM recommendation WHERE user_id=%s AND surface='next_up'", (user_id,))}
 
 
-def _hidden_gems(user_id: int, model: TasteModel, spec: SurfaceSpec, limit: int) -> list[Candidate]:
-    skip = continuation_ids(user_id) | derived_ids()
+def _hidden_gems(user_id: int, model: Model, spec: SurfaceSpec, limit: int
+                 ) -> tuple[list[Candidate], list[Candidate], list[Candidate]]:
+    skip, gone = continuation_ids(user_id) | derived_ids(), dismissed_franchises(user_id)
     rows = [r for r in retrieve(user_id, min_scorers=spec.min_scorers,
                                 media_types=spec.formats)
-            if (r.get("mal_popularity") or 99999) > 1200 and r["mal_id"] not in skip]
+            if (r.get("mal_popularity") or 99999) > 1200 and r["mal_id"] not in skip
+            and r["franchise_id"] not in gone]
     pool = score_candidates(user_id, model, rows, shortlist=settings().shortlist_size)
     seen: list[Candidate] = []
     return pool, rerank(pool, spec.novelty_weight, spec.diversity_weight, limit,
@@ -324,7 +344,7 @@ COMING_SQL = """
 """
 
 
-def _coming_soon(user_id: int, model: TasteModel, limit: int) -> list[Candidate]:
+def _coming_soon(user_id: int, model: Model, limit: int) -> list[Candidate]:
     mu = _user_mean(user_id)
     rows = query(COMING_SQL, {"uid": user_id, "min_score": max(round(mu), 7)})
     if not rows:
@@ -345,7 +365,7 @@ def _coming_soon(user_id: int, model: TasteModel, limit: int) -> list[Candidate]
     return cands[:limit]
 
 
-def _plan_to_watch(user_id: int, model: TasteModel, limit: int) -> list[Candidate]:
+def _plan_to_watch(user_id: int, model: Model, limit: int) -> list[Candidate]:
     """Their own queue, by predicted fit alone: relevance and novelty answer
     "would they pick it up", which a queued title already has."""
     rows = query(PTW_SQL, (user_id,))
@@ -387,7 +407,7 @@ def long_memory_model(user_id: int, model):
 
 
 def build_surface(user_id: int, surface: str = "discover", limit: int = 50,
-                  model: TasteModel | None = None, run_id: int | None = None,
+                  model: Model | None = None, run_id: int | None = None,
                   persist: bool = True) -> list[Candidate]:
     if surface not in SPECS:
         raise ValueError(f"unknown surface {surface!r}; expected one of {sorted(SPECS)}")
@@ -410,9 +430,10 @@ def build_surface(user_id: int, surface: str = "discover", limit: int = 50,
     elif surface == "hidden_gems":
         pool, cands, seen = _hidden_gems(user_id, model, spec, limit)
     else:
-        skip = continuation_ids(user_id) | derived_ids()
+        skip, gone = continuation_ids(user_id) | derived_ids(), dismissed_franchises(user_id)
         rows = [r for r in retrieve(user_id, min_scorers=spec.min_scorers,
-                                    media_types=spec.formats) if r["mal_id"] not in skip]
+                                    media_types=spec.formats)
+                if r["mal_id"] not in skip and r["franchise_id"] not in gone]
         long_model, mix = None, 0.0
         if surface == "safe_bets" and settings().safe_bets_memory_mix > 0:
             long_model = long_memory_model(user_id, model)
@@ -425,14 +446,18 @@ def build_surface(user_id: int, surface: str = "discover", limit: int = 50,
                 "SELECT mal_id FROM recommendation WHERE user_id=%s AND surface='safe_bets'",
                 (user_id,))}
             rows = [r for r in rows if r["mal_id"] not in taken]
+        learned = None
+        if surface == "safe_bets":
+            from .recsys.ltr import context_for
+            learned = context_for(user_id, model)
         pool = score_candidates(user_id, model, rows, long_model=long_model, mix=mix,
                                 pop_prior=settings().safe_bets_popularity
-                                if surface == "safe_bets" else 0.0)
+                                if surface == "safe_bets" else 0.0, learned=learned)
         floor = settings().safe_bets_floor
         if surface == "safe_bets" and floor > -10 and hasattr(model, "baseline"):
             # a safe bet is one the current model expects the user to rate at
             # least about their own mean, whatever the ordering bonuses say
-            mean_shown = float(model.calibrate([model.baseline])[0])
+            mean_shown = float(model.calibrate(np.array([model.baseline]))[0])
             pool = [c for c in pool if c.predicted >= mean_shown + floor]
         cands = rerank(pool, spec.novelty_weight, spec.diversity_weight, limit,
                        considered=seen, profile=genre_profile(user_id))
@@ -452,9 +477,10 @@ def build_surface(user_id: int, surface: str = "discover", limit: int = 50,
         nov_scale = novelty_scale(np.array([c.predicted for c in pool]),
                                   settings().novelty_ref_sd) if pool else 1.0
 
+    from .recsys.scorer import HybridScorer
     if surface not in ("next_up", "side_stories", "coming_soon"):
         attach_reasons(user_id, kept, _user_mean(user_id), model)
-    elif hasattr(model, "explain"):
+    elif isinstance(model, HybridScorer):
         # continuations already carry their own "continues X" reason; add the
         # model breakdown so the ordering within them is explainable too
         extra = model.explain([c.mal_id for c in cands], [c.novelty for c in cands],
@@ -522,8 +548,8 @@ def build_all(user_id: int, limit: int = BUILD_LIMIT) -> dict[str, int]:
 
 READ_SQL = """
     SELECT r.rank, r.mal_id, a.title, a.title_en, a.media_type, a.num_episodes,
-           a.season_year, a.season, a.mal_mean, a.mal_popularity, a.picture_medium,
-           a.picture_large, a.synopsis, a.mal_genres, a.mal_studios,
+           a.season_year, a.season, a.mal_mean, a.mal_popularity, a.mal_num_list_users,
+           a.picture_medium, a.picture_large, a.synopsis, a.mal_genres, a.mal_studios,
            r.predicted_score, r.final_score, r.novelty, r.reasons, r.generated_at,
            le.status AS list_status, le.score AS list_score
       FROM recommendation r JOIN anime a ON a.mal_id = r.mal_id
@@ -553,8 +579,8 @@ CAND_SQL = """
     SELECT c.mal_id, c.franchise_id, c.predicted, c.relevance_z, c.personal_share,
            c.novelty, c.base_rank, c.reasons, c.generated_at, c.novelty_scale, c.build_limit, c.shown, c.bonus,
            a.title, a.title_en, a.media_type, a.num_episodes, a.season_year, a.season,
-           a.mal_mean, a.mal_popularity, a.picture_medium, a.picture_large, a.synopsis,
-           a.mal_genres, a.mal_studios,
+           a.mal_mean, a.mal_popularity, a.mal_num_list_users, a.picture_medium,
+           a.picture_large, a.synopsis, a.mal_genres, a.mal_studios,
            le.status AS list_status, le.score AS list_score
       FROM rec_candidate c JOIN anime a ON a.mal_id = c.mal_id
       LEFT JOIN list_entry le ON le.user_id = c.user_id AND le.mal_id = c.mal_id
@@ -665,6 +691,7 @@ def read_ranked(user_id: int, surface: str, limit: int = 30, offset: int = 0,
                     "num_episodes": r["num_episodes"], "season_year": r["season_year"],
                     "season": r["season"], "mal_mean": r["mal_mean"],
                     "mal_popularity": r["mal_popularity"],
+                    "mal_num_list_users": r["mal_num_list_users"],
                     "picture_medium": r["picture_medium"], "picture_large": r["picture_large"],
                     "synopsis": r["synopsis"], "mal_genres": r["mal_genres"],
                     "mal_studios": r["mal_studios"],

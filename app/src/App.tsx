@@ -3,7 +3,12 @@ import {
   api, ApiError, type AuthState, type Filters, type ModelInfo, type OnboardStatus,
   type Prefs, type Profile, type Recommendation, type Surface,
 } from './api'
-import { BrandMark, Card, Controls, Details, Insights, SearchBox, Skeletons } from './components'
+import {
+  BrandMark, Card, Controls, Details, Insights, SearchBox, Skeletons, ThemeToggle,
+} from './components'
+import { ReasonLegend } from './explain'
+import { setTheme } from './theme'
+import { track } from './usage'
 import { Admin, AdminBell } from './admin'
 import { PrivacyPage } from './privacy'
 import { Quiz } from './quiz'
@@ -131,7 +136,7 @@ function Footer() {
       <span className="credits-line" aria-hidden="true" />
       <p>
         {t('credits.pre')}{' '}
-        <span className="credits-heart" aria-label="love">💙</span>{' '}
+        <span className="credits-heart" aria-label="love">♥</span>{' '}
         {t('credits.by')}{' '}
         <a className="credits-name" href="https://github.com/knarxy" target="_blank" rel="noopener noreferrer">dennis_jar</a>
         {' '}{t('credits.and')}{' '}
@@ -332,6 +337,19 @@ function Main({ lang, setLangState }: { lang: Lang; setLangState: (l: Lang) => v
   const pollRef = useRef<number | undefined>(undefined)
 
   const filters: Filters = prefs.filters ?? {}
+  // Queueing writes to a MyAnimeList account, so it only appears on your own
+  // recommendations, and only once you are signed in. Usage is reported for
+  // your own lists only, too.
+  const isOwn = !!auth?.signed_in && !!user && auth.username?.toLowerCase() === user.toLowerCase()
+
+  useEffect(() => { if (isOwn && ready) track({ kind: 'app_open' }) }, [isOwn, ready])
+  useEffect(() => {
+    if (isOwn && ready) track({ kind: 'tab_view', surface: active })
+  }, [isOwn, ready, active])
+  const openDetail = useCallback((r: Recommendation, from?: string) => {
+    if (isOwn) track({ kind: 'details_open', surface: from ?? active, mal_id: r.mal_id, rank: r.rank })
+    setDetail(r)
+  }, [isOwn, active])
 
   // Who is signed in (if anyone). A signed-in user with nothing chosen yet
   // lands on their own recommendations, with the preferences saved to their
@@ -347,6 +365,7 @@ function Main({ lang, setLangState }: { lang: Lang; setLangState: (l: Lang) => v
             if (Object.keys(p).length) {
               setPrefs((cur) => { const m = { ...cur, ...p }; storePrefs(m); return m })
               if (p.lang) { setLangState(p.lang); localStorage.setItem('malrec.lang', p.lang) }
+              if (p.theme) setTheme(p.theme)
             }
             if (a.status === 'approved') {
               const st = await api.syncStatus()
@@ -512,17 +531,13 @@ function Main({ lang, setLangState }: { lang: Lang; setLangState: (l: Lang) => v
     )
   }
 
-  // Queueing writes to a MyAnimeList account, so it only appears on your own
-  // recommendations, and only once you are signed in.
-  const isOwn = !!auth?.signed_in && auth.username?.toLowerCase() === user.toLowerCase()
-
   return (
     <>
       <header className="topbar">
         <div className="wrap topbar-inner">
-          <span className="brand"><BrandMark />mal<span>rec</span></span>
+          <span className="brand">mal<span>rec</span></span>
           <SearchBox onOpen={(id) => {
-            api.animeFor(id, user).then(setDetail).catch(() => {})
+            api.animeFor(id, user).then((r) => openDetail(r, 'search')).catch(() => {})
           }} />
           <span className="spacer" />
           {isOwn && (
@@ -538,6 +553,7 @@ function Main({ lang, setLangState }: { lang: Lang; setLangState: (l: Lang) => v
           {isOwn && <button className="bar-btn bar-extra" onClick={() => setQuiz(true)}>{t('Rate titles')}</button>}
           {isOwn && <button className="bar-btn bar-extra" onClick={() => setTogether(true)}>{t('Watch together')}</button>}
           <button className="bar-btn bar-extra" onClick={() => setInsights(true)} disabled={!profile}>{t('Your taste')}</button>
+          <ThemeToggle key={prefs.theme ?? 'system'} onChange={(th) => savePrefs({ theme: th })} />
           {auth.is_admin && <AdminBell onOpenPanel={() => setAdminView(true)} />}
           <AccountMenu username={auth.username ?? ''} picture={auth.picture} viewing={isOwn ? null : user}>
             {isOwn && <button className="menu-extra" onClick={() => setQuiz(true)}>{t('Rate titles')}</button>}
@@ -574,10 +590,7 @@ function Main({ lang, setLangState }: { lang: Lang; setLangState: (l: Lang) => v
         {refresh && <div className="notice">{refresh}</div>}
         {isOwn && !prefs.intro_seen && (
           <section className="intro" aria-labelledby="intro-title">
-            <div className="intro-head">
-              <BrandMark size={28} />
-              <h2 id="intro-title">{t('intro.title')}</h2>
-            </div>
+            <h2 id="intro-title">{t('intro.title')}</h2>
             <ul>
               <li><b>{t('+ Plan to watch')}</b> {t('intro.plan')}</li>
               <li><b>{t('Not for me')}</b> {t('intro.notforme')}</li>
@@ -596,10 +609,11 @@ function Main({ lang, setLangState }: { lang: Lang; setLangState: (l: Lang) => v
           </div>
         )}
         <div className="surface-head">
-          <h1>{t(`tab.${active}`)}</h1>
+          <h1 className="sr-only">{t(`tab.${active}`)}</h1>
           <p className="surface-note">{lang === 'en' ? note : t(`desc.${active}`)}</p>
+          <ReasonLegend />
+          <Controls filters={filters} onFilters={(f) => savePrefs({ filters: f })} />
         </div>
-        <Controls filters={filters} onFilters={(f) => savePrefs({ filters: f })} />
 
         {error && <div className="error">{error}</div>}
         {items === null && !error && <Skeletons />}
@@ -623,7 +637,7 @@ function Main({ lang, setLangState }: { lang: Lang; setLangState: (l: Lang) => v
                 item={it}
                 surface={active}
                 user={user}
-                onOpen={setDetail}
+                onOpen={openDetail}
                 canQueue={isOwn}
                 onRated={onRated}
               />

@@ -2,13 +2,13 @@
 COMPOSE := $(shell docker info >/dev/null 2>&1 && echo "docker compose" || echo "podman-compose")
 PY := .venv/bin/python
 
-.PHONY: db-up db-down db-logs psql install init bootstrap train recommend serve worker publish test lint reset up down app-dev build logs
+.PHONY: db-up db-down db-logs psql install lock typecheck init bootstrap train recommend serve worker publish test lint reset up down app-dev build logs
 
 db-up:        ; $(COMPOSE) up -d db
 db-down:      ; $(COMPOSE) down
 db-logs:      ; $(COMPOSE) logs -f db
 psql:         ; podman exec -it malrec-db psql -U malrec -d malrec
-install:      ; python3 -m venv .venv && $(PY) -m pip install -q -e ".[dev]"
+install:      ; python3 -m venv .venv && $(PY) -m pip install -q --require-hashes -r requirements-dev.lock && $(PY) -m pip install -q --no-deps -e .
 init:         ; $(PY) -m malrec.cli init
 bootstrap:    ; $(PY) -m malrec.cli sync all
 train:        ; $(PY) -m malrec.cli train
@@ -18,6 +18,14 @@ worker:       ; $(PY) -m malrec.cli worker        # background tasks (or TASKS_I
 publish:      ; MSG="$(MSG)" scripts/publish.sh          # master -> public repo (see the script)
 test:         ; .venv/bin/pytest -q
 lint:         ; .venv/bin/ruff check src tests
+typecheck:    ; npx -y pyright@1.1.390 --pythonpath .venv/bin/python     # pyrightconfig.json; must stay at 0
+
+# Exact versions with hashes. Edit the ranges in pyproject.toml, then run this
+# on purpose; the images install requirements.lock and nothing newer.
+LOCK_OPTS := --generate-hashes --python-version 3.12 --python-platform x86_64-manylinux_2_28 --no-header
+lock:
+	.venv/bin/uv pip compile pyproject.toml $(LOCK_OPTS) -o requirements.lock
+	.venv/bin/uv pip compile pyproject.toml --extra dev -c requirements.lock $(LOCK_OPTS) -o requirements-dev.lock
 
 # Full stack in containers: database, API and web app on :3000.
 # `down` first because podman-compose will otherwise recreate containers from
@@ -48,7 +56,7 @@ RSYNC_EXCLUDES := --exclude .venv/ --exclude app/node_modules/ --exclude app/dis
 	--exclude __pycache__/ --exclude .pytest_cache/ --exclude .ruff_cache/ \
 	--exclude '*.tsbuildinfo' --exclude .env --exclude malrec.dump
 
-.PHONY: dev-sync dev-up dev-lab dev-ps dev-logs
+.PHONY: dev-sync dev-up dev-lab dev-test bench bench-baseline bench-snapshot dev-ps dev-logs
 
 # code only; the dev .env (VPN bind address, secrets) lives on the server
 dev-sync:
@@ -61,6 +69,24 @@ dev-up: dev-sync
 # e.g. make dev-lab CMD="python -u experiments/exp_final.py"
 dev-lab: dev-sync
 	ssh -t $(DEV) 'cd $(DEV_DIR) && docker compose --profile lab run --rm lab $(CMD)'
+
+# the test suite on the server, with the locked dev tools
+dev-test: dev-sync
+	ssh $(DEV) 'cd $(DEV_DIR) && docker compose --profile lab run --rm -T lab sh -c \
+		"pip install -q --no-warn-script-location --require-hashes -r requirements-dev.lock; \
+		 python -m pytest -q -p no:cacheprovider tests"'
+
+# The ranking benchmark (experiments/bench.py): frozen data, production code,
+# compared with experiments/bench/baseline.json. Run before merging any
+# ranking change; exit 1 means something got measurably worse.
+BENCH = ssh $(DEV) 'cd $(DEV_DIR) && docker compose --profile lab run --rm -T --user root lab python -u -m experiments.bench
+bench: dev-sync
+	$(BENCH)'
+bench-baseline: dev-sync
+	$(BENCH) --save-baseline'
+	scp -q $(DEV):$(DEV_DIR)/experiments/bench/baseline.json experiments/bench/baseline.json
+bench-snapshot: dev-sync
+	$(BENCH) --snapshot'
 
 dev-ps:
 	ssh $(DEV) 'docker ps --filter name=malrec --format "{{.Names}}\t{{.Status}}\t{{.Ports}}"'

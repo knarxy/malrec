@@ -4,7 +4,11 @@ Feedback affects recommendations in two ways:
   * hard filter - `not_interested`, `hidden` and `seen_it` remove an anime from
     eligible_candidates immediately, no retrain needed.
   * soft signal - `liked` and `queued` act as extra positive training rows so
-    the taste model learns from choices the user never scored on MAL.
+    the taste model learns from choices the user never scored on MAL;
+    `not_interested` becomes an implicit rating under the user's mean
+    (recsys.service.dismissal_examples) and takes the rest of its franchise
+    out of the discovery tabs (surfaces.dismissed_franchises). The API
+    queues a rebuild after it, so the lists follow within seconds.
 """
 from __future__ import annotations
 

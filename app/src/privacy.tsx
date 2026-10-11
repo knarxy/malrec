@@ -3,7 +3,6 @@
 // here describes what the code does - keep it in step when that changes.
 import { type ReactNode, useEffect, useState } from 'react'
 import { api, ApiError, type AuthState } from './api'
-import { BrandMark } from './components'
 import { useI18n } from './i18n'
 
 type Section = { h: string; p?: string[]; li?: string[] }
@@ -11,14 +10,15 @@ type Section = { h: string; p?: string[]; li?: string[] }
 const TEXT: Record<'en' | 'de', { title: string; intro: string; sections: Section[] }> = {
   en: {
     title: 'Privacy and your data',
-    intro: 'malrec recommends anime from your MyAnimeList list. It stores only what it needs for that, never sells or shares it, and has no ads, analytics or tracking.',
+    intro: 'malrec recommends anime from your MyAnimeList list. It stores only what it needs for that, never sells or shares it, and has no ads, no third-party analytics and no tracking across sites.',
     sections: [
       {
         h: 'What is stored when you sign in',
         li: [
           'Your MyAnimeList username, user ID and the address of your profile picture.',
           'A copy of your anime list: titles, status, scores and dates. Private lists are read with your permission.',
-          'What you do in the app: ratings, “Not for me”, Plan to Watch, rating-round answers, your language and filters.',
+          'What you do in the app: ratings, “Not for me”, Plan to Watch, rating-round answers, your language, filters and light/dark choice.',
+          'What you look at on your own lists: which tabs you open, which cards were on screen and which details you opened - one entry per title and day with a count, kept for 180 days. It shows whether the lists are useful and where new users get stuck; nothing else is recorded and nothing leaves this server.',
           'The MyAnimeList access tokens that let malrec read your list and save ratings and Plan to Watch entries for you. They are stored encrypted.',
           'A session cookie that keeps you signed in. It holds a random ID; the server keeps only a hash of it. Sessions end after 30 days.',
           'Your personal model and recommendations, computed from your list.',
@@ -38,7 +38,7 @@ const TEXT: Record<'en' | 'de', { title: string; intro: string; sections: Sectio
           'MyAnimeList: sign-in, reading your list, saving your changes.',
           'AniList: public catalogue data only. Nothing about you is sent.',
           'Cover images load from MyAnimeList’s and AniList’s image servers, which see your IP address like any website you visit. Fonts and everything else come from this site.',
-          'Your browser stores your language and filters so they work before you sign in.',
+          'Your browser stores your language, filters and light/dark choice so they work before you sign in.',
         ],
       },
       {
@@ -50,7 +50,7 @@ const TEXT: Record<'en' | 'de', { title: string; intro: string; sections: Sectio
       {
         h: 'How long it is kept, and deleting it',
         p: [
-          'Everything stays as long as your account exists. Deleting your account (below, when signed in) removes all of it at once: your list copy, ratings, models, recommendations, feedback, sessions, tokens and pairings. Only an anonymous fingerprint of your username stays, so your public list is never added to the sample later.',
+          'Everything stays as long as your account exists. Deleting your account (below, when signed in) removes all of it at once: your list copy, ratings, models, recommendations, feedback, usage entries, sessions, tokens and pairings. Only an anonymous fingerprint of your username stays, so your public list is never added to the sample later.',
           'Nightly backups of the database are kept for 7 days, so deleted data is gone from them within a week. Server logs can contain your username, never your list or tokens.',
           'Deleting your account changes nothing on MyAnimeList. You can also remove malrec’s access in your MyAnimeList account settings.',
         ],
@@ -59,14 +59,15 @@ const TEXT: Record<'en' | 'de', { title: string; intro: string; sections: Sectio
   },
   de: {
     title: 'Datenschutz und deine Daten',
-    intro: 'malrec empfiehlt Anime anhand deiner MyAnimeList-Liste. Es speichert nur, was es dafür braucht, verkauft oder teilt nichts und verwendet keine Werbung, keine Analyse und kein Tracking.',
+    intro: 'malrec empfiehlt Anime anhand deiner MyAnimeList-Liste. Es speichert nur, was es dafür braucht, verkauft oder teilt nichts und verwendet keine Werbung, keine Analysedienste Dritter und kein seitenübergreifendes Tracking.',
     sections: [
       {
         h: 'Was bei der Anmeldung gespeichert wird',
         li: [
           'Dein MyAnimeList-Name, deine Nutzer-ID und die Adresse deines Profilbilds.',
           'Eine Kopie deiner Anime-Liste: Titel, Status, Bewertungen und Daten. Private Listen werden mit deiner Erlaubnis gelesen.',
-          'Was du in der App tust: Bewertungen, „Nichts für mich“, Plan to Watch, Antworten in der Bewertungsrunde, Sprache und Filter.',
+          'Was du in der App tust: Bewertungen, „Nichts für mich“, Plan to Watch, Antworten in der Bewertungsrunde, Sprache, Filter und Hell/Dunkel-Wahl.',
+          'Was du dir in deinen eigenen Listen ansiehst: welche Tabs du öffnest, welche Karten auf dem Bildschirm waren und welche Details du geöffnet hast – ein Eintrag pro Titel und Tag mit Zähler, 180 Tage aufbewahrt. Das zeigt, ob die Listen nützen und wo neue Nutzer hängen bleiben; mehr wird nicht erfasst, und nichts verlässt diesen Server.',
           'Die MyAnimeList-Zugangstoken, mit denen malrec deine Liste liest und Bewertungen sowie Plan-to-Watch-Einträge für dich speichert. Sie werden verschlüsselt gespeichert.',
           'Ein Sitzungs-Cookie, das dich angemeldet hält. Es enthält eine zufällige ID; der Server speichert nur einen Hash davon. Sitzungen enden nach 30 Tagen.',
           'Dein persönliches Modell und deine Empfehlungen, berechnet aus deiner Liste.',
@@ -86,7 +87,7 @@ const TEXT: Record<'en' | 'de', { title: string; intro: string; sections: Sectio
           'MyAnimeList: Anmeldung, Lesen deiner Liste, Speichern deiner Änderungen.',
           'AniList: nur öffentliche Katalogdaten. Über dich wird nichts übertragen.',
           'Cover-Bilder werden von den Bildservern von MyAnimeList und AniList geladen, die dabei wie jede Website deine IP-Adresse sehen. Schriften und alles andere kommen von dieser Seite.',
-          'Dein Browser speichert Sprache und Filter, damit sie schon vor der Anmeldung funktionieren.',
+          'Dein Browser speichert Sprache, Filter und Hell/Dunkel-Wahl, damit sie schon vor der Anmeldung funktionieren.',
         ],
       },
       {
@@ -98,7 +99,7 @@ const TEXT: Record<'en' | 'de', { title: string; intro: string; sections: Sectio
       {
         h: 'Wie lange es gespeichert bleibt, und Löschen',
         p: [
-          'Alles bleibt gespeichert, solange dein Konto besteht. Wenn du dein Konto löschst (unten, wenn du angemeldet bist), wird alles sofort entfernt: Listenkopie, Bewertungen, Modelle, Empfehlungen, Feedback, Sitzungen, Token und Verbindungen. Nur ein anonymer Fingerabdruck deines Namens bleibt, damit deine öffentliche Liste später nicht in die Stichprobe aufgenommen wird.',
+          'Alles bleibt gespeichert, solange dein Konto besteht. Wenn du dein Konto löschst (unten, wenn du angemeldet bist), wird alles sofort entfernt: Listenkopie, Bewertungen, Modelle, Empfehlungen, Feedback, Nutzungseinträge, Sitzungen, Token und Verbindungen. Nur ein anonymer Fingerabdruck deines Namens bleibt, damit deine öffentliche Liste später nicht in die Stichprobe aufgenommen wird.',
           'Nächtliche Sicherungen der Datenbank werden 7 Tage aufbewahrt; gelöschte Daten sind daraus nach spätestens einer Woche verschwunden. Server-Protokolle können deinen Namen enthalten, nie deine Liste oder Token.',
           'Das Löschen deines Kontos ändert nichts auf MyAnimeList. Den Zugriff von malrec kannst du zusätzlich in deinen MyAnimeList-Kontoeinstellungen entfernen.',
         ],
@@ -148,8 +149,8 @@ export function PrivacyPage({ onLang }: { onLang: (l: 'en' | 'de') => void }) {
     <>
       <header className="topbar">
         <div className="wrap topbar-inner">
-          <a className="brand" href="/" style={{ textDecoration: 'none', color: 'inherit' }}>
-            <BrandMark />mal<span>rec</span>
+          <a className="brand" href="/" style={{ textDecoration: 'none' }}>
+            mal<span>rec</span>
           </a>
           <span className="spacer" />
           <select className="lang" value={lang} aria-label={t('Language')}

@@ -9,7 +9,7 @@ from collections.abc import Iterable, Sequence
 from psycopg.types.json import Jsonb
 
 from ..clients.mal import _date
-from ..db import conn
+from ..db import conn, returned, trusted_sql
 
 log = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ def upsert_anime(rows: Sequence[dict]) -> int:
 
     data = [tuple(cell(r, c) for c in cols) + (r.get("mal_fetched_at"),) for r in rows]
     with conn() as c, c.cursor() as cur:
-        cur.executemany(sql, data)
+        cur.executemany(trusted_sql(sql), data)
         c.commit()
     return len(data)
 
@@ -94,7 +94,7 @@ def upsert_anilist(rows: Sequence[dict]) -> int:
              Jsonb(r["raw"]) if r.get("raw") is not None else None,
              r["mal_id"]) for r in rows]
     with conn() as c, c.cursor() as cur:
-        cur.executemany(sql, data)
+        cur.executemany(trusted_sql(sql), data)
         c.commit()
     return len(data)
 
@@ -188,7 +188,7 @@ def upsert_list(user_id: int, entries: Sequence[dict]) -> int:
         # A removed entry should disappear rather than linger as a stale filter.
         cur.execute("DELETE FROM list_entry WHERE user_id=%s AND mal_id <> ALL(%s)",
                     (user_id, [d[1] for d in data]))
-        cur.executemany(sql, data)
+        cur.executemany(trusted_sql(sql), data)
         c.commit()
     return len(data)
 
@@ -201,7 +201,7 @@ def get_or_create_user(username: str) -> int:
             "RETURNING id",
             (username,),
         )
-        uid = cur.fetchone()["id"]
+        uid = returned(cur)["id"]
         c.commit()
     return uid
 

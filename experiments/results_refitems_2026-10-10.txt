@@ -1,0 +1,47 @@
+model 11: rho 0.8270 on 60 titles
+model 14: rho 0.8166 on 60 titles
+cutoff 2025-05-16, newest rating 2026-10-04
+
+title                                        start  you    m11    m14       raters watching  d err²
+Tate no Yuusha no Nariagari Season 2          2022    5   7.40   7.55   785/2529       0.02   +0.76
+86                                            2021    7   8.53   8.71  1287/3970       0.01   +0.58
+Death March kara Hajimaru Isekai Kyousouk     2018    6   7.35   7.50   601/2058       0.01   +0.44
+Seiken Gakuin no Makentsukai                  2023    5   7.24   7.33   278/780        0.04   +0.42
+Devilman: Crybaby                             2018    4   7.69   7.64  1153/3900       0.01   -0.40
+Gamers!                                       2017    6   7.70   7.57   708/2592       0.01   -0.39
+Kimetsu no Yaiba                              2019    7   8.27   8.41  2304/7722       0.01   +0.37
+Suzume no Tojimari                            2022    7   8.13   8.27   947/2989       0.00   +0.35
+Tate no Yuusha no Nariagari Season 3          2023    6   7.66   7.76   517/1599       0.01   +0.33
+Lazarus                                       2025    7   7.42   7.70   449/1240       0.03   +0.32
+Fate/Grand Order: First Order                 2016    6   7.45   7.55   437/1603       0.00   +0.30
+Hitoribocchi no Isekai Kouryaku               2024    6   7.47   7.37   292/797        0.02   -0.30
+Yuusha, Yamemasu                              2022    7   7.73   7.91   482/1520       0.02   +0.29
+Guimi Zhi Zhu: Xiaochou Pian                  2025    9   8.46   8.84   347/962        0.07   -0.27
+Tensei Kenja no Isekai Life: Dai-2 no Sho     2022    6   7.31   7.41   338/1048       0.02   +0.27
+Darwin's Game                                 2020    7   8.10   7.97   676/2334       0.01   -0.26
+Steins;Gate: Oukoubakko no Poriomania         2012   10   8.55   8.47   983/3641       0.00   +0.24
+Steins;Gate Movie: Fuka Ryouiki no Déjà v     2013   10   8.66   8.75   981/3479       0.00   -0.23
+Kiseijuu: Sei no Kakuritsu                    2014   10   8.64   8.57  1708/5902       0.01   +0.21
+Tondemo Skill de Isekai Hourou Meshi          2023    7   8.04   8.11   589/1822       0.02   +0.16
+
+change in squared error by start year (+ = model 14 worse)
+  2004:   1 titles, mean +0.015, sum +0.01
+  2006:   2 titles, mean -0.023, sum -0.05
+  2011:   2 titles, mean +0.065, sum +0.13
+  2012:   1 titles, mean +0.240, sum +0.24
+  2013:   3 titles, mean -0.077, sum -0.23
+  2014:   3 titles, mean +0.074, sum +0.22
+  2015:   3 titles, mean -0.000, sum -0.00
+  2016:   5 titles, mean +0.110, sum +0.55
+  2017:   1 titles, mean -0.395, sum -0.39
+  2018:   4 titles, mean +0.020, sum +0.08
+  2019:   4 titles, mean +0.059, sum +0.24
+  2020:   1 titles, mean -0.256, sum -0.26
+  2021:   4 titles, mean +0.129, sum +0.52
+  2022:   5 titles, mean +0.367, sum +1.83
+  2023:   7 titles, mean +0.140, sum +0.98
+  2024:   4 titles, mean -0.046, sum -0.18
+  2025:   6 titles, mean +0.004, sum +0.03
+  2026:   4 titles, mean +0.044, sum +0.18
+
+settings: recency half-life 0.5 | ease True

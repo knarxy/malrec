@@ -17,13 +17,17 @@ import logging
 import math
 from collections import Counter
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from .config import settings
 from .db import query
 from .features import load_rows, vectorise
-from .model import TasteModel
+from .model import Model, TasteModel
+
+if TYPE_CHECKING:
+    from .recsys.ltr import RankContext
 
 log = logging.getLogger(__name__)
 
@@ -84,10 +88,11 @@ def novelty(popularity: int | None) -> float:
     return min(1.0, math.log10(max(popularity or 9999, 1)) / 3.7)
 
 
-def score_candidates(user_id: int, model: TasteModel, rows: list[dict],
+def score_candidates(user_id: int | None, model: Model, rows: list[dict],
                      shortlist: int | None = None, enrich: bool = True,
                      long_model=None, mix: float = 0.0,
-                     pop_prior: float = 0.0) -> list[Candidate]:
+                     pop_prior: float = 0.0,
+                     learned: RankContext | None = None) -> list[Candidate]:
     """Predict for every eligible candidate, then keep the best `shortlist`.
 
     Scoring happens in two passes so that nothing is fetched speculatively:
@@ -101,8 +106,12 @@ def score_candidates(user_id: int, model: TasteModel, rows: list[dict],
     n = shortlist or cfg.shortlist_size
     ids = [r["mal_id"] for r in rows]
 
-    if hasattr(model, "predict_ids"):
-        return _score_hybrid(model, rows, n, enrich, long_model, mix, pop_prior, user_id)
+    from .recsys.scorer import HybridScorer
+    if isinstance(model, HybridScorer):
+        return _score_hybrid(model, rows, n, enrich, long_model, mix, pop_prior, user_id,
+                             learned)
+    if user_id is None:
+        raise ValueError("the legacy per-user model scores a stored user only")
 
     if enrich and len(ids) > n:
         cheap = load_rows(user_id, ids)
@@ -183,12 +192,31 @@ def _mix_bonus(model, long_model, ids: list[int], key: np.ndarray, weight: float
     return np.clip(out, -cap, cap) if cap > 0 else out
 
 
-def _score_hybrid(model, rows: list[dict], n: int, enrich: bool,
-                  long_model=None, mix: float = 0.0, pop_prior: float = 0.0,
-                  user_id: int | None = None) -> list[Candidate]:
-    """The whole eligible pool is scored in one vectorised pass; the item
-    store already holds every candidate's features, so nothing is fetched
-    except AniList data for the rare shortlisted title that still lacks it."""
+@dataclass
+class OrderTerms:
+    """Every term of the order key, per row of the pool (rank.order_terms)."""
+    raw: np.ndarray            # model output
+    ok: np.ndarray             # rows the model can score
+    shown: np.ndarray          # calibrated prediction (what ordering uses)
+    z: np.ndarray              # relevance, z-scored over the pool
+    rel: np.ndarray            # relevance bonus
+    pop: np.ndarray            # popularity prior (thin lists)
+    mix: np.ndarray            # long-memory bonus (Safe Bets, when configured)
+    risk: np.ndarray           # risk penalty, subtracted
+    key: np.ndarray            # shown + rel + mix + pop - risk + ltr; -inf where not ok
+    lam: float                 # the personal share the dials used
+    ltr: np.ndarray | None = None   # learned-order shift (recsys/ltr.py), when on
+
+
+def order_terms(model, rows: list[dict], long_model=None, mix: float = 0.0,
+                pop_prior: float = 0.0, user_id: int | None = None,
+                learned: RankContext | None = None,
+                familiar: set[str] | None = None) -> OrderTerms:
+    """The order key of a tab and every term in it, for the whole pool in one
+    vectorised pass. _score_hybrid ranks by it; diagnostics (experiments/
+    bench_misses.py) read the terms to tell why a title placed where it did.
+    `learned` mixes in the learned order (Safe Bets, recsys/ltr.py);
+    `familiar` stands in for the user's genres when there is no stored user."""
     ids = [r["mal_id"] for r in rows]
     raw = model.predict_ids(ids)
     ok = ~np.isnan(raw)
@@ -215,10 +243,36 @@ def _score_hybrid(model, rows: list[dict], n: int, enrich: bool,
         pop_part = w * float(key[ok].std()) * popz
         bonus = bonus + pop_part
     # a pick the user's own model doubts is not a safe one (exp_toplist.py)
-    risk = (np.asarray(model.risk_penalty(ids, familiar_genres(user_id)), dtype=float)
+    fam = familiar if familiar is not None else familiar_genres(user_id)
+    risk = (np.asarray(model.risk_penalty(ids, fam), dtype=float)
             if hasattr(model, "risk_penalty") else np.zeros(len(ids)))
     bonus = bonus - risk
     key = key + bonus
+    mix_part = bonus - pop_part + risk
+    t = OrderTerms(raw=raw, ok=ok, shown=rank_all, z=z, rel=rel, pop=pop_part,
+                   mix=mix_part, risk=risk, key=key, lam=lam, ltr=np.zeros(len(ids)))
+    from .recsys.scorer import HybridScorer
+    if learned is not None and isinstance(model, HybridScorer):
+        from .recsys.ltr import learned_shift
+        from .recsys.service import item_store
+        shift = learned_shift(model, t, ids, learned, item_store())
+        t.ltr, t.key = shift, key + shift
+    return t
+
+
+def _score_hybrid(model, rows: list[dict], n: int, enrich: bool,
+                  long_model=None, mix: float = 0.0, pop_prior: float = 0.0,
+                  user_id: int | None = None,
+                  learned: RankContext | None = None) -> list[Candidate]:
+    """The whole eligible pool is scored in one vectorised pass; the item
+    store already holds every candidate's features, so nothing is fetched
+    except AniList data for the rare shortlisted title that still lacks it."""
+    t = order_terms(model, rows, long_model, mix, pop_prior, user_id, learned)
+    raw, ok, z, rel, key = t.raw, t.ok, t.z, t.rel, t.key
+    pop_part, risk, lam = t.pop, t.risk, t.lam
+    # the learned shift rides in the bonus, so rerank and a filtered read
+    # (predicted + relevance + bonus) keep the same order
+    bonus = t.mix + t.pop - t.risk + (t.ltr if t.ltr is not None else 0.0)
     order = [k for k in np.argsort(-key) if ok[k]][:n]
     top = [rows[k] for k in order]
     if enrich:
@@ -382,12 +436,13 @@ def explain(user_id: int, cand: Candidate, user_mean: float) -> list[dict]:
 
 
 def attach_reasons(user_id: int, cands: list[Candidate], user_mean: float,
-                   model: TasteModel | None = None) -> None:
+                   model: Model | None = None) -> None:
     """Graph-based reasons plus, when the model can decompose, what actually
     drove the score. Without the latter a recommendation with no neighbour in
     the user's list shows no explanation at all, which is the case for most
     content-driven picks."""
-    if model is not None and hasattr(model, "explain"):
+    from .recsys.scorer import HybridScorer
+    if isinstance(model, HybridScorer):
         explained = model.explain([c.mal_id for c in cands], [c.novelty for c in cands],
                                   [c.relevance for c in cands])
         for c, reasons in zip(cands, explained):

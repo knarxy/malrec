@@ -80,14 +80,17 @@ def _raw_get(mal: MalClient, path: str, params: dict, tries: int = 6) -> tuple[i
         mal._throttle()
         try:
             r = mal._http.get(path, params=params)
-        except (httpx.TimeoutException, httpx.TransportError):
+        except (httpx.TimeoutException, httpx.TransportError) as e:
+            log.warning("MAL %s on %s (try %d)", type(e).__name__, path, attempt + 1)
             time.sleep(3 * (attempt + 1))
             continue
         if r.status_code == 200:
             return 200, r.json()
         if r.status_code in (403, 404):
             return r.status_code, {}
-        # 307 to error.json, 429 and 5xx are all transient load shedding
+        # 307 to error.json, 429 and 5xx are all transient load shedding;
+        # logged, so a bulk run can be watched for it (scripts/expand_population.sh)
+        log.warning("MAL shedding load: HTTP %s on %s (try %d)", r.status_code, path, attempt + 1)
         time.sleep(min(60, 3 * 2 ** attempt))
     return 0, {}
 
@@ -249,8 +252,10 @@ def _store_list(u: dict, entries: list[dict]) -> bool:
     return True
 
 
-def cf_lists(mal: MalClient) -> dict:
-    """Fetch every pending user's public list."""
+def cf_lists(mal: MalClient, workers: int = WORKERS) -> dict:
+    """Fetch every pending user's public list. More `workers` only let more
+    slow responses overlap; the client's limiter still decides how fast
+    requests start."""
     excluded = _app_user_hashes()
     pending = query("SELECT id, name, name_hash FROM cf_user WHERE state='pending' ORDER BY id")
     for u in pending:
@@ -260,7 +265,7 @@ def cf_lists(mal: MalClient) -> dict:
     log.info("lists: %d pending", len(pending))
 
     done = private = 0
-    with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+    with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(_fetch_list, mal, u["name"]): u for u in pending}
         for i, fut in enumerate(as_completed(futures)):
             u = futures[fut]
@@ -412,7 +417,7 @@ def discover_from_posts(mal: MalClient, want: int, topics_per_board: int = 40) -
                 break
             status, p = _raw_get(mal, f"/forum/topic/{t['id']}", {"limit": 100})
             posts = ((p.get("data") or {}).get("posts") or []) if status == 200 else []
-            names = {(x.get("created_by") or {}).get("name") for x in posts} - {None, ""}
+            names: set[str] = {n for x in posts if (n := (x.get("created_by") or {}).get("name"))}
             rows = [(name_hash(n), None if name_hash(n) in excluded else n,
                      "excluded" if name_hash(n) in excluded else "pending") for n in names]
             if not rows:
@@ -448,6 +453,101 @@ def cf_refresh(mal: MalClient, new_users: int = REFRESH_NEW_USERS,
         execute("DELETE FROM cf_rating WHERE user_id = ANY(%s)", ([r["id"] for r in retired],))
     out = {"discovered": found, **lists, "retired": len(retired)}
     log.info("cf refresh: %s", out)
+    return out
+
+
+# ------------------------------------------------------------- expansion --
+
+EXPAND_POST_PAGES = 5            # pages of 100 replies read per topic
+
+
+def _expand_boards(mal: MalClient) -> list[dict]:
+    _, b = _raw_get(mal, "/forum/boards", {})
+    boards = []
+    for cat in b.get("categories", []):
+        for board in cat.get("boards", []):
+            boards.append({"board_id": board["id"], "offset": 0, "done": False})
+            for sub in board.get("subboards", []) or []:
+                boards.append({"board_id": board["id"], "subboard_id": sub["id"],
+                               "offset": 0, "done": False})
+    return boards
+
+
+def _add_names(names: set[str], excluded: set[str], source: str) -> int:
+    rows = [(name_hash(n), None if name_hash(n) in excluded else n,
+             "excluded" if name_hash(n) in excluded else "pending", source) for n in names]
+    added = 0
+    with conn() as c, c.cursor() as cur:
+        for row in rows:
+            cur.execute("INSERT INTO cf_user (name_hash, name, state, source)"
+                        " VALUES (%s,%s,%s,%s) ON CONFLICT (name_hash) DO NOTHING"
+                        " RETURNING id", row)
+            if cur.fetchone() and row[2] == "pending":
+                added += 1
+        c.commit()
+    return added
+
+
+def expand_discover(mal: MalClient, want: int) -> int:
+    """Find `want` new usernames for the sample, resuming where the last call
+    stopped (fetch_state 'cf_expand').
+
+    Every board's topics newest first, and for each topic the posters of its
+    first pages of replies: people active on the forums now, so their lists
+    reach the newest seasons - which the population model needs most. Older
+    topics follow as the newer ones run dry.
+    """
+    st = _state("cf_expand")
+    cur = st["cursor"] or {}
+    boards = cur.get("boards") or _expand_boards(mal)
+    excluded = _app_user_hashes()
+    added = 0
+    # round-robin over boards, one listing page each, so no single board dominates
+    while added < want and any(not b["done"] for b in boards):
+        for b in boards:
+            if b["done"] or added >= want:
+                continue
+            params = {"board_id": b["board_id"], "limit": 100, "offset": b["offset"]}
+            if b.get("subboard_id"):
+                params["subboard_id"] = b["subboard_id"]
+            status, d = _raw_get(mal, "/forum/topics", params)
+            topics = d.get("data", []) if status == 200 else []
+            names = {n for t in topics for k in ("created_by", "last_post_created_by")
+                     if (n := (t.get(k) or {}).get("name"))}
+            added += _add_names(names, excluded, "mal_expand")
+            for t in topics:
+                if added >= want:
+                    break
+                for page in range(EXPAND_POST_PAGES):
+                    status, p = _raw_get(mal, f"/forum/topic/{t['id']}",
+                                         {"limit": 100, "offset": page * 100})
+                    posts = ((p.get("data") or {}).get("posts") or []) if status == 200 else []
+                    added += _add_names({n for x in posts
+                                         if (n := (x.get("created_by") or {}).get("name"))},
+                                        excluded, "mal_expand")
+                    if len(posts) < 100:
+                        break
+            b["offset"] += 100
+            if status != 200 or len(topics) < 100:
+                b["done"] = True
+            _save("cf_expand", {"boards": boards})
+        log.info("expand: %d new usernames so far", added)
+    return added
+
+
+def cf_expand(mal: MalClient, chunk: int) -> dict:
+    """One step of growing the sample: discover up to `chunk` new users, then
+    fetch every pending public list. Run repeatedly (scripts/
+    expand_population.sh), each step under the shared MAL lock, so the
+    nightly jobs can run between steps."""
+    pending = scalar("SELECT count(*) FROM cf_user WHERE state='pending'") or 0
+    found = expand_discover(mal, max(0, chunk - pending)) if pending < chunk else 0
+    # Eight lists in flight at 1.5 req/s made MAL shed load (976 307s in an
+    # hour, 2026-10-09); three at 1 req/s is the setting it has always taken.
+    lists = cf_lists(mal)
+    total = scalar("SELECT count(*) FROM cf_user WHERE state='done'") or 0
+    out = {"discovered": found, **lists, "lists_total": total}
+    log.info("cf expand: %s", out)
     return out
 
 

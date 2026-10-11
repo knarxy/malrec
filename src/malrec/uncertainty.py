@@ -36,7 +36,7 @@ def residual_quantiles(pred, truth) -> list[float]:
     return [round(float(x), 3) for x in np.quantile(e, QS)]
 
 
-def band(pred: float, q: list[float] | None, idx: tuple[int, int] | None = None) -> dict | None:
+def band(pred: float | None, q: list[float] | None, idx: tuple[int, int] | None = None) -> dict | None:
     """{'low', 'high', 'p9'} for a displayed prediction, or None. `idx` are
     the quantile indices of the band (default LOW, HIGH)."""
     if q is None or pred is None or not np.isfinite(pred):

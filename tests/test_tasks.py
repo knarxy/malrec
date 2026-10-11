@@ -121,6 +121,7 @@ def test_worker_status_tells_alive_from_stalled_and_stuck(monkeypatch):
               "oldest_queued_s": 12, "longest_running_s": 30}
     beat = {"started_at": None, "beat_at": None, "threads": 1, "silent_s": 20}
     monkeypatch.setattr(tasks, "one", lambda sql, p=None: beat if "worker_status" in sql else counts)
+    monkeypatch.setattr(tasks, "require_one", lambda sql, p=None: counts)   # the task counts
     monkeypatch.setattr(malrec.db, "query", lambda sql, p=None: [])
     assert tasks.status()["state"] == "ok"
     counts["longest_running_s"] = tasks.STUCK_AFTER_S + 1

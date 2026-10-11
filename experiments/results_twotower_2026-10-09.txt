@@ -1,0 +1,93 @@
+4810 users (3463 fit / 625 stack / 722 eval); torch 2.14.1+cpu, 4 threads
+  population model cached  [7s]
+    epoch  0: loss 6.725  [35s]
+    epoch  5: loss 5.983  [73s]
+    epoch 10: loss 5.840  [110s]
+    epoch 15: loss 5.777  [147s]
+    epoch 20: loss 5.738  [183s]
+    epoch 25: loss 5.711  [220s]
+    epoch 30: loss 5.684  [257s]
+    epoch 35: loss 5.662  [296s]
+    epoch 39: loss 5.638  [326s]
+  two-tower trained (30128 titles with an ID)  [326s]
+  sampled 25: 100 users  [367s]
+  sampled 150: 100 users  [501s]
+  sampled 400: 100 users  [651s]
+
+==== WARM: every title seen in training
+
+== sampled 25 (100 users)
+   arm                    rho             r50           hit10           bad10  overlap   pop#  cold r50  [663s]
+   PROD                0.5328          0.1818          0.1840          0.0260    0.061    113            [663s]
+   TT                       —   0.1911+0.009    0.2210+0.037    0.0170-0.009     0.017    307            [663s]
+   PROD+TT      0.5328+0.000    0.1944+0.013    0.2380+0.054+   0.0200-0.006     0.183     45            [663s]
+   PROD+MIX     0.5328+0.000    0.1989+0.017+   0.2380+0.054+   0.0270+0.001     0.125     59            [663s]
+
+== sampled 150 (100 users)
+   arm                    rho             r50           hit10           bad10  overlap   pop#  cold r50  [663s]
+   PROD                0.5487          0.2164          0.2940          0.0160    0.051    247            [663s]
+   TT                       —   0.2073-0.009    0.2760-0.018    0.0210+0.005     0.022    279            [663s]
+   PROD+TT      0.5487+0.000    0.1881-0.028-   0.2790-0.015    0.0080-0.008+    0.082    183            [663s]
+   PROD+MIX     0.5487+0.000    0.2101-0.006    0.3100+0.016    0.0140-0.002     0.065    222            [663s]
+
+== sampled 400 (100 users)
+   arm                    rho             r50           hit10           bad10  overlap   pop#  cold r50  [663s]
+   PROD                0.5676          0.2047          0.3840          0.0190    0.045    430            [663s]
+   TT                       —   0.1769-0.028-   0.3000-0.084-   0.0240+0.005     0.019    366            [663s]
+   PROD+TT      0.5676+0.000    0.1831-0.022-   0.3420-0.042-   0.0190+0.000     0.053    432            [663s]
+   PROD+MIX     0.5676+0.000    0.2030-0.002    0.3910+0.007    0.0190+0.000     0.049    410            [663s]
+
+== reference (8 splits)
+   arm                    rho             r50           hit10           bad10  overlap   pop#  cold r50  [663s]
+   PROD                0.7686          0.5112          0.3750          0.0000    0.460    229            [663s]
+   TT                       —   0.3314-0.180-   0.0500-0.325-   0.0000+0.000     0.830    158            [663s]
+   PROD+TT      0.7686+0.000    0.4289-0.082-   0.2125-0.163-   0.0000+0.000     0.630    289            [663s]
+   PROD+MIX     0.7686+0.000    0.4864-0.025-   0.3750-0.000    0.0000+0.000     0.461    229            [663s]
+   (+/- : better/worse than PROD by more than two standard errors, paired)  [663s]
+  population model fitted without 485 hidden titles  [820s]
+    epoch  0: loss 6.707  [844s]
+    epoch  5: loss 5.963  [882s]
+    epoch 10: loss 5.853  [919s]
+    epoch 15: loss 5.779  [954s]
+    epoch 20: loss 5.732  [990s]
+    epoch 25: loss 5.691  [1026s]
+    epoch 30: loss 5.660  [1062s]
+    epoch 35: loss 5.638  [1098s]
+    epoch 39: loss 5.626  [1126s]
+  two-tower trained (29643 titles with an ID)  [1127s]
+  sampled 25: 100 users  [1166s]
+  sampled 150: 100 users  [1304s]
+  sampled 400: 100 users  [1461s]
+
+==== COLD: 485 pool titles hidden from all training
+
+== sampled 25 (100 users)
+   arm                    rho             r50           hit10           bad10  overlap   pop#  cold r50  [1475s]
+   PROD                0.5187          0.1715          0.1920          0.0230    0.070    114     0.000  [1475s]
+   TT                       —   0.1827+0.011    0.1940+0.002    0.0140-0.009     0.016    319     0.140  [1475s]
+   PROD+TT      0.5187+0.000    0.1846+0.013    0.2250+0.033+   0.0200-0.003     0.185     50     0.060  [1475s]
+   PROD+MIX     0.5187+0.000    0.1885+0.017+   0.2220+0.030+   0.0210-0.002     0.135     73     0.002  [1475s]
+
+== sampled 150 (100 users)
+   arm                    rho             r50           hit10           bad10  overlap   pop#  cold r50  [1475s]
+   PROD                0.5314          0.1951          0.2980          0.0150    0.060    280     0.000  [1475s]
+   TT                       —   0.1771-0.018    0.2310-0.067-   0.0260+0.011     0.021    260     0.130  [1475s]
+   PROD+TT      0.5314+0.000    0.1746-0.021-   0.2500-0.048-   0.0100-0.005     0.089    227     0.009  [1475s]
+   PROD+MIX     0.5314+0.000    0.1925-0.003    0.3040+0.006    0.0130-0.002     0.075    236     0.000  [1475s]
+
+== sampled 400 (100 users)
+   arm                    rho             r50           hit10           bad10  overlap   pop#  cold r50  [1475s]
+   PROD                0.5620          0.1904          0.3700          0.0170    0.050    445     0.000  [1475s]
+   TT                       —   0.1563-0.034-   0.2830-0.087-   0.0270+0.010     0.019    348     0.129  [1475s]
+   PROD+TT      0.5620+0.000    0.1691-0.021-   0.3190-0.051-   0.0200+0.003     0.058    421     0.012  [1475s]
+   PROD+MIX     0.5620+0.000    0.1895-0.001    0.3710+0.001    0.0230+0.006     0.054    414     0.000  [1475s]
+
+== reference (8 splits)
+   arm                    rho             r50           hit10           bad10  overlap   pop#  cold r50  [1475s]
+   PROD                0.7039          0.3427          0.1375          0.0000    0.404    240     0.000  [1475s]
+   TT                       —   0.1942-0.149-   0.0875-0.050    0.0000+0.000     0.695    152     0.000  [1475s]
+   PROD+TT      0.7039+0.000    0.2958-0.047    0.0375-0.100    0.0000+0.000     0.555    325     0.000  [1475s]
+   PROD+MIX     0.7039+0.000    0.3372-0.006    0.1000-0.037    0.0000+0.000     0.476    245     0.000  [1475s]
+   (+/- : better/worse than PROD by more than two standard errors, paired)  [1475s]
+  done  [1475s]
+==== DONE 0

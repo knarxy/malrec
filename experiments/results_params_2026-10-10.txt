@@ -1,0 +1,31 @@
+  default done, fit 537s [906s]
+  mf_rank=64 done, fit 613s [1897s]
+  mf_rank=96 done, fit 726s [3008s]
+  knn_k=120 done, fit 547s [3944s]
+  sim_shrink=50 done, fit 539s [4861s]
+  min_item_raters=30 done, fit 483s [5720s]
+  bias_shrink=25 done, fit 534s [6628s]
+
+                 arm  fit s                        sampled 25                       sampled 150                       sampled 400                         reference
+                                    rho        r50      hit10         rho        r50      hit10         rho        r50      hit10         rho        r50      hit10
+             default    537      0.4986     0.1764     0.1790      0.5658     0.2108     0.2770      0.5922     0.2064     0.3690      0.7546     0.4770     0.3875
+          mf_rank=64    613      0.4948     0.1741     0.1800      0.5656     0.2044     0.2660      0.5908     0.2045     0.3770      0.7481     0.4635     0.4750
+          mf_rank=96    726      0.4996     0.1786     0.1830      0.5640     0.2033     0.2680      0.5909     0.2032     0.3770      0.7250     0.3751     0.3875
+           knn_k=120    547      0.4991     0.1864     0.1960      0.5656     0.2062     0.2820      0.5925     0.2055     0.3690      0.7551     0.4711     0.3875
+       sim_shrink=50    539      0.4986     0.1739     0.1820      0.5659     0.2096     0.2770      0.5923     0.2069     0.3740      0.7536     0.4770     0.3875
+  min_item_raters=30    483      0.4963     0.1743     0.1800      0.5666     0.2109     0.2750      0.5920     0.2038     0.3720      0.7491     0.4715     0.4000
+      bias_shrink=25    534      0.4993     0.1743     0.1790      0.5660     0.2106     0.2750      0.5925     0.2058     0.3700      0.7534     0.4770     0.4000
+
+[6628s]
+==== DONE 0
+13150 training users, 3460 from the original sources; stacker users 2374, 626 original [3s]
+  model11-users (4266 users) done [234s]
+  old/old (3460 users) done [442s]
+
+        arm  users                        sampled 25                       sampled 150                       sampled 400                         reference
+                           rho        r50      hit10         rho        r50      hit10         rho        r50      hit10         rho        r50      hit10
+model11-users   4266      0.4701     0.1173     0.0800      0.5125     0.1671     0.2100      0.6050     0.2005     0.4100      0.7846     0.4733     0.3125
+    old/old   3460      0.4623     0.1160     0.0600      0.5031     0.1602     0.2100      0.5850     0.2023     0.3900      0.7420     0.4364     0.3250
+
+[442s]
+==== DONE 0

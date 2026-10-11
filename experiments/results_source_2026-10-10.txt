@@ -1,0 +1,75 @@
+13150 training users, 3460 from the original sources [3s]
+snapshot 2026-10-10: 18264 users (13150 fit / 2374 stack / 2740 eval), pool 4851, population model fitted [2s]
+  sampled 25: 100 users [45s]
+  sampled 150: 100 users [187s]
+  sampled 400: 100 users [357s]
+  old (3460 users) done [528s]
+snapshot 2026-10-10: 18264 users (13150 fit / 2374 stack / 2740 eval), pool 4851, population model fitted [3s]
+  sampled 25: 100 users [42s]
+  sampled 150: 100 users [187s]
+  sampled 400: 100 users [356s]
+  random (3460 users) done [1011s]
+snapshot 2026-10-10: 18264 users (13150 fit / 2374 stack / 2740 eval), pool 4851, population model fitted [3s]
+  sampled 25: 100 users [45s]
+  sampled 150: 100 users [189s]
+  sampled 400: 100 users [357s]
+  all (13150 users) done [1922s]
+
+    arm  users                        sampled 25                       sampled 150                       sampled 400                         reference
+                       rho        r50      hit10         rho        r50      hit10         rho        r50      hit10         rho        r50      hit10
+    old   3460      0.4956     0.1785     0.2100      0.5537     0.2081     0.2770      0.5843     0.1984     0.3720      0.7527     0.4648     0.3125
+ random   3460      0.4958     0.1877     0.2180      0.5615     0.2162     0.2890      0.5852     0.2074     0.3740      0.7197     0.4377     0.3875
+    all  13150      0.4986     0.1764     0.1790      0.5658     0.2108     0.2770      0.5922     0.2064     0.3690      0.7546     0.4770     0.3875
+
+[1922s]
+==== DONE 0
+13150 training users, 3460 from the original sources; stacker users 2374, 626 original [3s]
+snapshot 2026-10-10: 18264 users (13150 fit / 2374 stack / 2740 eval), pool 4851, population model fitted [2s]
+  sampled 25: 100 users [41s]
+  sampled 150: 100 users [179s]
+  sampled 400: 100 users [348s]
+  old/old (3460 users) done [513s]
+snapshot 2026-10-10: 18264 users (13150 fit / 2374 stack / 2740 eval), pool 4851, population model fitted [2s]
+  sampled 25: 100 users [46s]
+  sampled 150: 100 users [190s]
+  sampled 400: 100 users [358s]
+  all/old (13150 users) done [1415s]
+snapshot 2026-10-10: 18264 users (13150 fit / 2374 stack / 2740 eval), pool 4851, population model fitted [2s]
+  sampled 25: 100 users [43s]
+  sampled 150: 100 users [187s]
+  sampled 400: 100 users [358s]
+  all/random (13150 users) done [2334s]
+snapshot 2026-10-10: 18264 users (13150 fit / 2374 stack / 2740 eval), pool 4851, population model fitted [3s]
+  sampled 25: 100 users [44s]
+  sampled 150: 100 users [189s]
+  sampled 400: 100 users [358s]
+  all/all (13150 users) done [3255s]
+
+pop/stacker  users                        sampled 25                       sampled 150                       sampled 400                         reference
+                           rho        r50      hit10         rho        r50      hit10         rho        r50      hit10         rho        r50      hit10
+    old/old   3460      0.4946     0.1780     0.2070      0.5534     0.2039     0.2750      0.5832     0.1970     0.3710      0.7420     0.4364     0.3250
+    all/old  13150      0.4999     0.1735     0.1790      0.5621     0.2080     0.2730      0.5902     0.2053     0.3700      0.7499     0.4604     0.3875
+ all/random  13150      0.4978     0.1741     0.1790      0.5655     0.2083     0.2740      0.5921     0.2053     0.3680      0.7605     0.4778     0.4000
+    all/all  13150      0.4986     0.1764     0.1790      0.5658     0.2108     0.2770      0.5922     0.2064     0.3690      0.7546     0.4770     0.3875
+
+[3255s]
+==== DONE 0
+13150 training users, 3460 from the original sources; stacker users 2374, 626 original [3s]
+  m11 85% #0 (3626 users) done [206s]
+  m11 85% #1 (3626 users) done [412s]
+  m11 85% #2 (3626 users) done [611s]
+  all 85% #0 (11177 users) done [1113s]
+  all 85% #1 (11177 users) done [1626s]
+  all 85% #2 (11177 users) done [2129s]
+
+          arm  users                        sampled 25                       sampled 150                       sampled 400                         reference
+                           rho        r50      hit10         rho        r50      hit10         rho        r50      hit10         rho        r50      hit10
+   m11 85% #0   3626      0.4707     0.1042     0.1100      0.5126     0.1636     0.2300      0.5971     0.2002     0.3600      0.7792     0.4653     0.3500
+   m11 85% #1   3626      0.4508     0.1077     0.1000      0.5121     0.1777     0.2700      0.6065     0.2106     0.3900      0.7830     0.4463     0.3500
+   m11 85% #2   3626      0.4704     0.1202     0.0900      0.4962     0.1711     0.2500      0.6165     0.2093     0.3500      0.7802     0.4339     0.4125
+   all 85% #0  11177      0.4256     0.1102     0.0800      0.5106     0.1608     0.2300      0.6040     0.2051     0.4600      0.7545     0.4618     0.3625
+   all 85% #1  11177      0.4155     0.1268     0.0800      0.5035     0.1519     0.2200      0.5994     0.2064     0.3500      0.7518     0.4320     0.3875
+   all 85% #2  11177      0.4183     0.1083     0.0800      0.4970     0.1698     0.2500      0.6058     0.2198     0.4200      0.7724     0.4947     0.4250
+
+[2129s]
+==== DONE 0

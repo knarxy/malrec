@@ -87,6 +87,99 @@ export function Why({ reasons }: { reasons: Reason[] }) {
   )
 }
 
+/** Drivers are drawn on one fixed scale, so bars compare across cards. */
+const DRIVER_SCALE = 1.05
+
+/** The card's reasons, laid out rather than written: the titles on your list
+ *  it is tied to (with your score), what speaks for it as bars split into
+ *  your list's signals and the community's, and its matching tags. Titles
+ *  with neither a link nor drivers fall back to the written sentences. */
+export function Reasons({ item }: { item: Recommendation }) {
+  const { t, label } = useI18n()
+  const reasons = item.reasons ?? []
+  const liked = reasons.filter(
+    (r): r is Extract<Reason, { kind: 'because_you_liked' }> => r.kind === 'because_you_liked')
+  const cont = reasons.find(
+    (r): r is Extract<Reason, { kind: 'continues' }> => r.kind === 'continues')
+  const coming = reasons.find(
+    (r): r is Extract<Reason, { kind: 'coming' }> => r.kind === 'coming')
+  const drivers = (reasons.find(
+    (r): r is Extract<Reason, { kind: 'drivers' }> => r.kind === 'drivers')?.items ?? [])
+    .filter((d) => d.weight > 0).sort((a, b) => b.weight - a.weight).slice(0, 4)
+  const tags = reasons.find(
+    (r): r is Extract<Reason, { kind: 'tags' }> => r.kind === 'tags')?.tags ?? []
+  const gem = reasons.some((r) => r.kind === 'deep_cut')
+
+  const links = cont
+    ? [{ title: cont.title, score: cont.your_score, note: t(coming ? 'r.new_in' : 'r.continues') }]
+    : liked.slice(0, 3).map((l) => ({ title: l.title, score: l.your_score, note: null }))
+
+  return (
+    <div className="reasons">
+      <div className="r-links">
+        {(coming || item.also_in || gem) && (
+          <div className="r-flags">
+            {coming && <Why reasons={[coming]} />}
+            {item.also_in && <span className="flag">{t('card.also_in', { tab: t(`tab.${item.also_in}`) })}</span>}
+            {gem && <span className="flag">{t('r.gem')}</span>}
+          </div>
+        )}
+        {links.length > 0 ? (
+          <>
+            <div className="r-h">{t(cont ? 'r.continues_h' : 'r.liked_h')}</div>
+            <ul className="r-liked">
+              {links.map((l) => (
+                <li key={l.title}>
+                  <span className="r-title">{l.title}{l.note && <span className="r-note"> · {l.note}</span>}</span>
+                  <b>{l.score}</b>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <Why reasons={reasons.filter((r) => r.kind !== 'coming')} />
+        )}
+        {!unairedReasons(reasons) && <Likely item={item} />}
+      </div>
+      {drivers.length > 0 && (
+        <div className="r-drivers">
+          <div className="r-h">{t('r.drivers_h')}</div>
+          {drivers.map((d) => (
+            <div className="r-driver" key={d.label}
+                 title={t(d.personal ? 'r.from_you' : 'r.from_all')}>
+              <span className="r-label">{label(d.label)}</span>
+              <span className="r-track">
+                <span className={d.personal ? 'r-bar you' : 'r-bar all'}
+                      style={{ width: `${Math.min(100, (d.weight / DRIVER_SCALE) * 100)}%` }} />
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      {tags.length > 0 && (
+        <div className="r-tags">
+          {tags.slice(0, 5).map((g) => <span className="tag" key={g}>{label(g)}</span>)}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function unairedReasons(reasons: Reason[]): boolean {
+  return reasons.some((r) => r.kind === 'coming')
+}
+
+/** The two bar colours, explained once above the cards. */
+export function ReasonLegend() {
+  const { t } = useI18n()
+  return (
+    <div className="legend" aria-hidden="true">
+      <span><i className="r-bar you" />{t('r.from_you')}</span>
+      <span><i className="r-bar all" />{t('r.from_all')}</span>
+    </div>
+  )
+}
+
 /** "likely 7-9 · 35 % chance of 9+" under a prediction. */
 export function Likely({ item }: { item: Recommendation }) {
   const { t } = useI18n()

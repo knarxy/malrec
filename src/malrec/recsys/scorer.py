@@ -164,7 +164,7 @@ class HybridScorer:
         (CONSENSUS_FEATURES). Zero without a personal ridge."""
         out = np.zeros(len(ids))
         p = self.personal if getattr(self.um.inner, "ridge", None) is not None else None
-        if p is None or p.vocab is None:
+        if p is None or p.vocab is None or p.ridge is None:
             return out
         names = list(p.vocab.names)
         coef = np.asarray(p.ridge.coef_, dtype=float)
@@ -259,7 +259,7 @@ class HybridScorer:
                     if label:
                         stack_out[k][label] = stack_out[k].get(label, 0.0) + C[k, j]
         p = self.personal
-        if p is not None and lam > 0:
+        if p is not None and p.ridge is not None and p.vocab is not None and lam > 0:
             X = p._features(rows)
             coef = np.asarray(p.ridge.coef_, dtype=float)
             p_stack = STACK_FEATURES + stacker_extras(p.stacker)

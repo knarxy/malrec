@@ -28,6 +28,8 @@ export interface Recommendation {
   season: string | null
   mal_mean: number | null
   mal_popularity: number | null
+  /** MAL members with the title on their list */
+  mal_num_list_users?: number | null
   picture_medium: string | null
   picture_large: string | null
   synopsis: string | null
@@ -60,6 +62,8 @@ export interface Prefs {
   filters?: Filters
   /** the first-visit hint was dismissed */
   intro_seen?: boolean
+  /** light or dark; unset follows the system */
+  theme?: 'light' | 'dark'
 }
 
 export interface Pair { id: number; status: string; outgoing: boolean; other: string }
@@ -283,7 +287,27 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>
 }
 
+export type UsageKind = 'app_open' | 'tab_view' | 'card_seen' | 'details_open'
+export interface UsageEvent { kind: UsageKind; surface?: string; mal_id?: number; rank?: number }
+
+export interface UsageFunnel {
+  since: string | null
+  steps: { step: string; users: number }[]
+  users: {
+    id: number; mal_username: string; status: string; signed_up: string | null
+    entries: number; recs: number; first_visit: string | null; last_visit: string | null
+    first_action: string | null; days_7: number; cards_7: number; details_7: number
+    actions_7: number; steps: Record<string, boolean>
+  }[]
+}
+
 export const api = {
+  /** keepalive so a batch still goes out while the tab is being closed */
+  events: (events: UsageEvent[]) =>
+    req<{ recorded: number }>('/me/events', {
+      method: 'POST', headers: CSRF, body: JSON.stringify({ events }), keepalive: true,
+    }),
+  adminUsage: () => req<UsageFunnel>('/admin/usage'),
   authMe: () => req<AuthState>('/auth/me'),
 
   authConfig: () => req<{ redirect_uri: string | null; register_at: string;

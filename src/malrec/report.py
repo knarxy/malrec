@@ -19,7 +19,7 @@ from __future__ import annotations
 import numpy as np
 
 from .config import settings
-from .db import one, query
+from .db import one, query, require_one
 from .eval import prospective, spearman
 from .recsys.service import (
     GATE_SPLITS,
@@ -53,6 +53,8 @@ def user_report(user_id: int) -> dict:
     for h in GATE_SPLITS:
         test = rated[-h:]
         um = fit_for_user(user_id, cutoff=test[0]["at"], half_life=params.get("half_life"))
+        if um is None:
+            continue
         items = [r["mal_id"] for r in test]
         truth = np.array([r["score"] for r in test])
         p = um.predict(items)
@@ -79,7 +81,7 @@ def report() -> dict:
     gm = active_global()
     out: dict = {"population_model": None}
     if gm is not None:
-        gid = one("SELECT id FROM global_model WHERE active")["id"]
+        gid = require_one("SELECT id FROM global_model WHERE active")["id"]
         out["population_model"] = {
             "id": gid, "users": gm.meta.get("users"),
             "range_coverage_80_by_size": {r["n"]: r.get("coverage80")

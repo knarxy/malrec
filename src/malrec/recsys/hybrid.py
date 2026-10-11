@@ -96,7 +96,8 @@ class Example:
     mal_id: int
     score: float
     weight: float
-    at: object = None          # datetime; used to hold out the newest for blending
+    at: dt.datetime | None = None   # used to hold out the newest for blending
+    foldin: bool = False            # an implicit row placed in the population fold-in too
 
 
 MODES = ("personal", "stack", "hierarchical", "augmented", "blend", "sized")
@@ -158,6 +159,8 @@ class UserModel:
         return self.store.user_rows(items, self.taste, staff_aff=aff)
 
     def _features(self, rows: list[dict]) -> np.ndarray:
+        if self.vocab is None:
+            raise RuntimeError("this user model has no personal part fitted")
         X = vectorise(rows, self.vocab)
         if not self.with_stack_features:
             return X
@@ -249,7 +252,9 @@ def fit_user(pop: PopulationModel, stacker: Ridge, store: ItemStore,
         raise ValueError(f"mode must be one of {MODES}")
     implicit = implicit or []
     examples = scored + implicit
-    placed = examples if implicit_in_foldin else scored
+    # a "Not for me" row also goes into the fold-in (service.dismissal_examples):
+    # thin lists have no personal model to learn from it
+    placed = examples if implicit_in_foldin else scored + [e for e in implicit if e.foldin]
     fold = pop.fold_in({e.mal_id: e.score for e in placed},
                        {e.mal_id: e.weight for e in placed}, listed=listed)
     # taste vector from real ratings only, as the SQL version does
@@ -291,6 +296,7 @@ def fit_user(pop: PopulationModel, stacker: Ridge, store: ItemStore,
         # being predicted never carry it, so they are scored at today's level
         dated = [e.at for e in ex if e.at is not None]
         ref = max(dated) if dated else None
+        shift = None                        # Koren's curve and today's value on it
         if trend == "koren" and dated:
             # Koren (KDD 2009): dev_u(t) = sign(t - t_u) |t - t_u|^0.4 in days,
             # t_u the user's mean rating date; shifted so today's level is 0
@@ -300,12 +306,12 @@ def fit_user(pop: PopulationModel, stacker: Ridge, store: ItemStore,
             def dev(t):
                 days = (t - t_u).total_seconds() / 86_400.0
                 return math.copysign(abs(days) ** 0.4, days) / 10.0
-            dev_ref = dev(ref)
+            shift = (dev, dev(ref))
         for r, e in zip(rows, ex):
             if ref is None or e.at is None:
                 r["age_y"] = 0.0
-            elif trend == "koren":
-                r["age_y"] = dev(e.at) - dev_ref
+            elif shift is not None:
+                r["age_y"] = shift[0](e.at) - shift[1]
             else:
                 yrs = (ref - e.at).total_seconds() / 31_557_600.0
                 r["age_y"] = min(yrs, 3.0) if trend == "lin3" else math.log1p(max(yrs, 0.0))
@@ -432,7 +438,7 @@ def fit_stacker(pop: PopulationModel, users: dict[int, list[tuple]], store: Item
         X.append(stack_matrix(sig, items, store, extras))
         y.append(np.array([s for _, s, _ in test]) - fi.mu)
     model = Ridge(alpha=5.0).fit(np.vstack(X), np.concatenate(y))
-    model.extras_ = extras
+    model.extras_ = extras  # pyright: ignore[reportAttributeAccessIssue] - read by stacker_extras
     return model
 
 

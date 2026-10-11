@@ -316,9 +316,18 @@ def test_gate_lets_the_exam_decide_and_keeps_a_user_veto():
     # the exam alone can refuse ...
     ok, why = gate_decision(user, user, {"delta": -0.005})
     assert not ok and why.startswith("exam failed")
-    # ... and the gate user can veto a clear loss on their own splits
+    # ... the gate user can veto a clear loss on their own splits while the
+    # exam is within the noise ...
     ok, why = gate_decision(user, [u - 0.02 for u in user], {"delta": 0.01})
     assert not ok and "veto" in why
+    ok, why = gate_decision(user, [u - 0.02 for u in user], {"delta": 0.004, "se": 0.003})
+    assert not ok and "veto" in why
+    # ... but not against a clearly better exam (2026-10-10: +.010 vs -.022)
+    ok, why = gate_decision(user, [u - 0.022 for u in user], {"delta": 0.0101, "se": 0.002})
+    assert ok and "outweighs" in why
+    # a far larger loss refuses whatever the exam says
+    ok, why = gate_decision(user, [u - 0.06 for u in user], {"delta": 0.02, "se": 0.002})
+    assert not ok and "floor" in why
 
 
 def test_blend_options_follow_config(monkeypatch):
@@ -622,3 +631,171 @@ def test_training_reuses_the_half_life_until_the_list_outgrows_it(monkeypatch):
     assert model.kept_half_life(1) is None                 # grown: search again
     monkeypatch.setattr(model, "one", lambda sql, p=None: None)
     assert model.kept_half_life(1) is None                 # first training: search
+
+
+def test_the_fast_penalty_search_picks_what_a_fit_per_alpha_picks():
+    """choose_alpha solves every alpha from one decomposition per fold; it must
+    agree with fitting sklearn's Ridge for each alpha and fold."""
+    from sklearn.linear_model import Ridge
+    from sklearn.model_selection import KFold
+
+    from malrec.model import RIDGE_ALPHAS, choose_alpha
+
+    def slow(X, y, w, folds=10):
+        best, best_err = RIDGE_ALPHAS[0], float("inf")
+        for a in RIDGE_ALPHAS:
+            errs = []
+            for tr, te in KFold(min(folds, len(y)), shuffle=True, random_state=0).split(X):
+                r = Ridge(alpha=a).fit(X[tr], y[tr], sample_weight=w[tr]).predict(X[te]) - y[te]
+                errs.append(float(np.average(r ** 2, weights=w[te])))
+            if np.mean(errs) < best_err:
+                best, best_err = a, float(np.mean(errs))
+        return best
+
+    rng = np.random.default_rng(0)
+    for n, p, noise in ((60, 30, 1.0), (200, 120, 0.3), (40, 80, 2.0), (500, 20, 0.1)):
+        X = rng.normal(size=(n, p))
+        y = X @ rng.normal(size=p) * 0.1 + 7 + rng.normal(scale=noise, size=n)
+        w = rng.uniform(0.2, 1.0, n)
+        assert choose_alpha(X, y, w) == slow(X, y, w)
+
+
+def test_not_for_me_becomes_a_rating_under_the_mean(monkeypatch):
+    """A dismissed title is an implicit example below the user's mean; one on
+    the list is left to its real entry, and one dismissed after the cutoff
+    does not leak into a holdout."""
+    import datetime as dt
+
+    from malrec.recsys import service
+
+    now = dt.datetime(2026, 10, 1, tzinfo=dt.UTC)
+    old = now - dt.timedelta(days=30)
+    rows = [{"mal_id": 1, "score": 8, "status": "completed", "at": old},
+            {"mal_id": 2, "score": 6, "status": "completed", "at": old},
+            {"mal_id": 3, "score": 0, "status": "plan_to_watch", "at": old}]
+    fb = [{"mal_id": 9, "at": old}, {"mal_id": 3, "at": old},
+          {"mal_id": 7, "at": now + dt.timedelta(days=1)}]
+    monkeypatch.setattr(service, "query",
+                        lambda sql, p=None: fb if "feedback" in sql else rows)
+    cfg = service.settings()
+    monkeypatch.setattr(cfg, "not_interested_offset", -2.0)
+    monkeypatch.setattr(cfg, "not_interested_weight", 0.8)
+    _, implicit = service.user_examples(1, cutoff=now)
+    dis = [e for e in implicit if e.mal_id in (3, 7, 9)]
+    assert [e.mal_id for e in dis] == [9]               # 3 is listed, 7 is after the cutoff
+    assert dis[0].score == pytest.approx(7.0 - 2.0, abs=0.01)
+    monkeypatch.setattr(cfg, "not_interested_weight", 0.0)
+    assert not [e for e in service.user_examples(1, cutoff=now)[1] if e.mal_id == 9]
+
+
+def test_a_passed_exam_activates_a_refit_on_every_list(monkeypatch):
+    """The exam keeps the new lists out of the candidate; with refit_all the
+    model that goes live is refitted on everything - unless the gate user's
+    holdout gets worse on it, then the examined candidate goes live."""
+    import datetime as dt
+
+    from malrec.recsys import service as s
+
+    fits, activated, ids = [], [], iter(range(11, 100))
+    exam = set(range(1000, 1200))
+    monkeypatch.setattr(s, "require_one", lambda sql, p=None: {"id": 1})
+    monkeypatch.setattr(s, "one", lambda sql, p=None: {"id": 7, "created_at": dt.datetime.now(dt.UTC)})
+    monkeypatch.setattr(s, "active_global", lambda: "current")
+    monkeypatch.setattr(s, "exam_users", lambda since: exam)
+
+    def fit_global(activate=True, exclude=None, **k):
+        fits.append(exclude)
+        return {"id": next(ids), "users": 5000 if exclude else 5200}
+    monkeypatch.setattr(s, "fit_global", fit_global)
+    monkeypatch.setattr(s, "load_global", lambda gid: f"model{gid}")
+    rho = {"current": 0.80, "model11": 0.80, "model12": 0.81}
+    monkeypatch.setattr(s, "temporal_holdout", lambda uid, splits, gm, half_life=None: {
+        "spearman": rho[gm], "per_holdout": [{"spearman": rho[gm]} for _ in splits]})
+    monkeypatch.setattr(s, "_half_life", lambda uid: 0.5)
+    monkeypatch.setattr(s, "load_cf_columns", lambda: type("C", (), {"ratings": lambda self, u: {}})())
+    monkeypatch.setattr(s, "population_exam", lambda gm, data, users, seed=0:
+                        {u: 0.55 + (0.01 if gm == "model11" else 0.0) for u in users})
+    monkeypatch.setattr(s, "prospective_compare", lambda a, b, u: {"ok": True})
+    monkeypatch.setattr(s, "activate_global", activated.append)
+    monkeypatch.setattr(s, "execute", lambda sql, p=None: 0)
+
+    out = s.gated_fit("ref", refit_all=True)
+    assert fits == [exam, None] and activated == [12] and out["refit_all"]["passed"]
+    rho["model13"], rho["model14"] = 0.80, 0.70   # the full refit is worse for the gate user
+    activated.clear()
+    out = s.gated_fit("ref", refit_all=True)
+    assert activated == [13] and not out["refit_all"]["passed"]
+
+
+def _terms(key):
+    from malrec.rank import OrderTerms
+    n = len(key)
+    key = np.asarray(key, dtype=float)
+    return OrderTerms(raw=key, ok=np.isfinite(key), shown=key, z=np.zeros(n), rel=np.zeros(n),
+                      pop=np.zeros(n), mix=np.zeros(n), risk=np.zeros(n), key=key, lam=0.5)
+
+
+class _FakeRanker:
+    def __init__(self, s):
+        self.s = np.asarray(s, dtype=float)
+        self.meta: dict = {}
+
+    def predict(self, X):
+        return self.s[:len(X)]
+
+
+def test_learned_order_mixes_the_shortlist_and_keeps_the_rest_below(monkeypatch):
+    from malrec.recsys import ltr
+    # 6 titles, the shortlist holds the best 4 by key; one cannot be scored
+    monkeypatch.setattr(ltr, "SHORTLIST", 4)
+    key = [8.0, 7.5, 7.0, 6.9, 6.8, -np.inf]
+    ids = [1, 2, 3, 4, 5, 6]
+    terms = _terms(key)
+    monkeypatch.setattr(ltr, "features", lambda *a, **k: np.zeros((4, len(ltr.FEATURES))))
+
+    def ctx(w, s):
+        return ltr.RankContext(_FakeRanker(s), set(), {}, 50, w)
+    # weight 0: the hand-tuned key, unchanged
+    sh = ltr.learned_shift(None, terms, ids, ctx(0.0, [0, 1, 2, 3]), None)
+    assert np.allclose(sh[:5], 0.0)
+    # weight 1: the shortlist in the ranker's order (it ranks the key's 4th first),
+    # on the key's scale, and the title below the shortlist still after it
+    sh = ltr.learned_shift(None, terms, ids, ctx(1.0, [0.1, 0.2, 0.3, 0.9]), None)
+    new = np.array(key[:5]) + sh[:5]
+    assert list(np.argsort(-new[:4])) == [3, 2, 1, 0]
+    assert new[4] < new[:4].min()
+    assert abs(new[:4].mean() - np.mean(key[:4])) < 1e-9
+    assert sh[5] == 0.0
+
+
+def test_order_ranker_survives_storage():
+    lgb = pytest.importorskip("lightgbm")
+    from malrec.recsys.ltr import OrderRanker
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(400, 3))
+    y = (X[:, 0] > 0.5).astype(int)
+    r = lgb.LGBMRanker(n_estimators=20, min_child_samples=5, verbose=-1)
+    r.fit(X, y, group=[40] * 10)
+    a = OrderRanker(r.booster_.model_to_string(), {"trees": 20})
+    b = OrderRanker.loads(a.dumps())
+    assert np.allclose(a.predict(X), b.predict(X))
+    assert np.corrcoef(b.predict(X), X[:, 0])[0, 1] > 0.5
+
+
+def test_long_series_taste_counts_what_was_watched():
+    from types import SimpleNamespace
+
+    from malrec.recsys.ltr import user_taste
+    store = SimpleNamespace(rows={1: {"num_episodes": 12}, 2: {"num_episodes": 12},
+                                  3: {"num_episodes": 148}, 4: {"num_episodes": 220},
+                                  5: {"num_episodes": 64}})
+
+    def e(m, sc, st="completed"):
+        return {"mal_id": m, "score": sc, "status": st}
+    # long series only planned: they do not watch them
+    t = user_taste([e(1, 8), e(2, 6), e(3, 0, "plan_to_watch"), e(4, 0, "plan_to_watch")], store)
+    assert t["user_long_share"] == 0.0 and t["user_long_lift"] == 0.0
+    # watched, rated below their mean, one dropped
+    t = user_taste([e(1, 9), e(2, 9), e(3, 5), e(4, 0, "dropped"), e(5, 6)], store)
+    assert t["user_long_share"] == 3 / 5
+    assert t["user_long_lift"] < 0 and t["user_long_drop"] == 1 / (3 + 3)

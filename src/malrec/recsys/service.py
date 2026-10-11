@@ -13,15 +13,17 @@ from __future__ import annotations
 import datetime as dt
 import itertools
 import logging
+import math
 import threading
 import time
 from collections import defaultdict
+from dataclasses import dataclass
 
 import numpy as np
 from psycopg.types.json import Jsonb
 
 from ..config import settings
-from ..db import conn, execute, one, query
+from ..db import conn, execute, one, query, require_one, returned
 from .cf import CFParams, PopulationModel
 from .hybrid import (
     STACK_FEATURES,
@@ -47,28 +49,55 @@ _cache: dict = {"global": None, "global_id": None, "store": None, "store_at": 0.
 
 # ------------------------------------------------------------------- data --
 
-def load_cf_ratings(min_scored: int = 5) -> dict[int, list[tuple]]:
-    """(mal_id, score, at) per sampled user."""
-    rows = query("""
+EPOCH = dt.datetime(2000, 1, 1, tzinfo=dt.UTC)     # a missing date, as load_cf_ratings had it
+
+
+@dataclass
+class CfColumns:
+    """Every list entry of every sampled user as columns, ordered by user,
+    then date, then title - ~10 bytes an entry instead of a few hundred as
+    Python objects, so tens of millions fit in memory."""
+    user: np.ndarray        # int32
+    mal_id: np.ndarray      # int32
+    score: np.ndarray       # int8, 0 = unscored
+    at: np.ndarray          # float64 seconds since the Unix epoch; NaN = no date
+
+    def scored_users(self, min_scored: int = 5) -> np.ndarray:
+        """Users with at least `min_scored` scores (load_cf_ratings' users)."""
+        u, n = np.unique(self.user[self.score > 0], return_counts=True)
+        return u[n >= min_scored]
+
+    def ratings(self, users) -> dict[int, list[tuple]]:
+        """(mal_id, score, at) per user, as load_cf_ratings returns them - for
+        the few thousand users that are walked one by one (stacker, exam)."""
+        keep = np.isin(self.user, np.fromiter(users, dtype=np.int64)) & (self.score > 0)
+        out: dict[int, list[tuple]] = defaultdict(list)
+        for u, m, sc, a in zip(self.user[keep].tolist(), self.mal_id[keep].tolist(),
+                               self.score[keep].tolist(), self.at[keep].tolist()):
+            at = EPOCH if math.isnan(a) else dt.datetime.fromtimestamp(a, dt.UTC)
+            out[u].append((m, float(sc), at))
+        return out
+
+
+def load_cf_columns() -> CfColumns:
+    """The sample, streamed from the database into columns."""
+    from array import array
+
+    from ..db import stream
+    cols = (array("i"), array("i"), array("b"), array("d"))
+    nan = float("nan")
+    for u, m, sc, a in stream("""
         SELECT r.user_id, r.mal_id, r.score,
-               coalesce(r.finished_at::timestamptz, r.updated_at) AS at
+               extract(epoch FROM coalesce(r.finished_at::timestamptz, r.updated_at))::float8
           FROM cf_rating r JOIN cf_user u ON u.id = r.user_id
-         WHERE u.state = 'done' AND u.n_scored >= %s AND r.score > 0
-         ORDER BY r.user_id, at, r.mal_id
-    """, (min_scored,))
-    epoch = dt.datetime(2000, 1, 1, tzinfo=dt.UTC)
-    out: dict[int, list[tuple]] = defaultdict(list)
-    for r in rows:
-        out[r["user_id"]].append((r["mal_id"], float(r["score"]), r["at"] or epoch))
-    return out
-
-
-def load_cf_entries() -> tuple[np.ndarray, np.ndarray]:
-    """Every list entry of every sampled user, any status - for co-occurrence."""
-    rows = query("""SELECT r.user_id, r.mal_id FROM cf_rating r
-                      JOIN cf_user u ON u.id = r.user_id WHERE u.state = 'done'""")
-    return (np.array([r["user_id"] for r in rows], dtype=np.int64),
-            np.array([r["mal_id"] for r in rows], dtype=np.int64))
+         WHERE u.state = 'done'
+         ORDER BY r.user_id, 4, r.mal_id"""):
+        cols[0].append(u)
+        cols[1].append(m)
+        cols[2].append(sc)
+        cols[3].append(nan if a is None else a)
+    return CfColumns(np.frombuffer(cols[0], dtype=np.int32), np.frombuffer(cols[1], dtype=np.int32),
+                     np.frombuffer(cols[2], dtype=np.int8), np.frombuffer(cols[3], dtype=np.float64))
 
 
 def user_listed(user_id: int, cutoff: dt.datetime | None = None,
@@ -81,6 +110,30 @@ def user_listed(user_id: int, cutoff: dt.datetime | None = None,
                       FROM list_entry WHERE user_id = %s""", (user_id,))
     return {r["mal_id"]: recency_weight(r["at"], now, half_life)
             for r in rows if (cutoff is None or r["at"] < cutoff) and r["mal_id"] not in exclude}
+
+
+def dismissed(user_id: int, cutoff: dt.datetime | None = None) -> dict[int, dt.datetime]:
+    """Titles the user marked "Not for me" (and has not undone), with when."""
+    rows = query("SELECT mal_id, max(created_at) AS at FROM feedback"
+                 " WHERE user_id = %s AND action = 'not_interested' GROUP BY mal_id", (user_id,))
+    return {r["mal_id"]: r["at"] for r in rows if cutoff is None or r["at"] < cutoff}
+
+
+def dismissal_examples(dismissed_at: dict[int, dt.datetime], mean: float, now: dt.datetime,
+                       half_life: float | None = None,
+                       listed: set[int] | frozenset[int] = frozenset()) -> list[Example]:
+    """"Not for me" as implicit ratings under the user's mean: the personal
+    model learns what the dismissed titles share (premise, tags, studio...)
+    and expects less of others like them. Titles on the list are left to
+    their real entry. Deliberately not part of the co-occurrence input
+    (user_listed): there a title pulls its neighbours *up*."""
+    cfg = settings()
+    if cfg.not_interested_weight <= 0:
+        return []
+    value = float(min(max(mean + cfg.not_interested_offset, 1.0), 10.0))
+    return [Example(m, value, cfg.not_interested_weight * recency_weight(at, now, half_life), at,
+                    foldin=cfg.not_interested_foldin)
+            for m, at in dismissed_at.items() if m not in listed]
 
 
 def user_examples(user_id: int, cutoff: dt.datetime | None = None,
@@ -112,6 +165,9 @@ def user_examples(user_id: int, cutoff: dt.datetime | None = None,
         implicit.append(Example(r["mal_id"], float(min(max(mean + off, 1.0), 10.0)),
                                 cfg.implicit_weight * recency_weight(r["at"], now, half_life),
                                 r["at"]))
+    implicit += dismissal_examples(
+        {m: at for m, at in dismissed(user_id, cutoff).items() if m not in exclude},
+        mean, now, half_life, {r["mal_id"] for r in rows})
     return scored, implicit
 
 
@@ -122,26 +178,24 @@ def fit_global(activate: bool = True, stack_share: float = 0.15, seed: int = 0,
     """Fit on every sampled user except a held-out slice for the stacker.
     `exclude` keeps users out of the fit entirely (the gate's exam users)."""
     t0 = time.time()
-    data = load_cf_ratings()
-    for u in exclude or ():
-        data.pop(u, None)
+    cols = load_cf_columns()
     # Who fits the population model and who fits the stacker is decided per
     # user by a stable hash, not a shuffle: a refit with new lists keeps
     # everyone else in the same role, so two fits differ by their data only.
-    users = sorted(data)
+    users = sorted(set(cols.scored_users().tolist()) - set(exclude or ()))
     stack_ids = [u for u in users if unit_hash("role", seed, u) < stack_share]
     pop_ids = [u for u in users if unit_hash("role", seed, u) >= stack_share]
     cut = len(pop_ids)
-    ua, ia, ra = [], [], []
-    for u in pop_ids:
-        for m, s, _ in data[u]:
-            ua.append(u); ia.append(m); ra.append(s)
-    pop = PopulationModel(params or CFParams()).fit(np.array(ua), np.array(ia), np.array(ra))
-    ou, oi = load_cf_entries()
-    fit_users = np.isin(ou, np.array(pop_ids))      # exam users are not in `users`
-    pop.fit_occurrence(ou[fit_users], oi[fit_users])
+    in_pop = np.isin(cols.user, np.array(pop_ids))   # exam users are not in `users`
+    rated = in_pop & (cols.score > 0)
+    ra = cols.score[rated].astype(np.float64)
+    pop = PopulationModel(params or CFParams()).fit(cols.user[rated].astype(np.int64),
+                                                    cols.mal_id[rated].astype(np.int64), ra)
+    ou, oi = cols.user[in_pop].astype(np.int64), cols.mal_id[in_pop].astype(np.int64)
+    pop.fit_occurrence(ou, oi)
     if settings().relevance_ease:
-        pop.fit_ease(ou[fit_users], oi[fit_users])
+        pop.fit_ease(ou, oi)
+    data = cols.ratings(stack_ids)
     store = ItemStore.load()
     # The display calibration reuses the stacker's users. Splitting them
     # (so neither is judged on data it was fitted to) was tried on
@@ -165,7 +219,7 @@ def fit_global(activate: bool = True, stack_share: float = 0.15, seed: int = 0,
             cur.execute("UPDATE global_model SET active=false WHERE active")
         cur.execute("INSERT INTO global_model (active, meta, artifact) VALUES (%s,%s,%s)"
                     " RETURNING id", (activate, Jsonb(meta), blob))
-        gid = cur.fetchone()["id"]
+        gid = returned(cur)["id"]
         c.commit()
     invalidate()
     log.info("global model %s: %s", gid, meta)
@@ -304,7 +358,7 @@ def active_global() -> GlobalModel | None:
         return None
     with _lock:
         if _cache["global_id"] != row["id"]:
-            blob = one("SELECT artifact FROM global_model WHERE id=%s", (row["id"],))["artifact"]
+            blob = require_one("SELECT artifact FROM global_model WHERE id=%s", (row["id"],))["artifact"]
             _cache["global"] = GlobalModel.loads(bytes(blob))
             _cache["global_id"] = row["id"]
         return _cache["global"]
@@ -312,7 +366,7 @@ def active_global() -> GlobalModel | None:
 
 def load_global(gid: int) -> GlobalModel:
     """A stored population model by id, active or not (uncached)."""
-    blob = one("SELECT artifact FROM global_model WHERE id=%s", (gid,))["artifact"]
+    blob = require_one("SELECT artifact FROM global_model WHERE id=%s", (gid,))["artifact"]
     return GlobalModel.loads(bytes(blob))
 
 
@@ -494,11 +548,13 @@ def prospective_compare(before: GlobalModel, after: GlobalModel, gate_user: str 
         b = prospective_holdout(u["id"], before, hl, **(opts_before or {}))
         if b is None:
             continue
+        same = after is before and (opts_after or {}) == (opts_before or {})
+        a = b if same else prospective_holdout(u["id"], after, hl, **(opts_after or {}))
+        if a is None:                    # the candidate cannot score this user
+            continue
         total += len(b["truth"])
         if len(b["truth"]) < 5:          # too few for a rank correlation of their own
             continue
-        same = after is before and (opts_after or {}) == (opts_before or {})
-        a = b if same else prospective_holdout(u["id"], after, hl, **(opts_after or {}))
         n = len(b["truth"])
         per[u["mal_username"]] = {
             "pairs": n,
@@ -531,8 +587,13 @@ def prospective_compare(before: GlobalModel, after: GlobalModel, gate_user: str 
 GATE_SPLITS = (25, 30, 35, 40, 45, 50, 55, 60)
 EXAM_MIN_SCORED = 15          # exam users need a list long enough to split
 EXAM_MIN_USERS = 100          # below this the exam is skipped (gate user rule only)
+# a larger batch is sampled down to this (stable hash); the rest of it trains
+# the candidate. 3,000 gives a standard error near 0.0003 on the mean change
+# (5,383 gave 0.0004 on 2026-10-10), and each exam user costs two fits.
+EXAM_MAX_USERS = 3000
 EXAM_TOLERANCE = 0.002        # mean rank correlation a candidate may lose on the exam
-GATE_USER_VETO = 0.01         # ... and on the gate user's 8 splits, when the exam decides
+GATE_USER_VETO = 0.01         # ... and on the gate user's 8 splits, when the exam is not clear
+GATE_USER_FLOOR = 0.05        # a loss no exam result outweighs (a broken fit, not taste)
 GATE_TOLERANCE = 0.002        # without an exam: the old single-user rule
 GATE_MAX_SPLIT_DROP = 0.02
 
@@ -551,7 +612,10 @@ def exam_users(since: dt.datetime) -> set[int]:
                        AND fetched_at >= (SELECT max(fetched_at) FROM cf_user WHERE state='done')
                                          - make_interval(days => %s)""",
                  (EXAM_MIN_SCORED, since, EXAM_BATCH_DAYS))
-    return {r["id"] for r in rows}
+    ids = sorted(r["id"] for r in rows)
+    if len(ids) > EXAM_MAX_USERS:
+        ids = sorted(ids, key=lambda u: unit_hash("exam", u))[:EXAM_MAX_USERS]
+    return set(ids)
 
 
 def population_exam(gm: GlobalModel, data: dict[int, list[tuple]], users: set[int],
@@ -587,30 +651,42 @@ def gate_decision(user_before: list[float], user_after: list[float],
     of mean rank correlation *and* more than one standard error of the
     paired difference - two equally good refits differ by about that much,
     and a bar inside the noise would reject a quarter of them. The gate user
-    keeps a veto against a clear loss on their
-    own 8 splits (mean drop above GATE_USER_VETO) - one profile's nested
-    splits move by ~0.02 between honest refits, too noisy to decide alone.
-    Without an exam the old single-user rule applies.
+    vetoes a clear loss on their own 8 splits (mean drop above
+    GATE_USER_VETO) only while the exam is not clearly better (gain within two
+    standard errors): one profile must not keep thousands of lists' gain
+    out (2026-10-10: a 4x larger sample, exam +.010, the owner -.022 - their
+    taste, not a fault). A drop above GATE_USER_FLOOR still refuses - that is
+    a broken fit. Without an exam the old single-user rule applies.
     """
     mb, ma = float(np.mean(user_before)), float(np.mean(user_after))
     if exam is not None:
         if exam["delta"] < -max(EXAM_TOLERANCE, exam.get("se", 0.0)):
             return False, "exam failed: the candidate predicts unseen lists worse"
-        if ma < mb - GATE_USER_VETO:
+        if ma < mb - GATE_USER_FLOOR:
+            return False, "gate user floor: far worse on their own holdout"
+        clear = exam["delta"] > 2 * exam.get("se", float("inf"))
+        if ma < mb - GATE_USER_VETO and not clear:
             return False, "gate user veto: clearly worse on their own holdout"
-        return True, "exam passed"
+        return True, "exam passed" + (" (clearly better; outweighs the gate user)"
+                                      if clear and ma < mb - GATE_USER_VETO else "")
     worst = min(a - b for a, b in zip(user_after, user_before))
     if ma < mb - GATE_TOLERANCE or worst < -GATE_MAX_SPLIT_DROP:
         return False, "gate failed: the new model would cost the gate user accuracy"
     return True, "gate passed (no exam: too few new lists)"
 
 
-def gated_fit(gate_user: str, dry_run: bool = False) -> dict:
+def gated_fit(gate_user: str, dry_run: bool = False, refit_all: bool = False) -> dict:
     """Fit a new population model inactive and activate it only if it passes
     gate_decision and prospective_compare on the ratings given after
     recommendations (which waits, blocking nothing, until there are enough of
-    them). `dry_run` reports the decision without activating anything."""
-    uid = one("SELECT id FROM app_user WHERE mal_username=%s", (gate_user,))["id"]
+    them). `dry_run` reports the decision without activating anything.
+
+    The exam keeps the newest lists out of the candidate, so a passed
+    candidate lacks exactly the lists that were just added. `refit_all` then
+    fits once more on everything, with the same code, and activates that one
+    if the gate user's holdout does not get worse on it either (otherwise the
+    examined candidate)."""
+    uid = require_one("SELECT id FROM app_user WHERE mal_username=%s", (gate_user,))["id"]
     current = active_global()
     cur_row = one("SELECT id, created_at FROM global_model WHERE active")
     exam_ids = exam_users(cur_row["created_at"]) if cur_row else set()
@@ -628,7 +704,7 @@ def gated_fit(gate_user: str, dry_run: bool = False) -> dict:
     a = [r["spearman"] for r in after["per_holdout"]]
     exam = None
     if use_exam:
-        data = load_cf_ratings()
+        data = load_cf_columns().ratings(exam_ids)
         eb = population_exam(current, data, exam_ids)
         ea = population_exam(candidate, data, exam_ids)
         common = sorted(eb.keys() & ea.keys())
@@ -652,11 +728,20 @@ def gated_fit(gate_user: str, dry_run: bool = False) -> dict:
                     "better": sum(x > y + 1e-9 for x, y in zip(a, b)),
                     "worse": sum(x < y - 1e-9 for x, y in zip(a, b))},
            "prospective": pro, "passed": ok, "reason": reason}
-    if ok and not dry_run:
+    if ok and not dry_run and refit_all and use_exam:
+        full = fit_global(activate=False)
+        after_full = temporal_holdout(uid, GATE_SPLITS, gm=load_global(full["id"]), half_life=hl)
+        af = [r["spearman"] for r in after_full["per_holdout"]]
+        ok_full, why = gate_decision(b, af, None)
+        out["refit_all"] = {"candidate": full["id"], "users": full["users"],
+                            "rho_after": after_full["spearman"], "passed": ok_full, "reason": why}
+        activate_global(full["id"] if ok_full else new["id"])
+        out["activated"] = full["id"] if ok_full else new["id"]
+    elif ok and not dry_run:
         activate_global(new["id"])
         out["activated"] = new["id"]
     else:
-        out["kept"] = cur_row["id"]
+        out["kept"] = cur_row["id"] if cur_row else None
     # keep the active model and the two newest others as fallbacks (~24 MB each)
     execute("DELETE FROM global_model WHERE NOT active AND id NOT IN"
             " (SELECT id FROM global_model WHERE NOT active ORDER BY id DESC LIMIT 2)")

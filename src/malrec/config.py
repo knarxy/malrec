@@ -185,6 +185,13 @@ class Settings(BaseSettings):
     # held-out users within noise. The floor showed no benefit: off.
     safe_bets_memory_cap: float = 0.15
     safe_bets_floor: float = -99.0
+    # Safe Bets' order mixed with a learned one (recsys/ltr.py), this share
+    # of it (0 = off, 0.5 = the MIX of experiments/exp_ltr.py: recall@50
+    # +0.020-0.027 and hit@10 +0.04-0.09 at 25/150/400 entries, reference
+    # profile hit@10 +0.11, lists more popular - median rank #154 -> #66 for
+    # the reference profile). Needs a ranker for the active population
+    # model (malrec ranker train); without one the hand-tuned key applies.
+    order_ranker_weight: float = 0.0
     # EASE as a second relevance signal (fitted with the population model)
     relevance_ease: bool = True
 
@@ -205,6 +212,19 @@ class Settings(BaseSettings):
     implicit_weight: float = 0.8
     implicit_offsets: dict[str, float] = Field(
         default_factory=lambda: {"dropped": -2.0, "on_hold": -1.0, "completed": 0.0})
+    # "Not for me" beyond hiding the one title (experiments/exp_notforme.py):
+    # it becomes an implicit rating `not_interested_offset` under the user's
+    # mean (weight relative to a real rating; 0 turns it off), and the rest of
+    # its franchise leaves the discovery tabs unless the user has something
+    # of that franchise on their list.
+    # Simulated (2 rounds): -1 / 0.4 in the personal model *and* the fold-in,
+    # plus the franchise rule, beat hiding alone at every list size - hit@10
+    # +0.024 at 150 entries, recall@50 +0.008 at 400 - for a rank-correlation
+    # cost inside the noise (<= 0.009); -2 / 0.8 and stronger cost 0.03-0.04.
+    not_interested_offset: float = -1.0
+    not_interested_weight: float = 0.4
+    not_interested_franchise: bool = True
+    not_interested_foldin: bool = True       # also in the population fold-in
 
     # Ranking
     min_scoring_users: int = 2000

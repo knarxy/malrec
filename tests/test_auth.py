@@ -271,3 +271,54 @@ def test_the_first_visit_hint_stays_dismissed(signed_in):
     r = client.put("/me/prefs", headers=CSRF, json={"intro_seen": True})
     assert r.status_code == 200 and r.json()["intro_seen"] is True
     assert client.get("/me/prefs").json()["intro_seen"] is True
+
+
+def test_the_theme_choice_follows_the_account(signed_in):
+    client, _ = signed_in
+    assert client.get("/me/prefs").json().get("theme") is None      # system setting
+    assert client.put("/me/prefs", headers=CSRF, json={"theme": "dark"}).json()["theme"] == "dark"
+    assert client.put("/me/prefs", headers=CSRF, json={"theme": "neon"}).status_code == 422
+    assert client.get("/me/prefs").json()["theme"] == "dark"
+
+
+def test_usage_events_are_counted_per_thing_and_day(signed_in):
+    from malrec.db import query
+    from malrec.usage import funnel
+    client, uid = signed_in
+    seen = {"kind": "card_seen", "surface": "safe_bets", "mal_id": 6547, "rank": 1}
+    r = client.post("/me/events", headers=CSRF, json={"events": [
+        {"kind": "app_open"}, {"kind": "tab_view", "surface": "safe_bets"}, seen, seen,
+        {"kind": "details_open", "surface": "nowhere", "mal_id": 6547}]})
+    assert r.status_code == 200 and r.json() == {"recorded": 5}
+    rows = {(e["kind"], e["surface"]): e for e in
+            query("SELECT kind, surface, n, rank FROM app_event WHERE user_id=%s", (uid,))}
+    assert rows[("card_seen", "safe_bets")]["n"] == 2            # once a day, counted
+    assert rows[("card_seen", "safe_bets")]["rank"] == 1
+    assert ("details_open", "") in rows                          # unknown place blanked
+    me = next(u for u in funnel()["users"] if u["id"] == uid)
+    assert me["steps"]["visited"] and me["steps"]["saw_cards"] and me["steps"]["opened_details"]
+    assert me["cards_7"] == 1 and not me["steps"]["acted"]
+
+
+def test_usage_events_are_checked(signed_in):
+    client, _ = signed_in
+    assert client.post("/me/events", headers=CSRF,
+                       json={"events": [{"kind": "keylogger"}]}).status_code == 422
+    assert client.post("/me/events", headers=CSRF,
+                       json={"events": [{"kind": "app_open"}] * 61}).status_code == 422
+    assert client.post("/me/events", json={"events": []}).status_code == 403   # no CSRF header
+    anon = TestClient(app)
+    assert anon.post("/me/events", headers=CSRF, json={"events": []}).status_code == 401
+
+
+def test_not_for_me_queues_a_rebuild_and_undo_too(signed_in, monkeypatch):
+    import malrec.api
+    client, uid = signed_in
+    queued = []
+    monkeypatch.setattr(malrec.api.tasks, "enqueue", lambda kind, u: queued.append((kind, u)))
+    r = client.post("/feedback", headers=CSRF, json={"mal_id": 6547, "action": "not_interested"})
+    assert r.status_code == 200 and queued == [("rebuild", uid)]
+    assert client.delete("/feedback/6547", headers=CSRF).json() == {"removed": 1}
+    assert queued == [("rebuild", uid)] * 2
+    assert client.delete("/feedback/6547", headers=CSRF).json() == {"removed": 0}
+    assert len(queued) == 2                                     # nothing undone, no rebuild

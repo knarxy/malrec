@@ -1,10 +1,12 @@
-import { type CSSProperties, type ReactNode, useEffect, useId, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import {
   api, ApiError, type Breakdown, type Filters, type Learning, type ModelInfo, type Profile,
   type Recommendation, type SearchHit, type SimilarHit,
 } from './api'
-import { Likely, Why } from './explain'
+import { Likely, Reasons, Why } from './explain'
 import { useI18n } from './i18n'
+import { effectiveTheme, setTheme, type Theme } from './theme'
+import { track, whenSeen } from './usage'
 
 const SEASONS: Record<string, [string, string]> = {
   winter: ['Winter', 'Winter'], spring: ['Spring', 'Frühling'],
@@ -59,12 +61,23 @@ export function RateControl({
         onChange={(e) => set(Number(e.target.value))}
       >
         <option value="" disabled>{score ? t('Rated {n}', { n: score }) : t('Seen it? Rate it')}</option>
-        {[10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map((v) => <option key={v} value={v}>{v}</option>)}
+        {[10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map((v) => (
+          <option key={v} value={v}>({v}) {t(`score.${v}`)}</option>
+        ))}
         {score > 0 && <option value={0}>{t('Clear score')}</option>}
       </select>
       {msg && <div className="card-msg">{msg}</div>}
     </div>
   )
+}
+
+/** 2,2 Mio. / 615 Tsd. (en: 2.2M / 615K) */
+function compact(n: number, lang: string): string {
+  const de = lang === 'de'
+  const fmt = (x: number, d: number) => x.toLocaleString(de ? 'de-DE' : 'en-GB', { maximumFractionDigits: d })
+  if (n >= 1e6) return de ? `${fmt(n / 1e6, 1)} Mio.` : `${fmt(n / 1e6, 1)}M`
+  if (n >= 1e3) return de ? `${fmt(n / 1e3, 0)} Tsd.` : `${fmt(n / 1e3, 0)}K`
+  return fmt(n, 0)
 }
 
 export function Card({
@@ -78,13 +91,21 @@ export function Card({
   canQueue: boolean
   onRated: (mal_id: number) => void
 }) {
-  const { t } = useI18n()
+  const { t, label, lang } = useI18n()
   const season = useSeason()
   const [dismissed, setDismissed] = useState(false)
   const [listStatus, setListStatus] = useState<string | null>(item.list_status ?? null)
   const [score, setScore] = useState<number>(item.list_score ?? 0)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const ref = useRef<HTMLElement>(null)
+
+  // a card counts as seen after a second at least half on screen (own lists only)
+  useEffect(() => {
+    if (!canQueue || !ref.current) return
+    return whenSeen(ref.current, () =>
+      track({ kind: 'card_seen', surface, mal_id: item.mal_id, rank: item.rank }))
+  }, [canQueue, surface, item.mal_id, item.rank])
 
   async function dismiss() {
     setBusy(true)
@@ -123,61 +144,71 @@ export function Card({
     : item.num_episodes ? `${item.num_episodes} ${t('ep')}` : null
   const bits = [season(item), eps, item.mal_studios?.[0]].filter(Boolean)
 
+  const members = item.mal_num_list_users ? compact(item.mal_num_list_users, lang) : null
+  const title = item.title_en || item.title
+
   return (
-    <article className={`card${dismissed ? ' dismissed' : ''}${score ? ' rated' : ''}`}>
-      <div className="poster" onClick={() => onOpen(item)} style={{ cursor: 'pointer' }}>
-        {item.picture_large || item.picture_medium ? (
-          <img src={item.picture_large ?? item.picture_medium!} alt={item.title} loading="lazy" />
-        ) : null}
-        <span className="rank">#{item.rank}</span>
-        {/* an unaired title has no community score or ratings yet, so the
-            model's number for it means little; coming_soon is ordered by date */}
-        {!unaired(item) && (
-          <span className="fit" title={t('predicted score for you')}>
-            <Sparkle />{item.predicted_score.toFixed(1)}
-          </span>
-        )}
+    <article ref={ref} className={`card${dismissed ? ' dismissed' : ''}${score ? ' rated' : ''}`}>
+      <div className="card-head">
+        <span className="card-rank">#{item.rank}</span>
+        <div className="card-title">
+          <h3><button className="title-link" onClick={() => onOpen(item)}>{title}</button></h3>
+          <div className="meta">{bits.join(' · ')}</div>
+        </div>
+        <div className="card-scores">
+          {/* an unaired title has no community score or ratings yet, so the
+              model's number for it means little; coming_soon is ordered by date */}
+          {!unaired(item) && (
+            <div className="score you" title={t('predicted score for you')}>
+              <b>{item.predicted_score.toFixed(1)}</b><span>{t('card.for_you')}</span>
+            </div>
+          )}
+          {item.mal_mean != null && (
+            <div className="score">
+              <b>{item.mal_mean.toFixed(2)}</b>
+              <span>MAL{members ? ` · ${members}` : ''}</span>
+            </div>
+          )}
+        </div>
       </div>
+      {item.mal_genres?.length > 0 && (
+        <div className="card-genres">{item.mal_genres.slice(0, 4).map(label).join(' · ')}</div>
+      )}
       <div className="card-body">
-        <h3 onClick={() => onOpen(item)} style={{ cursor: 'pointer' }}>
-          {item.title_en || item.title}
-        </h3>
-        <div className="meta">
-          {bits.map((b, i) => <span key={i}>{b}</span>)}
-          {item.mal_mean && <span>★ {item.mal_mean.toFixed(2)}</span>}
-        </div>
-        {item.also_in && (
-          <span className="also-in"><Sparkle />{t('card.also_in', { tab: t(`tab.${item.also_in}`) })}</span>
-        )}
-        {!unaired(item) && <Likely item={item} />}
-        <Why reasons={item.reasons ?? []} />
-        {message && <div className="card-msg">{message}</div>}
-        <div className="card-actions">
-          {canQueue && !otherStatus && (
-            <button
-              className={planned ? 'planned' : 'plan'}
-              onClick={toggleQueue}
-              disabled={busy}
-              title={planned ? t('queue.remove') : t('queue.add')}
-            >
-              {busy ? '…' : planned ? t('✓ Planned') : t('+ Plan to watch')}
-            </button>
-          )}
-          {canQueue && otherStatus && (
-            <button disabled title={t('Already on your MyAnimeList')}>
-              {t('On list: {s}', { s: otherStatus })}
-            </button>
-          )}
-          <button className="quiet" onClick={dismiss} disabled={busy}>
-            {dismissed ? t('Undo') : t('Not for me')}
+        <button className="cover" onClick={() => onOpen(item)} aria-label={title}>
+          {item.picture_large || item.picture_medium ? (
+            <img src={item.picture_large ?? item.picture_medium!} alt="" loading="lazy" />
+          ) : null}
+        </button>
+        <Reasons item={item} />
+      </div>
+      {message && <div className="card-msg">{message}</div>}
+      <div className="card-actions">
+        {canQueue && !otherStatus && (
+          <button
+            className={planned ? 'planned' : 'primary'}
+            onClick={toggleQueue}
+            disabled={busy}
+            title={planned ? t('queue.remove') : t('queue.add')}
+          >
+            {busy ? '…' : planned ? t('✓ Planned') : t('+ Plan to watch')}
           </button>
-        </div>
+        )}
+        {canQueue && otherStatus && (
+          <button disabled title={t('Already on your MyAnimeList')}>
+            {t('On list: {s}', { s: otherStatus })}
+          </button>
+        )}
         {canQueue && !unaired(item) && (
           <RateControl
             item={{ ...item, list_score: score }}
             onRated={(s, st) => { setScore(s); setListStatus(st); onRated(item.mal_id) }}
           />
         )}
+        <button onClick={dismiss} disabled={busy}>
+          {dismissed ? t('Undo') : t('Not for me')}
+        </button>
+        <button className="link" onClick={() => onOpen(item)}>{t('card.full_why')}</button>
       </div>
     </article>
   )
@@ -195,29 +226,46 @@ function Signed({ v }: { v: number }) {
   return <span className={v >= 0 ? 'pos' : 'neg'}>{v >= 0 ? '+' : '−'}{Math.abs(v).toFixed(2)}</span>
 }
 
-const SPARKLE = 'M30 11c1.6 11.7 6.3 16.4 18 18-11.7 1.6-16.4 6.3-18 18-1.6-11.7-6.3-16.4-18-18 11.7-1.6 16.4-6.3 18-18z'
-
-/** The app icon: the sparkle on its dark tile. */
-export function BrandMark({ size = 30 }: { size?: number }) {
-  const id = `bm${useId().replace(/:/g, '')}`
+/** Light/dark switch. Before the first click the page follows the system. */
+export function ThemeToggle({ onChange }: { onChange?: (t: Theme) => void }) {
+  const { t } = useI18n()
+  const [theme, setState] = useState<Theme>(effectiveTheme)
+  useEffect(() => {
+    const mq = window.matchMedia?.('(prefers-color-scheme: dark)')
+    if (!mq) return
+    const follow = () => setState(effectiveTheme())
+    mq.addEventListener('change', follow)
+    return () => mq.removeEventListener('change', follow)
+  }, [])
+  const next: Theme = theme === 'dark' ? 'light' : 'dark'
+  const name = t(next === 'dark' ? 'theme.to_dark' : 'theme.to_light')
   return (
-    <svg className="brand-mark" width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
-      <defs>
-        <linearGradient id={id} x1="0.15" y1="0.1" x2="0.85" y2="0.95">
-          <stop offset="0" stopColor="#7cb3ff" /><stop offset="1" stopColor="#57d9a3" />
-        </linearGradient>
-      </defs>
-      <rect width="64" height="64" rx="15" fill="#11141a" />
-      <rect x="0.75" y="0.75" width="62.5" height="62.5" rx="14.25" fill="none" stroke="#2a2f3a" strokeWidth="1.5" />
-      <path d={SPARKLE} fill={`url(#${id})`} />
-      <path d="M47 39c.6 4.4 2.4 6.2 6.8 6.8-4.4.6-6.2 2.4-6.8 6.8-.6-4.4-2.4-6.2-6.8-6.8 4.4-.6 6.2-2.4 6.8-6.8z" fill="#e8eaf0" />
-    </svg>
+    <button className="bar-btn icon-btn" aria-label={name} title={name}
+            onClick={() => { setTheme(next); setState(next); onChange?.(next) }}>
+      {theme === 'dark' ? (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+             strokeLinecap="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="4.5" />
+          <path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" />
+        </svg>
+      ) : (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+             strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" />
+        </svg>
+      )}
+    </button>
   )
 }
 
-/** The bare sparkle in the current text colour, for badges. */
-export function Sparkle() {
-  return <svg viewBox="10 9 40 40" aria-hidden="true"><path d={SPARKLE} fill="currentColor" /></svg>
+/** The app icon: a flat tile with the m. */
+export function BrandMark({ size = 30 }: { size?: number }) {
+  return (
+    <svg className="brand-mark" width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
+      <rect width="64" height="64" rx="10" fill="var(--accent)" />
+      <path d="M17 46V24.5h6.2l.4 3.1c1.6-2.4 4-3.6 6.9-3.6 3 0 5.1 1.3 6.2 3.8 1.7-2.5 4.2-3.8 7.4-3.8 4.6 0 7 2.9 7 8.4V46h-6.6V33.3c0-2.6-1-3.9-3.1-3.9-2.2 0-3.6 1.5-3.6 4.3V46h-6.6V33.3c0-2.6-1-3.9-3.1-3.9-2.2 0-3.6 1.5-3.6 4.3V46z" fill="var(--on-accent)" />
+    </svg>
+  )
 }
 
 function Arrow({ up }: { up: boolean }) {
@@ -394,7 +442,6 @@ export function Details({
   }, [item.mal_id])
 
   const predicted = Number.isFinite(item.predicted_score) && !unaired(item) ? item.predicted_score : null
-  const deg = predicted === null ? 0 : Math.max(0, Math.min(360, ((predicted - 1) / 9) * 360))
 
   return (
     <div className="drawer-bg" onClick={onClose}>
@@ -406,9 +453,7 @@ export function Details({
         )}
 
         <div className="drawer-hero">
-          <div className="ring" style={{ '--deg': `${deg}deg` } as CSSProperties}>
-            <span>{predicted === null ? '—' : predicted.toFixed(1)}</span>
-          </div>
+          <div className="hero-score">{predicted === null ? '—' : predicted.toFixed(1)}</div>
           <div>
             <div className="k">{t('Predicted for you')}</div>
             {!unaired(item) && <Likely item={item} />}
