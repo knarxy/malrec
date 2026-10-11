@@ -6,8 +6,8 @@
 #      the configured 1 req/s)
 #   2. refit the population model, activated only if the reference profile's (MALREC_USER) temporal
 #      holdout does not get worse (malrec population fit --gate-user)
-#   3. the learned Safe Bets order for the active model, if it has none
-#      (malrec ranker train --if-missing, ~25 minutes after a new model)
+#   3. the learned list orders for the active model, if it has none
+#      (malrec ranker train --if-missing, ~25 minutes per tab after a new model)
 #   4. if it was activated, retrain and rebuild every app user
 #   5. log what in-app feedback says about the ranking weights, the
 #      evaluation report (malrec report) and the baseline comparison
@@ -49,9 +49,9 @@ else
     fit=$(lab sh -c 'malrec population fit --refit-all --gate-user "${MALREC_USER:?set MALREC_USER in .env}"')
 fi
 echo "$fit"
-# the learned Safe Bets order belongs to one population model: a new active
-# model needs its own before users are rebuilt (used only when
-# order_ranker_weight > 0; cheap to keep ready either way)
+# the learned orders belong to one population model: a new active model
+# needs its own before users are rebuilt (Safe Bets' always, cheap to keep
+# ready; Discover's and Hidden Gems' when switched on)
 if [ -z "$DRY_RUN" ]; then
     lab malrec ranker train --if-missing || echo "ranker training failed (non-fatal)"
 fi

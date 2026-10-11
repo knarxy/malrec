@@ -34,7 +34,9 @@ from malrec.db import query
 from malrec.recsys import ltr
 from malrec.recsys.hybrid import unit_hash
 
-METRICS = (("rho", True), ("r50", True), ("hit10", True), ("bad10", False))
+METRICS = (("rho", True), ("r50", True), ("ips50", True), ("hit10", True), ("bad10", False),
+           ("disc_r50", True), ("disc_ips50", True), ("disc_hit10", True),
+           ("gems_r50", True), ("gems_ips50", True), ("gems_hit10", True))
 
 
 def parse(arm: str) -> tuple[str, dict, float, str]:
@@ -94,7 +96,11 @@ def main(arms: list[str], max_eval: int):
                 setattr(cfg, k, v)
         results.append((arm, out))
         print(f"  {arm} done [{time.time() - t0:.0f}s]", flush=True)
+        table(results)                  # after every arm, so a late failure loses nothing
+    print(f"[{time.time() - t0:.0f}s]")
 
+
+def table(results):
     base = results[0][1]
     for g in base["groups"]:
         print(f"\n== {g}")
@@ -116,8 +122,8 @@ def main(arms: list[str], max_eval: int):
                 cells.append(f"{now:9.4f}{d.mean():+7.4f}{flag:1}")
             pop = out["groups"][g].get("pop")
             print(f"   {arm:<44}" + "".join(cells) + f"{pop if pop is not None else float('nan'):7.0f}")
-    print("\n(+/- : better/worse than the first arm by more than two standard errors, paired)")
-    print(f"[{time.time() - t0:.0f}s]")
+    print("\n(+/- : better/worse than the first arm by more than two standard errors, paired)",
+          flush=True)
 
 
 if __name__ == "__main__":

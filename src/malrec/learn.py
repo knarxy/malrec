@@ -106,3 +106,66 @@ def learn_weights(min_events: int = 200, min_each: int = 30, boot: int = 200) ->
                 "value, then re-run exp_final to confirm nothing regresses.",
     })
     return out
+
+
+# The top of one tab, before and after a change: each (user, title) counts
+# once per period it reached the top `top` in, from its first showing there,
+# with what happened in the `days` after that (the outcomes of OUTCOMES_SQL,
+# inside the window) - a title on top both before and after counts in both.
+LIST_OUTCOMES_SQL = """
+    WITH shown AS (
+        SELECT DISTINCT ON (l.user_id, l.mal_id, l.shown_at >= %(cut)s)
+               l.user_id, l.mal_id, l.shown_at
+          FROM rec_log l
+         WHERE l.surface = %(surface)s AND l.rank <= %(top)s
+         ORDER BY l.user_id, l.mal_id, l.shown_at >= %(cut)s, l.shown_at),
+    mu AS (SELECT user_id, avg(score) m FROM list_entry WHERE score > 0 GROUP BY user_id)
+    SELECT s.user_id, s.shown_at >= %(cut)s AS after,
+           s.shown_at + make_interval(days => %(days)s) <= now() AS complete,
+           EXISTS (SELECT 1 FROM feedback f WHERE f.user_id = s.user_id AND f.mal_id = s.mal_id
+                     AND f.action = 'queued' AND f.created_at >= s.shown_at
+                     AND f.created_at < s.shown_at + make_interval(days => %(days)s))
+           OR coalesce(le.status IN ('plan_to_watch', 'watching')
+                       OR (le.status = 'completed' AND le.score = 0)
+                       OR (le.score > 0 AND le.score >= mu.m), false) AS positive,
+           EXISTS (SELECT 1 FROM feedback f WHERE f.user_id = s.user_id AND f.mal_id = s.mal_id
+                     AND f.action = 'not_interested' AND f.created_at >= s.shown_at
+                     AND f.created_at < s.shown_at + make_interval(days => %(days)s))
+           OR coalesce(le.status = 'dropped'
+                       OR (le.score > 0 AND le.score < mu.m - 1), false) AS negative
+      FROM shown s
+      LEFT JOIN list_entry le ON le.user_id = s.user_id AND le.mal_id = s.mal_id
+                             AND le.updated_at >= s.shown_at
+                             AND le.updated_at < s.shown_at + make_interval(days => %(days)s)
+      LEFT JOIN mu ON mu.user_id = s.user_id
+"""
+
+
+def list_outcomes(cut, surface: str = "safe_bets", top: int = 10, days: int = 28) -> dict:
+    """What people did with a tab's top `top` titles shown before `cut` vs
+    from `cut` on (a ranking change's real-world test): per period
+    the titles whose `days`-day window has closed, the share acted on
+    positively and negatively, and both as the mean over users, so one busy
+    account does not decide. Windows still open are counted as pending."""
+    rows = query(LIST_OUTCOMES_SQL, {"surface": surface, "top": top, "cut": cut, "days": days})
+    out: dict[str, Any] = {"surface": surface, "top": top, "days": days, "cut": str(cut)}
+    for name, after in (("before", False), ("after", True)):
+        rs = [r for r in rows if r["after"] == after]
+        done = [r for r in rs if r["complete"]]
+        per_user: dict[int, list] = {}
+        for r in done:
+            per_user.setdefault(r["user_id"], []).append(r)
+        out[name] = {
+            "titles": len(done), "pending": len(rs) - len(done), "users": len(per_user),
+            "positive": round(float(np.mean([r["positive"] for r in done])), 3) if done else None,
+            "negative": round(float(np.mean([r["negative"] for r in done])), 3) if done else None,
+            "positive_user_mean": round(float(np.mean(
+                [np.mean([r["positive"] for r in v]) for v in per_user.values()])), 3)
+            if per_user else None,
+            "negative_user_mean": round(float(np.mean(
+                [np.mean([r["negative"] for r in v]) for v in per_user.values()])), 3)
+            if per_user else None}
+    if not out["after"]["titles"]:
+        out["note"] = (f"no {days}-day window after the cut has closed yet; "
+                       "run again once one has")
+    return out

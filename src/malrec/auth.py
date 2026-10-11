@@ -72,8 +72,12 @@ def _hash(token: str) -> str:
 
 def _safe_return_to(value: str | None) -> str:
     """Only same-site paths. '//evil.example' is a protocol-relative URL and
-    '/\\evil.example' is treated as one by some browsers, so both are refused."""
-    if not value or not value.startswith("/") or value.startswith("//") or "\\" in value:
+    '/\\evil.example' is treated as one by some browsers, so both are refused,
+    as is anything with whitespace or control characters: browsers drop tabs
+    and newlines from URLs, which turns '/\\t/evil.example' into '//evil.example'.
+    The callback prefixes app_base_url anyway; this keeps the value clean."""
+    if (not value or not value.startswith("/") or value.startswith("//") or "\\" in value
+            or len(value) > 500 or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in value)):
         return "/"
     return value
 

@@ -128,7 +128,8 @@ def test_state_changes_need_the_csrf_header(signed_in):
 
 
 def test_return_to_cannot_leave_the_site():
-    for bad in ("//evil.example", "https://evil.example", "/\\evil.example", "", None):
+    for bad in ("//evil.example", "https://evil.example", "/\\evil.example", "", None,
+                "/\t/evil.example", "/\n/evil.example", "/ /x", "/" + "a" * 600):
         assert auth._safe_return_to(bad) == "/"
     assert auth._safe_return_to("/?tab=next_up") == "/?tab=next_up"
 

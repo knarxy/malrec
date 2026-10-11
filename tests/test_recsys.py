@@ -799,3 +799,47 @@ def test_long_series_taste_counts_what_was_watched():
     t = user_taste([e(1, 9), e(2, 9), e(3, 5), e(4, 0, "dropped"), e(5, 6)], store)
     assert t["user_long_share"] == 3 / 5
     assert t["user_long_lift"] < 0 and t["user_long_drop"] == 1 / (3 + 3)
+
+
+def test_popularity_corrected_labels_favour_the_rare_hit():
+    from types import SimpleNamespace
+
+    from malrec.recsys import ltr
+    # three titles rated by 900 / 100 / 10 of the population's raters
+    pop = SimpleNamespace(index={1: 0, 2: 1, 3: 2}, n_raters=np.array([900, 100, 10]))
+    w = ltr.inverse_propensity(pop, [1, 2, 3], 1.0)
+    assert w[1] < w[2] < w[3] and w[2] == pytest.approx(1.0)
+    assert ltr.IPS_CLIP[0] <= min(w.values()) and max(w.values()) <= ltr.IPS_CLIP[1]
+    test = {1: 8, 2: 8, 3: 10}                       # the user's mean is 7
+    plain = ltr._labels([1, 2, 3, 4], test, 7.0)
+    assert list(plain) == [1, 1, 2, 0]
+    ips = ltr._labels([1, 2, 3, 4], test, 7.0, w)
+    # a liked popular title still counts, a liked rare one counts more, a miss is 0
+    assert ips[3] == 0 and 1 <= ips[0] < ips[1] < ips[2] <= ltr.IPS_MAX_LABEL
+    assert ips[1] == ltr.IPS_STEPS                   # weight 1, gain 1
+
+
+def test_key_risk_share_leaves_the_parts_to_the_learned_order(monkeypatch):
+    from malrec import rank
+
+    class M:
+        calibration = (1.0, 0.0)
+        personal_share = 1.0
+
+        def predict_ids(self, ids):
+            return np.array([8.0, 7.9, 7.8])
+
+        def calibrate(self, raw):
+            return np.asarray(raw, dtype=float)
+
+        def relevance(self, ids):
+            return np.zeros(len(ids))
+
+        def risk_penalty(self, ids, familiar=None):
+            return np.array([0.5, 0.0, 0.0])
+    rows = [{"mal_id": m, "mal_popularity": 100} for m in (1, 2, 3)]
+    monkeypatch.setattr(rank, "familiar_genres", lambda _uid: set())
+    full = rank.order_terms(M(), rows)
+    assert list(np.argsort(-full.key)) == [1, 2, 0]   # the risky title drops
+    off = rank.order_terms(M(), rows, risk_scale=0.0)
+    assert list(np.argsort(-off.key)) == [0, 1, 2] and np.all(off.risk == 0)

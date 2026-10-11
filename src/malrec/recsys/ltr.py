@@ -46,25 +46,39 @@ FEATURES = BASE_FEATURES + TASTE_FEATURES
 LONG_PRIOR = 3.0      # pseudo-titles pulling a thin record toward "no opinion"
 TRAIN_BUDGETS = (10, 25, 60, 150, 400)    # list sizes a training user is cut to
 SHORTLIST = 600                            # the key's top this many are reordered
+LIST_LIMIT = 60                            # a built tab's length (surfaces.build_all)
+GEMS_FROM = 1200                           # Hidden Gems: titles past this popularity rank
 SEED = 3
 LGBM: dict[str, Any] = {
     "objective": "lambdarank", "n_estimators": 600, "learning_rate": 0.03, "num_leaves": 15,
     "min_child_samples": 100, "subsample": 0.8, "subsample_freq": 1, "colsample_bytree": 0.8,
     "reg_lambda": 5.0, "label_gain": [0, 1, 3], "lambdarank_truncation_level": 60,
     "verbose": -1}
+# Popularity-corrected labels (order_ranker_ips > 0): a liked title counts
+# (propensity / median) ** -ips, clipped to IPS_CLIP, so the ranker learns
+# what is liked more than what is watched. Gains are carried as integer labels
+# in IPS_STEPS-ths of a point (LightGBM's lambdarank takes no per-row weight).
+IPS_CLIP = (0.25, 4.0)
+IPS_STEPS = 4
+IPS_MAX_LABEL = 48
+# the tabs that can carry a learned order, with the setting that turns each on
+SURFACES = {"safe_bets": "order_ranker_weight", "discover": "discover_ranker_weight",
+            "hidden_gems": "gems_ranker_weight"}
 
 
 # the settings the ranker's features depend on (the user model's fit and the
-# hand-tuned key's terms): a ranker trained under others is not used
+# hand-tuned key's terms): a ranker trained under others is not used. Not the
+# long-memory mix: training orders without that model (it moves the key by
+# at most safe_bets_memory_cap)
 FINGERPRINT_SETTINGS = (
     "recency_half_life_years", "recency_floor", "use_affinity_features", "content_staff",
     "content_audience", "content_staff_aff", "stack_extras", "level_trend", "chosen_blend_min",
     "blend_size_n0", "blend_lam_max", "ranking_share_n0", "disagreement_penalty",
     "unfamiliar_genre_penalty", "long_series_penalty", "acclaim_penalty", "acclaim_evidence_e0",
-    "safe_bets_popularity", "safe_bets_memory_mix", "safe_bets_memory_cap", "relevance_ease",
+    "safe_bets_popularity", "relevance_ease",
     "model_mode", "implicit_weight", "implicit_offsets", "not_interested_offset",
     "not_interested_weight", "not_interested_foldin", "relevance_weight",
-    "relevance_weight_personal")
+    "relevance_weight_personal", "safe_bets_key_risk", "order_ranker_ips")
 
 
 def fingerprint() -> str:
@@ -73,6 +87,15 @@ def fingerprint() -> str:
     cfg = settings()
     d = {k: getattr(cfg, k) for k in FINGERPRINT_SETTINGS}
     return hashlib.sha256(json.dumps(d, sort_keys=True, default=str).encode()).hexdigest()[:12]
+
+
+def surface_key(surface: str) -> dict:
+    """How a tab's hand-built key is formed (shared by training and serving):
+    the popularity prior and the share of the risk term."""
+    cfg = settings()
+    if surface == "safe_bets":
+        return {"pop_prior": cfg.safe_bets_popularity, "risk_scale": cfg.safe_bets_key_risk}
+    return {"pop_prior": 0.0, "risk_scale": 1.0}
 
 
 def _z(v: np.ndarray) -> np.ndarray:
@@ -202,20 +225,24 @@ def learned_shift(model, terms, ids: list[int], ctx: RankContext, store: ItemSto
 
 # ------------------------------------------------------------- training --
 
-def history_examples(seen: list[dict], cutoff) -> tuple[list[Example], list[Example],
-                                                        dict[int, float]]:
+def history_examples(seen: list[dict], cutoff, half_life: float | None = None
+                     ) -> tuple[list[Example], list[Example], dict[int, float]]:
     """A list's entries as a user model's input: ratings, implicit ratings
-    from unscored statuses, and the recency-weighted listed titles."""
+    from unscored statuses, and the recency-weighted listed titles
+    (`half_life` inf: every entry weighted equally, the long-memory model)."""
     cfg = settings()
-    scored = [Example(e["mal_id"], float(e["score"]), recency_weight(e["at"], cutoff), e["at"])
+
+    def w(at):
+        return recency_weight(at, cutoff, half_life)
+    scored = [Example(e["mal_id"], float(e["score"]), w(e["at"]), e["at"])
               for e in seen if e["score"] > 0]
     if len(scored) < 3:
         return scored, [], {}
     m = float(np.average([x.score for x in scored], weights=[x.weight for x in scored]))
     implicit = [Example(e["mal_id"], float(min(max(m + cfg.implicit_offsets[e["status"]], 1), 10)),
-                        cfg.implicit_weight * recency_weight(e["at"], cutoff), e["at"])
+                        cfg.implicit_weight * w(e["at"]), e["at"])
                 for e in seen if e["score"] == 0 and e["status"] in cfg.implicit_offsets]
-    return scored, implicit, {e["mal_id"]: recency_weight(e["at"], cutoff) for e in seen}
+    return scored, implicit, {e["mal_id"]: w(e["at"]) for e in seen}
 
 
 def genre_mix(listed: dict[int, float], store: ItemStore) -> dict[str, float]:
@@ -229,19 +256,40 @@ def genre_mix(listed: dict[int, float], store: ItemStore) -> dict[str, float]:
     return {g: v / tot for g, v in mix.items()}
 
 
-def _labels(sid: list[int], test: dict[int, float], mean: float) -> np.ndarray:
+def _labels(sid: list[int], test: dict[int, float], mean: float,
+            ipw: dict[int, float] | None = None) -> np.ndarray:
+    """0 / 1 (rated at least their mean, 7+) / 2 (mean + 1.5, 9+); with
+    `ipw` (title -> inverse-propensity weight) the gain (1 or 3) times the
+    weight, in IPS_STEPS-ths, as an integer label for an identity gain table."""
     hi, ok = max(mean + 1.5, 9.0), max(mean, 7.0)
-    return np.array([2 if test.get(m, 0) >= hi else 1 if test.get(m, 0) >= ok else 0
-                     for m in sid], dtype=np.int32)
+    lv = [2 if test.get(m, 0) >= hi else 1 if test.get(m, 0) >= ok else 0 for m in sid]
+    if ipw is None:
+        return np.array(lv, dtype=np.int32)
+    gain = (0, 1, 3)
+    return np.array([0 if v == 0 else int(np.clip(round(gain[v] * ipw.get(m, 1.0) * IPS_STEPS),
+                                                   1, IPS_MAX_LABEL))
+                     for v, m in zip(lv, sid)], dtype=np.int32)
+
+
+def inverse_propensity(pop: PopulationModel, pool: list[int], power: float) -> dict[int, float]:
+    """(propensity / median) ** -power per pool title, clipped to IPS_CLIP;
+    propensity = the share of the population's raters who rated it."""
+    n = np.array([pop.n_raters[pop.index[m]] if m in pop.index else 0 for m in pool], dtype=float)
+    p = (n + 1.0) / (n.max() + 2.0)
+    w = np.clip((p / np.median(p)) ** -power, *IPS_CLIP)
+    return dict(zip(pool, w.tolist()))
 
 
 def train(pop: PopulationModel, stacker, store: ItemStore, pool: list[int],
           users: dict[int, list[dict]], seed: int = SEED,
-          names: tuple[str, ...] | None = None) -> OrderRanker:
+          names: tuple[str, ...] | None = None, surface: str = "safe_bets",
+          taken_pool: list[int] | None = None) -> OrderRanker:
     """Fit the ranker. `users` are lists the population model never saw
-    (entries with mal_id, score, status, at); `pool` is the Safe Bets
-    eligible pool. Each user is split in time; their older entries, cut to
-    two of TRAIN_BUDGETS, make the query, the newer ratings the labels."""
+    (entries with mal_id, score, status, at); `pool` is the tab's eligible
+    pool. Each user is split in time; their older entries, cut to two of
+    TRAIN_BUDGETS, make the query, the newer ratings the labels. Discover
+    starts where Safe Bets ends: with `taken_pool` (Safe Bets' pool) the
+    hand-built Safe Bets top LIST_LIMIT leaves each Discover query."""
     import lightgbm as lgb
 
     from .. import rank
@@ -250,6 +298,8 @@ def train(pop: PopulationModel, stacker, store: ItemStore, pool: list[int],
     t0 = time.time()
     cfg = settings()
     names = names or FEATURES
+    key = surface_key(surface)
+    ipw = inverse_propensity(pop, pool, cfg.order_ranker_ips) if cfg.order_ranker_ips > 0 else None
     Xs, ys, groups, qusers = [], [], [], []
     trng = np.random.default_rng(seed + 11)
     for u in sorted(users):
@@ -276,13 +326,18 @@ def train(pop: PopulationModel, stacker, store: ItemStore, pool: list[int],
                                   {e.mal_id: e.score for e in sc}, {})
             fam = {g for e in seen for g in ((store.rows.get(e["mal_id"]) or {})
                                              .get("mal_genres") or [])}
-            terms = rank.order_terms(scorer, rows, pop_prior=cfg.safe_bets_popularity,
-                                     familiar=fam)
-            ids = [r["mal_id"] for r in rows]
+            q_rows = rows
+            if taken_pool is not None:
+                sb_rows = [_row(store, m) for m in taken_pool if m not in listed]
+                sb = rank.order_terms(scorer, sb_rows, familiar=fam, **surface_key("safe_bets"))
+                gone = {sb_rows[k]["mal_id"] for k in np.argsort(-sb.key)[:LIST_LIMIT]}
+                q_rows = [r for r in rows if r["mal_id"] not in gone]
+            terms = rank.order_terms(scorer, q_rows, familiar=fam, **key)
+            ids = [r["mal_id"] for r in q_rows]
             order = shortlist(terms)
             X = features(scorer, terms, order, ids, fam, genre_mix(li, store), len(sc), store,
                          user_taste(seen, store), names)
-            y = _labels([ids[k] for k in order], {m: s for m, s, _ in test_s}, mean)
+            y = _labels([ids[k] for k in order], {m: s for m, s, _ in test_s}, mean, ipw)
             if y.sum() == 0:
                 continue                    # a query with no positive teaches nothing
             Xs.append(X); ys.append(y); groups.append(len(y)); qusers.append(u)
@@ -301,7 +356,10 @@ def train(pop: PopulationModel, stacker, store: ItemStore, pool: list[int],
                 np.concatenate([y[ofs[k]:ofs[k + 1]] for k in idx]), [groups[k] for k in idx])
     Xt, yt, gt = take(tr)
     Xv, yv, gv = take(va)
-    ranker = lgb.LGBMRanker(**LGBM)
+    params = dict(LGBM)
+    if ipw is not None:
+        params["label_gain"] = [k / IPS_STEPS for k in range(IPS_MAX_LABEL + 1)]
+    ranker = lgb.LGBMRanker(**params)
     ranker.fit(Xt, yt, group=gt, eval_set=[(Xv, yv)], eval_group=[gv], eval_at=[10, 50],
                callbacks=[lgb.early_stopping(50, verbose=False)])
     gain = ranker.booster_.feature_importance("gain")
@@ -309,8 +367,8 @@ def train(pop: PopulationModel, stacker, store: ItemStore, pool: list[int],
     meta = {"users": len(users_q), "queries": len(groups), "candidates": len(y),
             "positives": int((y > 0).sum()), "trees": int(ranker.best_iteration_ or 0),
             "gain": {n: round(float(v) / tot, 4) for n, v in zip(names, gain)},
-            "features": list(names), "settings": fingerprint(),
-            "seconds": round(time.time() - t0, 1)}
+            "features": list(names), "settings": fingerprint(), "surface": surface,
+            "ips": cfg.order_ranker_ips, "seconds": round(time.time() - t0, 1)}
     return OrderRanker(ranker.booster_.model_to_string(num_iteration=ranker.best_iteration_),
                        meta)
 
@@ -324,17 +382,12 @@ def _row(store: ItemStore, m: int) -> dict:
 
 def safe_bets_pool(store: ItemStore, derived: frozenset[int] | set[int]) -> list[int]:
     """What eligible_candidates allows for Safe Bets, from the item store."""
-    from ..surfaces import SPECS
-    n = SPECS["safe_bets"].min_scorers
-    return [m for m, r in store.rows.items()
-            if (r.get("mal_num_scoring_users") or 0) >= n
-            and r.get("format_class") == "main" and r.get("nsfw") in (None, "white")
-            and r.get("status") != "not_yet_aired" and m not in derived]
+    return surface_pool(store, derived, "safe_bets")
 
 
 # ------------------------------------------------------------ database --
 
-_cache: dict[str, Any] = {"id": None, "ranker": None}
+_cache: dict[str, tuple[int, OrderRanker]] = {}      # surface -> (id, ranker)
 
 
 def stacker_lists(max_users: int = 2400) -> dict[int, list[dict]]:
@@ -355,8 +408,22 @@ def stacker_lists(max_users: int = 2400) -> dict[int, list[dict]]:
     return out
 
 
-def train_for_active(max_users: int = 2400) -> dict:
-    """Train a ranker for the active population model and store it."""
+def surface_pool(store: ItemStore, derived: frozenset[int] | set[int], surface: str) -> list[int]:
+    """What eligible_candidates allows for `surface`, from the item store
+    (Hidden Gems: past popularity #1,200 as well)."""
+    from ..surfaces import SPECS
+    n = SPECS[surface].min_scorers
+    out = [m for m, r in store.rows.items()
+           if (r.get("mal_num_scoring_users") or 0) >= n
+           and r.get("format_class") == "main" and r.get("nsfw") in (None, "white")
+           and r.get("status") != "not_yet_aired" and m not in derived]
+    if surface == "hidden_gems":
+        out = [m for m in out if (store.rows[m].get("mal_popularity") or 99999) > GEMS_FROM]
+    return out
+
+
+def train_for_active(max_users: int = 2400, surface: str = "safe_bets") -> dict:
+    """Train a ranker for the active population model's `surface` and store it."""
     from psycopg.types.json import Jsonb
 
     from ..db import conn, one, returned
@@ -368,55 +435,69 @@ def train_for_active(max_users: int = 2400) -> dict:
         raise RuntimeError("no active population model")
     store = item_store()
     users = stacker_lists(max_users)
-    ranker = train(gm.pop, gm.stacker, store, safe_bets_pool(store, derived_ids()), users)
+    derived = derived_ids()
+    ranker = train(gm.pop, gm.stacker, store, surface_pool(store, derived, surface), users,
+                   surface=surface, taken_pool=safe_bets_pool(store, derived)
+                   if surface == "discover" else None)
     with conn() as c, c.cursor() as cur:
-        cur.execute("INSERT INTO order_ranker (global_model_id, meta, artifact)"
-                    " VALUES (%s,%s,%s) RETURNING id",
-                    (row["id"], Jsonb(ranker.meta), ranker.dumps()))
+        cur.execute("INSERT INTO order_ranker (global_model_id, surface, meta, artifact)"
+                    " VALUES (%s,%s,%s,%s) RETURNING id",
+                    (row["id"], surface, Jsonb(ranker.meta), ranker.dumps()))
         rid = returned(cur)["id"]
-        # the newest two per population model are plenty
-        cur.execute("DELETE FROM order_ranker WHERE global_model_id=%s AND id NOT IN"
-                    " (SELECT id FROM order_ranker WHERE global_model_id=%s"
-                    "  ORDER BY id DESC LIMIT 2)", (row["id"], row["id"]))
+        # the newest two per population model and tab are plenty
+        cur.execute("DELETE FROM order_ranker WHERE global_model_id=%s AND surface=%s"
+                    " AND id NOT IN (SELECT id FROM order_ranker WHERE global_model_id=%s"
+                    "  AND surface=%s ORDER BY id DESC LIMIT 2)",
+                    (row["id"], surface, row["id"], surface))
         c.commit()
-    log.info("order ranker %s for population model %s: %s", rid, row["id"], ranker.meta)
+    log.info("order ranker %s (%s) for population model %s: %s", rid, surface, row["id"],
+             ranker.meta)
     return {"id": rid, "global_model_id": row["id"], **ranker.meta}
 
 
 _CURRENT = """SELECT id FROM order_ranker WHERE global_model_id =
                  (SELECT id FROM global_model WHERE active) AND meta->>'settings' = %s
+                 AND surface = %s
                ORDER BY id DESC LIMIT 1"""
 
 
-def has_ranker() -> bool:
-    """Whether the active population model has a ranker trained under the
-    current ranking settings."""
+def enabled_surfaces() -> list[str]:
+    """The tabs whose learned order is switched on."""
+    cfg = settings()
+    return [s for s, k in SURFACES.items() if getattr(cfg, k) > 0]
+
+
+def has_ranker(surface: str = "safe_bets") -> bool:
+    """Whether the active population model has a ranker for `surface`
+    trained under the current ranking settings."""
     from ..db import one
-    return one(_CURRENT, (fingerprint(),)) is not None
+    return one(_CURRENT, (fingerprint(), surface)) is not None
 
 
-def active_ranker() -> OrderRanker | None:
-    """The newest ranker of the active population model trained under the
-    current ranking settings, if there is one."""
+def active_ranker(surface: str = "safe_bets") -> OrderRanker | None:
+    """The newest ranker of the active population model for `surface`,
+    trained under the current ranking settings, if there is one."""
     from ..db import one, require_one
-    row = one(_CURRENT, (fingerprint(),))
+    row = one(_CURRENT, (fingerprint(), surface))
     if row is None:
         return None
-    if _cache["id"] != row["id"]:
+    if _cache.get(surface, (None, None))[0] != row["id"]:
         blob = require_one("SELECT artifact FROM order_ranker WHERE id=%s", (row["id"],))
-        _cache.update(id=row["id"], ranker=OrderRanker.loads(bytes(blob["artifact"])))
-    return _cache["ranker"]
+        _cache[surface] = (row["id"], OrderRanker.loads(bytes(blob["artifact"])))
+    return _cache[surface][1]
 
 
-def context_for(user_id: int, model) -> RankContext | None:
-    """The ranker context for a user's Safe Bets build, or None when the
-    learned order is off, the model is not the hybrid one or the active
-    population model has no ranker."""
-    w = settings().order_ranker_weight
+def context_for(user_id: int, model, surface: str = "safe_bets") -> RankContext | None:
+    """The ranker context for a user's build of `surface`, or None when that
+    tab has no learned order (SURFACES), it is off, the model is not the
+    hybrid one or the active population model has no ranker for it."""
+    if surface not in SURFACES:
+        return None
+    w = getattr(settings(), SURFACES[surface])
     from .scorer import HybridScorer
     if w <= 0 or not isinstance(model, HybridScorer):
         return None
-    ranker = active_ranker()
+    ranker = active_ranker(surface)
     if ranker is None:
         return None
     from ..db import query

@@ -301,7 +301,9 @@ def _hidden_gems(user_id: int, model: Model, spec: SurfaceSpec, limit: int
                                 media_types=spec.formats)
             if (r.get("mal_popularity") or 99999) > 1200 and r["mal_id"] not in skip
             and r["franchise_id"] not in gone]
-    pool = score_candidates(user_id, model, rows, shortlist=settings().shortlist_size)
+    from .recsys.ltr import context_for
+    pool = score_candidates(user_id, model, rows, shortlist=settings().shortlist_size,
+                            learned=context_for(user_id, model, "hidden_gems"))
     seen: list[Candidate] = []
     return pool, rerank(pool, spec.novelty_weight, spec.diversity_weight, limit,
                         considered=seen, profile=genre_profile(user_id)), seen
@@ -446,13 +448,10 @@ def build_surface(user_id: int, surface: str = "discover", limit: int = 50,
                 "SELECT mal_id FROM recommendation WHERE user_id=%s AND surface='safe_bets'",
                 (user_id,))}
             rows = [r for r in rows if r["mal_id"] not in taken]
-        learned = None
-        if surface == "safe_bets":
-            from .recsys.ltr import context_for
-            learned = context_for(user_id, model)
+        from .recsys.ltr import context_for, surface_key
+        learned = context_for(user_id, model, surface)
         pool = score_candidates(user_id, model, rows, long_model=long_model, mix=mix,
-                                pop_prior=settings().safe_bets_popularity
-                                if surface == "safe_bets" else 0.0, learned=learned)
+                                learned=learned, **surface_key(surface))
         floor = settings().safe_bets_floor
         if surface == "safe_bets" and floor > -10 and hasattr(model, "baseline"):
             # a safe bet is one the current model expects the user to rate at

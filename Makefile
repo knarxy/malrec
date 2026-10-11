@@ -2,7 +2,7 @@
 COMPOSE := $(shell docker info >/dev/null 2>&1 && echo "docker compose" || echo "podman-compose")
 PY := .venv/bin/python
 
-.PHONY: db-up db-down db-logs psql install lock typecheck init bootstrap train recommend serve worker publish test lint reset up down app-dev build logs
+.PHONY: db-up db-down db-logs psql install lock typecheck init bootstrap train recommend serve worker publish test lint audit audit-install reset up down app-dev build logs
 
 db-up:        ; $(COMPOSE) up -d db
 db-down:      ; $(COMPOSE) down
@@ -19,6 +19,9 @@ publish:      ; MSG="$(MSG)" scripts/publish.sh          # master -> public repo
 test:         ; .venv/bin/pytest -q
 lint:         ; .venv/bin/ruff check src tests
 typecheck:    ; npx -y pyright@1.1.390 --pythonpath .venv/bin/python     # pyrightconfig.json; must stay at 0
+# code-quality and security audit; findings, not a gate (scripts/audit.sh)
+audit-install: ; $(PY) -m pip install -q --require-hashes -r requirements-audit.lock
+audit:        ; scripts/audit.sh
 
 # Exact versions with hashes. Edit the ranges in pyproject.toml, then run this
 # on purpose; the images install requirements.lock and nothing newer.
@@ -26,6 +29,7 @@ LOCK_OPTS := --generate-hashes --python-version 3.12 --python-platform x86_64-ma
 lock:
 	.venv/bin/uv pip compile pyproject.toml $(LOCK_OPTS) -o requirements.lock
 	.venv/bin/uv pip compile pyproject.toml --extra dev -c requirements.lock $(LOCK_OPTS) -o requirements-dev.lock
+	.venv/bin/uv pip compile pyproject.toml --extra audit -c requirements.lock $(LOCK_OPTS) -o requirements-audit.lock
 
 # Full stack in containers: database, API and web app on :3000.
 # `down` first because podman-compose will otherwise recreate containers from
@@ -58,9 +62,11 @@ RSYNC_EXCLUDES := --exclude .venv/ --exclude app/node_modules/ --exclude app/dis
 
 .PHONY: dev-sync dev-up dev-lab dev-test bench bench-baseline bench-snapshot dev-ps dev-logs
 
-# code only; the dev .env (VPN bind address, secrets) lives on the server
+# code only; the dev .env (VPN bind address, secrets) lives on the server.
+# Files arrive owned by the remote user (root), not by the local uid: cron
+# and deploy run the scripts as root, so nobody else may own them.
 dev-sync:
-	rsync -az $(RSYNC_EXCLUDES) ./ $(DEV):$(DEV_DIR)/
+	rsync -az --no-owner --no-group $(RSYNC_EXCLUDES) ./ $(DEV):$(DEV_DIR)/
 
 # migrations checked on a backup copy first; unhealthy deploys roll back
 dev-up: dev-sync

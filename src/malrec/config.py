@@ -192,6 +192,23 @@ class Settings(BaseSettings):
     # the reference profile). Needs a ranker for the active population
     # model (malrec ranker train); without one the hand-tuned key applies.
     order_ranker_weight: float = 0.0
+    # The learned order's training labels weighted against popularity
+    # (recsys/ltr.py, inverse_propensity): 0 = plain labels. 0.5 and 1 lifted
+    # Safe Bets' IPS recall@50 (+.006-.011 at 150/400 entries) by taking the
+    # lesser-known hits Discover showed (its IPS recall -.005 to -.011): a
+    # shift between tabs, not a gain (exp_blend.py, 2026-10-11). Off.
+    order_ranker_ips: float = 0.0
+    # Learned orders for Discover and Hidden Gems (each its own ranker); 0 = off.
+    # 0.5 (exp_blend.py, 2026-10-11): Discover recall@50 +.015/+.015/+.024 at
+    # 25/150/400 entries, reference profile .038 -> .091; Hidden Gems recall@50
+    # +.008/+.015 and hit@10 +.023/+.044 at 150/400; Safe Bets untouched.
+    discover_ranker_weight: float = 0.0
+    gems_ranker_weight: float = 0.0
+    # Share of the risk term in Safe Bets' hand-built key; the learned order
+    # reads the risk parts as features whatever this is. 0 (risk left to the
+    # ranker alone) cost recall@50 -.008 at 400 entries (exp_blend.py,
+    # 2026-10-11): the key keeps it.
+    safe_bets_key_risk: float = 1.0
     # EASE as a second relevance signal (fitted with the population model)
     relevance_ease: bool = True
 

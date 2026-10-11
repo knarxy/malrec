@@ -16,7 +16,9 @@ code, so a difference between two runs can only come from a code change:
   per user  production all the way: recsys.hybrid.fit_user with the
             configured blend, recsys.scorer.HybridScorer, rank.score_candidates
             (relevance, popularity prior, risk) and rank.rerank (novelty,
-            genre balance) - the Safe Bets build minus the database. Pool: what
+            genre balance) - the Safe Bets build minus the database, with
+            the long-memory model (safe_bets_memory_mix) and each tab's
+            learned order when configured, as served. Pool: what
             eligible_candidates allows (not listed, main format, not NSFW,
             >= 2000 scorers, aired), side stories and recaps left out; the
             prerequisite rule is not modelled.
@@ -30,11 +32,14 @@ Metrics, per user (paired between runs):
                ratings
   r50          share of liked future titles (>= max(own mean, 7)) in the
                Safe Bets top 50
+  ips50        the same with each liked title weighted by 1 / the share of
+               fit lists it is on, so following popularity alone scores
+               little
   hit10        share of the top 10 they went on to like
   bad10        share of the top 10 they rated a point under their mean or
                dropped
   disc_* / gems_*
-               the same three for the Discover and Hidden Gems lists (Discover
+               the same four for the Discover and Hidden Gems lists (Discover
                without the Safe Bets list, as production builds it; Hidden Gems
                from titles past popularity rank 1200 with >= 300 scorers)
 and per group: overlap (mean Jaccard of two users' top 20 - lower is more
@@ -87,9 +92,10 @@ BUDGETS = (25, 150, 400)
 REF_SPLITS = (25, 30, 35, 40, 45, 50, 55, 60)
 LIMIT = 60
 STATUS = ("watching", "completed", "on_hold", "dropped", "plan_to_watch")
-HIGHER = {"rho": True, "rmse": False, "r50": True, "hit10": True, "bad10": False,
-          "disc_r50": True, "disc_hit10": True, "disc_bad10": False,
-          "gems_r50": True, "gems_hit10": True, "gems_bad10": False}
+HIGHER = {"rho": True, "rmse": False, "r50": True, "ips50": True, "hit10": True,
+          "bad10": False, "disc_r50": True, "disc_ips50": True, "disc_hit10": True,
+          "disc_bad10": False, "gems_r50": True, "gems_ips50": True, "gems_hit10": True,
+          "gems_bad10": False}
 CFG = settings()
 
 
@@ -246,23 +252,32 @@ def profile_of(listed: dict[int, float], store) -> dict[str, float]:
 
 # ------------------------------------------------------- learned order --
 
-RANKER: ltr.OrderRanker | None = None     # set by run() when order_ranker_weight > 0
+# set by run(): the learned order of each tab switched on (ltr.SURFACES)
+RANKERS: dict[str, ltr.OrderRanker] = {}
+# set by run(): per title, the share of fit lists it is on (+1 / +2), for
+# IPS recall - a hit on a title everyone watches says little, so each liked
+# title counts 1 / propensity and following popularity alone does not score
+PROP: np.ndarray = np.zeros(0)
 
 
-def order_ranker(entries, store, pop, stacker, B, pool) -> tuple[ltr.OrderRanker, str]:
-    """The learned Safe Bets order for the benchmark's population model, on
-    its stacker users - as `malrec ranker train` does for the live one.
-    Cached with the population model's hash, recsys/ltr.py's and the
-    ranking settings' (ltr.fingerprint)."""
-    h = hashlib.sha256((SRC / "recsys/ltr.py").read_bytes() + ltr.fingerprint().encode()
+def order_ranker(entries, store, pop, stacker, B, pool, surface: str = "safe_bets",
+                 taken_pool: list[int] | None = None) -> tuple[ltr.OrderRanker, str]:
+    """A tab's learned order for the benchmark's population model, on its
+    stacker users - as `malrec ranker train` does for the live one. Cached
+    with the population model's hash, recsys/ltr.py's, rank.py's, the tab
+    and the ranking settings' (ltr.fingerprint); the newest six are kept."""
+    h = hashlib.sha256((SRC / "recsys/ltr.py").read_bytes() + (SRC / "rank.py").read_bytes()
+                       + ltr.fingerprint().encode() + surface.encode()
                        + ",".join(ltr.FEATURES).encode()).hexdigest()[:8]
     path = DATA / f"ltr-{code_hash()}-{h}.pkl"
     if path.exists():
+        path.touch()
         return ltr.OrderRanker.loads(path.read_bytes()), "cached"
-    r = ltr.train(pop, stacker, store, pool, {u: entries[u] for u in B})
-    for old in DATA.glob("ltr-*.pkl"):
-        old.unlink()
+    r = ltr.train(pop, stacker, store, pool, {u: entries[u] for u in B}, surface=surface,
+                  taken_pool=taken_pool)
     path.write_bytes(r.dumps())
+    for old in sorted(DATA.glob("ltr-*.pkl"), key=lambda f: f.stat().st_mtime)[:-6]:
+        old.unlink()
     return r, "trained"
 
 
@@ -282,24 +297,28 @@ def make_scorer(pop, stacker, store, sc, im, li, calibration, scorer_cls=HybridS
 
 
 def ranked(scorer, rows, li, familiar, store, surface: str = "safe_bets",
-           taken: frozenset[int] | set[int] = frozenset(), history: list[dict] | None = None):
+           taken: frozenset[int] | set[int] = frozenset(), history: list[dict] | None = None,
+           long_model=None):
     """One tab's build (surfaces.build_surface minus the database): the scored
     pool (Candidates, best first) and the reranked list. `history` (the list
-    entries the user model saw) feeds the learned order's taste features."""
+    entries the user model saw) feeds the learned order's taste features;
+    `long_model` is Safe Bets' every-rating-equal model (safe_bets_memory_mix)."""
     spec = SPECS[surface]
     if surface == "hidden_gems":
-        rows = [r for r in rows if (r.get("mal_popularity") or 99999) > 1200]
+        rows = [r for r in rows if (r.get("mal_popularity") or 99999) > ltr.GEMS_FROM]
     if taken:                                   # Discover starts where Safe Bets ends
         rows = [r for r in rows if r["mal_id"] not in taken]
-    learned = (ltr.RankContext(RANKER, familiar, profile_of(li, store), len(scorer._scores),
-                               CFG.order_ranker_weight, ltr.user_taste(history or [], store))
-               if surface == "safe_bets" and RANKER is not None else None)
+    ranker = RANKERS.get(surface)
+    learned = (ltr.RankContext(ranker, familiar, profile_of(li, store), len(scorer._scores),
+                               getattr(CFG, ltr.SURFACES[surface]),
+                               ltr.user_taste(history or [], store))
+               if ranker is not None else None)
+    mix = CFG.safe_bets_memory_mix if long_model is not None else 0.0
     real = rank.familiar_genres
     rank.familiar_genres = lambda _uid: familiar
     try:
-        pool = rank.score_candidates(None, scorer, rows, enrich=False,
-                                     pop_prior=CFG.safe_bets_popularity
-                                     if surface == "safe_bets" else 0.0, learned=learned)
+        pool = rank.score_candidates(None, scorer, rows, enrich=False, long_model=long_model,
+                                     mix=mix, learned=learned, **ltr.surface_key(surface))
     finally:
         rank.familiar_genres = real
     floor = CFG.safe_bets_floor
@@ -319,11 +338,19 @@ def safe_bets(pop, stacker, store, sc, im, li, pool_rows, calibration, familiar,
     return scorer, [c.mal_id for c in top]
 
 
+def ips50(top: list[int], liked: set[int]) -> float:
+    """Recall@50 with each liked title weighted by 1 / propensity (PROP)."""
+    def w(m: int) -> float:
+        return 1.0 / (float(PROP[m]) if 0 <= m < len(PROP) and PROP[m] > 0 else 1.0)
+    return sum(w(t) for t in set(top[:50]) & liked) / sum(w(t) for t in liked)
+
+
 def list_metrics(top: list[int], liked: set[int], disliked: set[int], prefix: str) -> dict:
-    """recall@50 / hit@10 / bad@10 of another tab's list."""
+    """recall@50 (plain and IPS) / hit@10 / bad@10 of another tab's list."""
     out = {}
     if len(liked) >= 3:
         out[f"{prefix}r50"] = len(set(top[:50]) & liked) / len(liked)
+        out[f"{prefix}ips50"] = ips50(top, liked)
     if len(top) >= 10:
         out[f"{prefix}hit10"] = len(set(top[:10]) & liked) / 10
         out[f"{prefix}bad10"] = len(set(top[:10]) & disliked) / 10
@@ -339,6 +366,7 @@ def user_metrics(scorer, top, items, truth, liked, disliked):
         out["rmse"] = float(np.sqrt(np.mean((pred[ok] - truth[ok]) ** 2)))
     if len(liked) >= 3:
         out["r50"] = len(set(top[:50]) & liked) / len(liked)
+        out["ips50"] = ips50(top, liked)
     if len(top) >= 10:
         out["hit10"] = len(set(top[:10]) & liked) / 10
         out["bad10"] = len(set(top[:10]) & disliked) / 10
@@ -375,17 +403,28 @@ def run(max_eval: int) -> dict:
     A, B, C = users[:nA], users[nA:nA + nB], users[nA + nB:]
     (pop, stacker), how = population(entries, store, A, B)
     pool_all = eligible(store, derived)
-    global RANKER
-    RANKER = None
-    if CFG.order_ranker_weight > 0:
-        RANKER, rhow = order_ranker(entries, store, pop, stacker, B, pool_all)
-        how += f", learned order {rhow} (weight {CFG.order_ranker_weight:g})"
     gems_all = eligible(store, derived, SPECS["hidden_gems"].min_scorers)
+    global PROP
+    _, ma, _ = entries.columns(A)
+    PROP = (np.bincount(ma.astype(np.int64)) + 1.0) / (len(A) + 2.0)
+    RANKERS.clear()
+    pools = {"safe_bets": (pool_all, None), "discover": (pool_all, pool_all),
+             "hidden_gems": ([m for m in gems_all
+                              if (store.rows[m].get("mal_popularity") or 99999) > ltr.GEMS_FROM],
+                             None)}
+    for tab, setting in ltr.SURFACES.items():
+        if getattr(CFG, setting) > 0:
+            RANKERS[tab], rhow = order_ranker(entries, store, pop, stacker, B, pools[tab][0],
+                                              tab, pools[tab][1])
+            how += f", {tab} order {rhow} (weight {getattr(CFG, setting):g})"
     print(f"snapshot {static['created'][:10]}: {len(users)} users ({len(A)} fit / {len(B)} stack /"
           f" {len(C)} eval), pool {len(pool_all)}, population model {how} [{time.time() - t0:.0f}s]",
           flush=True)
     out = {"snapshot": static["created"], "pop": code_hash(), "groups": {},
-           "order_ranker_weight": CFG.order_ranker_weight}
+           "order_ranker_weight": CFG.order_ranker_weight,
+           "settings": {k: getattr(CFG, k) for k in (
+               "safe_bets_memory_mix", "safe_bets_key_risk", "order_ranker_ips",
+               "discover_ranker_weight", "gems_ranker_weight")}}
 
     def genres(ids):
         return {g for m in ids for g in ((store.rows.get(m) or {}).get("mal_genres") or [])}
@@ -398,12 +437,16 @@ def run(max_eval: int) -> dict:
             return None, None
         fam = genres(e["mal_id"] for e in hist)
         scorer = make_scorer(pop, stacker, store, sc, im, li, cal)
+        long_model = None
+        if CFG.safe_bets_memory_mix > 0:       # as surfaces.long_memory_model
+            sc2, im2, li2 = ltr.history_examples(hist, cutoff, float("inf"))
+            long_model = make_scorer(pop, stacker, store, sc2, im2, li2, cal)
         rows = [row_of(store, m) for m in pool_all if m not in listed]
-        _, sb = ranked(scorer, rows, li, fam, store, history=hist)
+        _, sb = ranked(scorer, rows, li, fam, store, history=hist, long_model=long_model)
         top = [c.mal_id for c in sb]
-        _, disc = ranked(scorer, rows, li, fam, store, "discover", taken=set(top))
+        _, disc = ranked(scorer, rows, li, fam, store, "discover", taken=set(top), history=hist)
         gems_rows = [row_of(store, m) for m in gems_all if m not in listed]
-        _, gems = ranked(scorer, gems_rows, li, fam, store, "hidden_gems")
+        _, gems = ranked(scorer, gems_rows, li, fam, store, "hidden_gems", history=hist)
         m = user_metrics(scorer, top, items, truth, liked, disliked)
         m |= list_metrics([c.mal_id for c in disc], liked, disliked, "disc_")
         m |= list_metrics([c.mal_id for c in gems], liked, disliked, "gems_")
@@ -520,6 +563,8 @@ def compare(new: dict, old: dict | None) -> bool:
     if old and old.get("order_ranker_weight", 0.0) != new.get("order_ranker_weight", 0.0):
         print(f"\nnote: learned order weight {new.get('order_ranker_weight', 0.0):g}, baseline "
               f"{old.get('order_ranker_weight', 0.0):g}")
+    if old and old.get("settings") != new.get("settings"):
+        print(f"\nnote: ranking settings {new.get('settings')}, baseline {old.get('settings')}")
     print(f"\n{'PASS' if ok else 'FAIL'}  [{new['seconds']}s, peak {new.get('peak_mb', '?')} MB]")
     return ok
 

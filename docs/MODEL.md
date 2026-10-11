@@ -94,6 +94,9 @@ population layer. Rates come from the providers' documentation:
 | MAL detail pages (≥5,000 members) | ~9,400 | rec graph, relations, status stats |
 | backfill (`--part backfill`) | ~65 + 314 | the same fields for titles enriched on demand before the full fetch existed |
 
+The sample was grown to ~20,000 lists on 2026-10-09/10
+(`scripts/expand_population.sh`: forum posters, then their lists, in steps
+that hold the shared MAL lock only while they run; one night at 1-1.5 req/s).
 The backfill exists because both catalogue stages select what was never
 fetched, which skipped the ~3,100 mostly popular titles already enriched by
 earlier on-demand requests; their stored payloads predated the new fields.
@@ -101,10 +104,10 @@ earlier on-demand requests; their stored payloads predated the new fields.
 **Keeping the sample current** (`malrec sync cf-refresh`, then
 `malrec population fit --gate-user <MALREC_USER>`; `scripts/monthly_refresh.sh`
 runs both on the 1st of each month at 03:30 via `scripts/malrec.cron`). The refit is
-gated: the new model is stored inactive and activated only if the reference
-profile's 8-split holdout does not fall (mean by at most 0.002, any split by
-at most 0.02); otherwise the current model stays and users are left as they
-are. Since usernames are discarded
+gated: the new model is stored inactive and activated only if it passes an
+exam on the newest lists and the reference profile's holdout (Evaluation,
+The population gate); otherwise the current model stays and users are left
+as they are. Since usernames are discarded
 after fetching, old lists cannot be re-read; the sample rotates instead: up
 to 800 new users (default) are discovered from the *replies* in the newest
 anime discussion topics — casual viewers, not only the forum regulars who
@@ -124,7 +127,12 @@ them.
 - *item-kNN* — cosine over co-ratings, centred per rater, top-60 neighbours;
 - *matrix factorisation* — ALS, rank 32, on what the bias leaves;
 - *co-occurrence* — which titles share **lists** regardless of score
-  (including dropped and plan-to-watch).
+  (including dropped and plan-to-watch);
+- *EASE* — a closed-form item-item model over the same lists (Steck 2019),
+  the second half of the relevance signal.
+
+Fitted on every sampled list with 15+ ratings (model 15, 2026-10-10: 18,699
+lists, 7.8M ratings, 19,946 titles).
 
 A new user is placed by **fold-in** from their own ratings — no retraining —
 so this works from the first handful of ratings. A small *stacker*, fitted on
@@ -154,6 +162,7 @@ better predictor did not also silently change how mainstream the lists are.
 
 ```
 rank key = calibrated predicted score + relevance bonus + novelty bonus
+           - risk + (Safe Bets) popularity prior + the tab's learned order
 ```
 
 The predicted score says how much someone would like a title *if* they
@@ -184,7 +193,36 @@ Then:
   Man's is "Road to Hero"), which hid 192 main series — One Punch Man, GTO,
   Assassination Classroom, Nichijou among them — until 2026-09-26
 - **franchise collapse** — one entry per franchise
-- **diversity** — a genre-overlap penalty
+- **genre balance** — calibrated re-ranking toward the user's genre mix
+  (below, Rating round, ranges, genre balance)
+
+**The learned order** (Safe Bets; `recsys/ltr.py`, `order_ranker_weight`
+0.5). A LightGBM lambdarank model re-ranks the top 600 of the hand-built key
+and is mixed with it half and half (as z-scores, so the shift stays on the
+key's scale and rides in the stored bonus - filters and reranking on read
+stay consistent). It is trained per population model (`malrec ranker train`,
+~25 minutes; the monthly refresh does it after a new model) on ~2,300 of the
+stacker's held-out lists, each cut at two of five history sizes (10-400 entries);
+a title is a positive if the user later rated it at least their mean (7+),
+a strong one at mean + 1.5 (9+). Its inputs are the key's own terms -
+prediction and its population / personal parts, relevance, each risk part,
+popularity prior, acclaim, genre fit, novelty, list size - plus the
+user's long-series taste: the share of started titles that run 50+ episodes,
+how they rate those against their mean, and how often they drop them. No
+hard length rule: the ranker learns per user whether long series land.
+Without a ranker for the active model, Safe Bets uses the hand key alone.
+
+**Discover and Hidden Gems** have learned orders of their own
+(`discover_ranker_weight`, `gems_ranker_weight` 0.5; since 2026-10-11), from
+the same pipeline and inputs, each trained on its tab's own pool: Discover's
+without the titles Safe Bets' top 60 shows for that list, Hidden Gems' past
+popularity #1,200. Each is stored per population model and tab
+(`malrec ranker train --surface discover`, ~35 minutes each; without
+`--surface` every enabled tab is trained) and falls back to the hand key
+when missing. A ranker records the settings that shape the key it learned
+from (`ltr.FINGERPRINT_SETTINGS`: the model, blend and risk dials); after a
+change to any of them it no longer counts as current, and the tab falls back
+to the hand key until `malrec ranker train` has run again.
 
 Every card explains itself: "because you rated X" comes from the kNN term
 (people who rated X above their usual rated this above theirs too), the rest
@@ -195,9 +233,9 @@ out from the other candidates.
 
 | surface | what it is |
 |---|---|
-| `safe_bets` | the primary list: strong fits, novelty ignored. Ordered by predicted score plus the relevance bonus and a model that weighs every rating equally (`safe_bets_memory_mix`), so two neighbours can sit out of score order; "Why this?" shows every term and the resulting order score |
-| `discover` | picks up where Safe Bets ends: never repeats it, balanced novelty |
-| `hidden_gems` | strong fit among titles with a small audience |
+| `safe_bets` | the primary list: strong fits, novelty ignored. Ordered by predicted score plus the relevance bonus, a model that weighs every rating equally (`safe_bets_memory_mix`) and the learned order, so two neighbours can sit out of score order; "Why this?" shows every term and the resulting order score |
+| `discover` | picks up where Safe Bets ends: never repeats it, balanced novelty, its own learned order |
+| `hidden_gems` | strong fit among titles with a small audience, its own learned order |
 | `next_up` | the next full season or film of something you finished |
 | `side_stories` | OVAs, specials and shorts from franchises you know |
 | `this_season` | currently airing, ranked by fit |
@@ -280,7 +318,13 @@ old title makes it "new". Dating it by its start date instead was tested
 (2026-09-27): on a fixed test set the last-edit dating trains the better model
 (reference profile .796 vs .785, 5 of 8 splits) - the edit is when the opinion
 was formed. Kept. `malrec eval-prospective` compares predictions as they were shown with
-scores given afterwards - the one test the model cannot have seen. Item
+scores given afterwards - the one test the model cannot have seen.
+`malrec eval-lists --cut DATE [--surface S] [--days N]` asks the same of a
+ranking change at list level: of a tab's top 10 shown before and after the
+date, how many were added, started or rated at least the user's mean
+(positive) or dismissed, dropped or rated more than a point under it
+(negative) within N days of first being shown - overall and as the mean
+over users. Item
 consensus features (MAL/AniList means) are today's values, not as of each
 cutoff; MAL publishes no history, and it flatters every consensus-based
 method equally.
@@ -406,6 +450,28 @@ data, not by a reshuffle. The gate user's splits are scored at their own half-li
 and real list size, i.e. the model they are served. `--dry-run` reports
 without activating.
 
+**The fourfold sample and the learned order** (2026-10-10, benchmark on the
+expanded snapshot; details and the rejected counterweights in
+`docs/RESEARCH.md`). The larger sample predicts unseen lists better (exam
++.010) and the reference profile worse (-.022). The learned order, mixed
+50/50, lifts Safe Bets' top-10 hit rate at every size - 25 entries .18 ->
+.22, 150 .28 -> .32, 400 .37 -> .46, reference profile .39 -> .50 - and
+recall@50 by .02-.03 for sampled lists; part of it is popularity (IPS recall
++.004 to +.011, the reference profile's top-20 median popularity #154 ->
+#87).
+
+**Re-measured as served** (2026-10-11, `exp_blend.py`; RESEARCH.md has the
+table). The learned order beats the hand key alone at every size (top-10
+hit rate -.03 to -.10 without it). Kept as they are: the long-memory mix
+(neutral for Safe Bets, a hint of a Discover loss for the reference profile
+without it) and the risk term in the key (left to the ranker alone,
+recall@50 -.008 at 400 entries). Not shipped: popularity-corrected
+training labels, which moved lesser-known hits from Discover into Safe
+Bets rather than finding new ones. Shipped: Discover's and Hidden Gems'
+own learned orders - Discover recall@50 +.015 to +.024 at every size
+(reference profile .038 -> .091), Hidden Gems +.008 / +.015 and top-10 hit
+rate +.023 / +.044 at 150 / 400 entries, Safe Bets unchanged.
+
 **The `relevance_weight_personal` dial** (reference profile, same splits; it
 changes only the order, so rho is unaffected):
 
@@ -493,9 +559,10 @@ folklore.
 |---|---|
 | LightGBM regression | ρ 0.454 vs ridge 0.728 |
 | Pairwise ranking (RankNet-style) | ρ 0.730, lost all 8 splits |
-| LambdaMART | ρ 0.547, nDCG 0.530 |
+| LambdaMART as the per-user rating model | ρ 0.547, nDCG 0.530 (180 rows per user; as a global ranker over thousands of lists it is now the Safe Bets order) |
 | Synopsis embeddings, kNN feature | ±0.003, no consistent direction |
 | Synopsis embeddings, SVD columns | −0.05 to −0.15 at every alpha |
+| Two-tower retrieval with content features (`exp_twotower.py`, 2026-10-09) | recall@50 −.02 to −.03 and top-10 hits −.05 to −.10 vs production, alone or mixed in; helps only titles on no list |
 | Like-minded lists (user kNN on 13k lists, `exp_uknn.py`) | ρ −.005 to −.037 for the reference profile, −.002 to −.023 sampled; lists unchanged. Left in the errors: .10 on 25-entry lists, .03 on long ones; for the reference profile its neighbours point the wrong way (ρ −.24 with the later ratings) |
 | The Up Next sequel anchor in every prediction (`exp_seqall.py`) | sampled sequels RMSE 1.13 -> 1.04 at 400 entries, overall ρ +.003 at most; the reference profile −.012 to −.022 at every weight and carry-over (flat, the population's .68, its own): its sequel ratings sit near its mean whatever the first season got. Up Next keeps its own 50/50 rule |
 
@@ -621,6 +688,12 @@ environment variable. The values that matter:
 | `disagreement_penalty` / `unfamiliar_genre_penalty` / `long_series_penalty` | 0.25 / 0.3 / 0.3 | risk term in the order key (`exp_toplist.py`) |
 | `acclaim_penalty` / `acclaim_evidence_e0` | 0.6 / 0.1 | evidence check: lift from acclaim alone, fading with co-rating evidence (`exp_toplist.py` round 7) |
 | `safe_bets_memory_cap` / `safe_bets_floor` | 0.15 / -99 (off) | Safe Bets guards |
+| `safe_bets_memory_mix` | 0.0 (0.5 in compose) | Safe Bets' share of the every-rating-equal model |
+| `order_ranker_weight` | 0.0 (0.5 in compose) | Safe Bets' learned order; needs `malrec ranker train` |
+| `discover_ranker_weight` / `gems_ranker_weight` | 0.0 (0.5 in compose) | Discover's and Hidden Gems' own learned orders |
+| `safe_bets_key_risk` | 1.0 | share of the risk term in Safe Bets' hand key (0 = left to the ranker; measured worse) |
+| `order_ranker_ips` | 0.0 | popularity correction of the rankers' training labels (tested, not shipped) |
+| `not_interested_offset` / `_weight` / `_foldin` / `_franchise` | -1 / 0.4 / on / on | "Not for me" as an implicit rating under the user's mean, also in the fold-in; the franchise leaves the pool (`exp_notforme.py`) |
 
 ## Notes on the MAL API
 
@@ -656,11 +729,22 @@ reloads one as soon as that user's list, model run or the population model
 changes. Measured on the reference profile: a warm rebuild of all eight lists
 took ~5 s once a quadratic lookup in the risk term was fixed (10.7 s before).
 
-`docker-compose.yml` defines everything; the `api` and `app` bind to
-`BIND_ADDR` (loopback by default), the database to loopback only. Services are
-CPU/memory capped so they never compete with anything else on the host. Put a
-TLS-terminating reverse proxy in front of the `app` container for public use;
-the API is reached through the app's nginx and needs no route of its own.
+`docker-compose.yml` defines everything; the `app` binds to `BIND_ADDR`
+(loopback by default), the API and the database to loopback only - the API
+is reached through the app's nginx, and a client that could talk to it
+directly would choose its own `X-Forwarded-For` and with it its own
+rate-limit budget. Services are CPU/memory capped so they never compete with
+anything else on the host; the API and worker run without any Linux
+capabilities and none of the services can gain privileges. The database
+image is pinned by digest. The `lab` container mounts the working tree, but
+`scripts/` and the compose and Docker files read-only, since the host runs
+those as root. Put a TLS-terminating reverse proxy in front of the `app`
+container for public use.
+
+`make audit` (after `make audit-install`) runs the code-quality and security
+checks - ruff's bug and security rules, bandit, vulture, pip-audit, npm
+audit, semgrep and gitleaks (pinned containers, removed afterwards) - and
+writes the findings to `audit/`, which is not tracked.
 
 ### Scheduled jobs (`scripts/malrec.cron`)
 
@@ -669,7 +753,7 @@ the API is reached through the app's nginx and needs no route of its own.
 | nightly 03:15 | `malrec sync users`: re-read every app user's list (with their MAL token when signed in, so private lists work), rebuild only those that changed - scores and status changes made on MAL itself reach the model within a day | 1-2 MAL requests per user, plus new titles' details |
 | nightly 04:15 | `scripts/backup.sh`: `pg_dump -Fc` to a root-only backup directory, 7 kept, skipped below 20 GB free | ~130 MB, 25 s each |
 | Mondays 03:45 | `malrec sync upcoming`: rankings + season lists, relations for new announcements (>=1,000 members), rebuild `coming_soon` | ~30-60 MAL requests |
-| 1st of month 03:30 | `scripts/monthly_refresh.sh`: sample rotation, gated refit (on `MALREC_USER`'s holdout), rebuilds, `learn-weights` report | ~850 MAL requests |
+| 1st of month 03:30 | `scripts/monthly_refresh.sh`: sample rotation, gated refit (exam + `MALREC_USER`'s holdout), the learned orders (Safe Bets, Discover, Hidden Gems) for a new model, rebuilds, `learn-weights` report | ~850 MAL requests |
 
 The MAL jobs share a lock, so they never run at once. Restore a dump with:
 

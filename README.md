@@ -63,6 +63,9 @@ Along with the lists:
 4. **🛡️ The sanity check.** Picks that rest on acclaim alone, with nothing on
    your list backing them, are moved down. So are very long series and
    genres you've never touched.
+5. **📈 The learned order.** For Safe Bets, Discover and Hidden Gems, a
+   ranker trained on what thousands of lists went on to rate highly has
+   half a say in the final order.
 
 Every setting was measured on held-out users before it shipped. The full
 story, with the numbers, is in **[docs/MODEL.md](docs/MODEL.md)**.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Annotated
 
 import typer
 
@@ -199,6 +200,23 @@ def learn_weights_cmd(min_events: int = typer.Option(200)) -> None:
     typer.echo(json.dumps(learn_weights(min_events), indent=2, default=str))
 
 
+@app.command("eval-lists")
+def eval_lists_cmd(cut: str = typer.Option(..., help="the change's date, e.g. 2026-10-10"),
+                   surface: str = typer.Option("safe_bets"),
+                   top: int = typer.Option(10, help="the top this many titles of each build"),
+                   days: int = typer.Option(28, help="days after first shown that count")) -> None:
+    """A tab's top before vs after a ranking change: what people did with the
+    titles in the following weeks (queued / started / rated well vs "Not for
+    me" / dropped / rated low), from the build log and their lists."""
+    import datetime as dt
+    _setup(verbose=False)
+    from .learn import list_outcomes
+    when = dt.datetime.fromisoformat(cut)
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=dt.UTC)
+    typer.echo(json.dumps(list_outcomes(when, surface, top, days), indent=2, default=str))
+
+
 @sync_app.command("franchises")
 def sync_franchises() -> None:
     """Recompute franchise connected components."""
@@ -248,24 +266,32 @@ def population_status() -> None:
                    f"  users={m.get('users')} items={m.get('items')} ratings={m.get('ratings')}")
 
 
-ranker_app = typer.Typer(help="The learned Safe Bets order (recsys/ltr.py)")
+ranker_app = typer.Typer(help="The learned list orders (recsys/ltr.py)")
 app.add_typer(ranker_app, name="ranker")
 
 
 @ranker_app.command("train")
 def ranker_train(users: int = typer.Option(2400, help="stacker users to learn from"),
+                 surface: Annotated[list[str] | None, typer.Option(
+                     help="tab(s) to train; default: Safe Bets and every tab switched on")] = None,
                  if_missing: bool = typer.Option(
-                     False, help="only if the active population model has no ranker yet")
+                     False, help="only tabs the active population model has no ranker for yet")
                  ) -> None:
-    """Train the learned Safe Bets order for the active population model on
-    its stacker users (~25 minutes, a few hundred MB). Used only when
-    order_ranker_weight > 0."""
-    from .recsys.ltr import has_ranker, train_for_active
+    """Train learned orders for the active population model on its stacker
+    users (~25 minutes each, a few hundred MB). Used only for tabs whose
+    weight setting is > 0 (recsys/ltr.py SURFACES)."""
+    from .recsys.ltr import SURFACES, enabled_surfaces, has_ranker, train_for_active
     _setup()
-    if if_missing and has_ranker():
-        typer.echo("the active population model has a ranker; nothing to do")
-        return
-    typer.echo(json.dumps(train_for_active(users), indent=2, default=str))
+    tabs = list(surface) if surface else sorted({"safe_bets", *enabled_surfaces()},
+                                                key=list(SURFACES).index)
+    for tab in tabs:
+        if tab not in SURFACES:
+            typer.echo(f"no learned order for {tab!r}; one of {sorted(SURFACES)}", err=True)
+            raise typer.Exit(1)
+        if if_missing and has_ranker(tab):
+            typer.echo(f"{tab}: the active population model has a ranker; nothing to do")
+            continue
+        typer.echo(json.dumps(train_for_active(users, tab), indent=2, default=str))
 
 
 @app.command()

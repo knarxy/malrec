@@ -2,16 +2,18 @@ name: malrec
 
 # Every published port binds to an explicit address - loopback by default -
 # so nothing is reachable from outside the host unless deliberately set.
-#   BIND_ADDR   address for the app and API (127.0.0.1, or e.g. a VPN
-#               interface address to reach them over a private network only)
-#   The database is always loopback-only.
+#   BIND_ADDR   address for the web app (127.0.0.1, or e.g. a VPN
+#               interface address to reach it over a private network only)
+#   The API and the database are always loopback-only.
 #
 # Resource caps keep this stack from competing with anything else the host
 # runs; they are generous for this workload.
 
 services:
   db:
-    image: docker.io/pgvector/pgvector:pg17
+    # pinned to the digest in use (Postgres 17.11, pgvector 0.8.6): a pull
+    # never swaps the database engine under the data
+    image: docker.io/pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
     container_name: malrec-db
     restart: unless-stopped
     environment:
@@ -79,6 +81,10 @@ services:
       # Safe Bets' learned order, this share of it (on dev; recsys/ltr.py,
       # needs `malrec ranker train` for the active population model)
       ORDER_RANKER_WEIGHT: ${ORDER_RANKER_WEIGHT:-0.5}
+      # Discover's and Hidden Gems' own learned orders, the same share
+      # (experiments/exp_blend.py, 2026-10-11)
+      DISCOVER_RANKER_WEIGHT: ${DISCOVER_RANKER_WEIGHT:-0.5}
+      GEMS_RANKER_WEIGHT: ${GEMS_RANKER_WEIGHT:-0.5}
       # blend handover, personal-share cap, and the list size the ranking dials
       # follow (experiments/exp_handover.py, 2026-10-03)
       BLEND_SIZE_N0: ${BLEND_SIZE_N0:-150}
@@ -97,11 +103,16 @@ services:
     # Published so the CLI and the tests can reach it. The app does not need
     # it: nginx proxies /api over the internal network.
     ports:
-      - "${BIND_ADDR:-127.0.0.1}:${API_PORT:-8000}:8000"
+      # loopback only, whatever BIND_ADDR says: the app's nginx reaches the API
+      # over the compose network, and a client talking to it directly could
+      # choose its own X-Forwarded-For and so its own rate-limit budget
+      - "127.0.0.1:${API_PORT:-8000}:8000"
     command: >
       sh -c "malrec init && uvicorn malrec.api:app --host 0.0.0.0 --port 8000"
     cpus: ${API_CPUS:-2}
     mem_limit: ${API_MEM:-4g}
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
 
   # Rebuilds, list syncs and onboarding (malrec.tasks), so they never slow
   # the API. One task per user at a time; WORKER_THREADS users at once.
@@ -128,6 +139,8 @@ services:
       start_period: 60s
     cpus: ${WORKER_CPUS:-2}
     mem_limit: ${WORKER_MEM:-2g}
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
 
   app:
     build: ./app
@@ -139,6 +152,7 @@ services:
       - "${BIND_ADDR:-127.0.0.1}:${APP_PORT:-3000}:80"
     cpus: 0.5
     mem_limit: 256m
+    security_opt: [no-new-privileges:true]
 
   # Experiments and long-running ingest jobs, against the working tree:
   #   docker compose run --rm lab python -u experiments/exp_arch.py
@@ -160,6 +174,11 @@ services:
       MKL_NUM_THREADS: ${LAB_THREADS:-4}
     volumes:
       - .:/work
+      # what the host runs as root (cron, deploy) stays out of the lab's reach,
+      # even when an experiment runs with --user root
+      - ./scripts:/work/scripts:ro
+      - ./docker-compose.yml:/work/docker-compose.yml:ro
+      - ./Dockerfile:/work/Dockerfile:ro
     working_dir: /work
     entrypoint: ["nice", "-n", "10"]
     healthcheck:

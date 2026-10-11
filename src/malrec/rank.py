@@ -92,7 +92,8 @@ def score_candidates(user_id: int | None, model: Model, rows: list[dict],
                      shortlist: int | None = None, enrich: bool = True,
                      long_model=None, mix: float = 0.0,
                      pop_prior: float = 0.0,
-                     learned: RankContext | None = None) -> list[Candidate]:
+                     learned: RankContext | None = None,
+                     risk_scale: float = 1.0) -> list[Candidate]:
     """Predict for every eligible candidate, then keep the best `shortlist`.
 
     Scoring happens in two passes so that nothing is fetched speculatively:
@@ -109,7 +110,7 @@ def score_candidates(user_id: int | None, model: Model, rows: list[dict],
     from .recsys.scorer import HybridScorer
     if isinstance(model, HybridScorer):
         return _score_hybrid(model, rows, n, enrich, long_model, mix, pop_prior, user_id,
-                             learned)
+                             learned, risk_scale)
     if user_id is None:
         raise ValueError("the legacy per-user model scores a stored user only")
 
@@ -211,12 +212,14 @@ class OrderTerms:
 def order_terms(model, rows: list[dict], long_model=None, mix: float = 0.0,
                 pop_prior: float = 0.0, user_id: int | None = None,
                 learned: RankContext | None = None,
-                familiar: set[str] | None = None) -> OrderTerms:
+                familiar: set[str] | None = None, risk_scale: float = 1.0) -> OrderTerms:
     """The order key of a tab and every term in it, for the whole pool in one
     vectorised pass. _score_hybrid ranks by it; diagnostics (experiments/
     bench_misses.py) read the terms to tell why a title placed where it did.
     `learned` mixes in the learned order (Safe Bets, recsys/ltr.py);
-    `familiar` stands in for the user's genres when there is no stored user."""
+    `familiar` stands in for the user's genres when there is no stored user;
+    `risk_scale` is the risk term's share of the key (Safe Bets'
+    safe_bets_key_risk - the learned order reads the parts either way)."""
     ids = [r["mal_id"] for r in rows]
     raw = model.predict_ids(ids)
     ok = ~np.isnan(raw)
@@ -244,8 +247,8 @@ def order_terms(model, rows: list[dict], long_model=None, mix: float = 0.0,
         bonus = bonus + pop_part
     # a pick the user's own model doubts is not a safe one (exp_toplist.py)
     fam = familiar if familiar is not None else familiar_genres(user_id)
-    risk = (np.asarray(model.risk_penalty(ids, fam), dtype=float)
-            if hasattr(model, "risk_penalty") else np.zeros(len(ids)))
+    risk = (risk_scale * np.asarray(model.risk_penalty(ids, fam), dtype=float)
+            if hasattr(model, "risk_penalty") and risk_scale > 0 else np.zeros(len(ids)))
     bonus = bonus - risk
     key = key + bonus
     mix_part = bonus - pop_part + risk
@@ -263,11 +266,13 @@ def order_terms(model, rows: list[dict], long_model=None, mix: float = 0.0,
 def _score_hybrid(model, rows: list[dict], n: int, enrich: bool,
                   long_model=None, mix: float = 0.0, pop_prior: float = 0.0,
                   user_id: int | None = None,
-                  learned: RankContext | None = None) -> list[Candidate]:
+                  learned: RankContext | None = None,
+                  risk_scale: float = 1.0) -> list[Candidate]:
     """The whole eligible pool is scored in one vectorised pass; the item
     store already holds every candidate's features, so nothing is fetched
     except AniList data for the rare shortlisted title that still lacks it."""
-    t = order_terms(model, rows, long_model, mix, pop_prior, user_id, learned)
+    t = order_terms(model, rows, long_model, mix, pop_prior, user_id, learned,
+                    risk_scale=risk_scale)
     raw, ok, z, rel, key = t.raw, t.ok, t.z, t.rel, t.key
     pop_part, risk, lam = t.pop, t.risk, t.lam
     # the learned shift rides in the bonus, so rerank and a filtered read

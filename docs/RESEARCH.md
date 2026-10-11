@@ -1,13 +1,16 @@
 # Research notes: rating models, drift, and what "state of the art" means here
 
-Written 2026-09-26 before changing how ratings are learned. Each section: what
-the literature says, where malrec stands, and what (if anything) to do. Sources
-at the end.
+Written 2026-09-26 before changing how ratings are learned; brought up to date
+2026-10-11. Each section: what the literature says, where malrec stands, and
+what (if anything) is left to do. The dated results sections below are a log
+and stay as written; **Open questions** at the end is the current agenda.
+Sources at the end.
 
 ## 0. Frame: what kind of problem this is
 
 malrec predicts **explicit 1-10 ratings** for a handful of users with long,
-drifting histories, backed by ~4,800 sampled MAL lists (~2M ratings). That is
+drifting histories, backed by ~18,700 sampled MAL lists with 15+ ratings
+(~7.8M ratings; ~4,800 and ~2M until 2026-10-09). That is
 the Netflix-Prize setting (explicit ratings, rating prediction + top-N), not
 the setting most 2020s papers target (implicit clicks, billions of events,
 next-item prediction). Two consequences:
@@ -19,6 +22,9 @@ next-item prediction). Two consequences:
   scale on implicit next-action prediction. Meta's HSTU needs billions of
   users to pay off; at our scale the reproducibility literature finds tuned
   simple models (item-kNN, EASE, iALS, MF) match or beat them.
+- What *does* pay at this scale is learning the **order of a list** from
+  outcomes: a gradient-boosted ranker over the model's own signals, trained
+  on thousands of held-out lists (shipped 2026-10-10, see below).
 
 ## 1. Temporal dynamics: model drift, don't just forget the past
 
@@ -48,12 +54,12 @@ less shared signal. The level drift is *not* modelled; the display map
 absorbs it after the fact, which is why a rating can move a prediction the
 "wrong" way (see the Amagi Brilliant Park case).
 
-**To do.** Model the level explicitly (running: `exp_signals.py --part level`,
-variants lin3 / log / koren). If it passes, re-tune the recency half-life with
-the drift term in place - with the level handled explicitly, less decay may be
-optimal, as Koren found. Also worth a test: a **day effect** - MAL imports
-often put dozens of ratings on one day, exactly the "session" pattern
-`b_{u,t}` absorbs.
+**Status (2026-10-11).** Done and settled. The explicit level drift was
+measured and rejected (Results 2026-09-27); the half-life stays at 0.5 years,
+chosen per user from {0.35, 0.5} on their own splits. The **day effect** is
+dropped from the agenda: it is a per-day shift of the user's level, our
+metrics rank titles within one user, and the level-drift test - the same kind
+of term over a longer horizon - moved them by at most .003.
 
 ## 2. Ratings are ordinal, and each person uses the scale differently
 
@@ -63,17 +69,19 @@ distribution per item (mean, spread, P(>=9)). Ordinal models consistently
 beat regression on explicit ratings and give principled uncertainty.
 
 **malrec today.** Least-squares regression on 1-10 treated as interval data;
-a linear map per user for display.
+a linear map per user for display. Option 1 below is **shipped**
+(`uncertainty.py`): every prediction carries a split-conformal range
+("likely 7-9", ~80-85 % out-of-sample coverage) and a "chance of 9+", both
+from the distribution of the user's own past errors (or, for small accounts,
+those of population users with a list the same size).
 
-**To do.** Two options, in order of cost:
-1. Keep the regression but report **uncertainty**: split-conformal intervals
-   per user from the temporal holdout residuals ("likely 7-9", ~80% coverage),
-   distribution-free and cheap.
-2. An ordinal head (per-user thresholds on the current score): gives
-   "chance you'd rate it 9+". That answers the "is 8.0 a masterpiece?" question
-   directly - a title with expected 8.0 and wide spread is a gamble; one with
-   8.0 and narrow spread is a safe bet. It could define Safe Bets properly
-   (high lower bound, not just a high mean).
+1. ~~Conformal intervals~~ - shipped 2026-09-27.
+2. An ordinal head (per-user thresholds) would give the same two numbers
+   from a model rather than from past errors. Not worth it now: the
+   conformal version already answers "gamble or safe bet", and Safe Bets'
+   order is now learned from outcomes (section 6), which is the direct way to
+   prefer titles that land. Revisit only if the shown ranges prove badly
+   calibrated in `malrec report`.
 
 ## 3. Showing a predicted score changes the rating you give
 
@@ -88,9 +96,12 @@ mean. Ratings given after seeing ours flow back into training and into the
 evaluation.
 
 **To do.** Nothing drastic. Worth knowing when reading "the model predicted
-X and I gave X+1". Option: show a coarse band ("likely 7-9") instead of 7.84,
-which also fits section 2. Keep evaluation on ratings given before the app
-existed where possible.
+X and I gave X+1". The coarse band ("likely 7-9") is shown next to the score
+since 2026-09-27. The prospective check (`malrec eval-prospective`, and the
+gate's `prospective_compare`) scores predictions *as they were shown* against
+ratings given afterwards; it is the one test the model cannot have seen, but
+it is also the one the anchoring effect inflates - read its absolute level
+with that in mind, its comparisons between models less so.
 
 ## 4. Selection bias: ratings exist only for what people chose to watch
 
@@ -105,9 +116,17 @@ is computed on ratings of titles users chose. Example: `exp_topcal.py` found
 top-of-list predictions *under*-state actual ratings - partly because people
 choose what they expect to like.
 
-**To do.** Low cost, useful: popularity-based propensities (P(watched)
-~ popularity, per list size) and IPS-weighted versions of the key metrics, to
-check that no conclusion flips. Training with IPS is a later step.
+**Status (2026-10-11).** IPS-weighted recall (`ips50`: popularity-based
+propensities per list size) is part of every benchmark run and of the
+audits; no shipped change has lowered it. It matters most for the learned
+order: trained on what people went on to watch and like, it learns that
+popular titles get watched. Its lists are markedly more popular (the
+reference profile's top-20 median popularity #154 -> #66), and its IPS gain
+is a quarter to a half of its plain gain (Results 2026-10-10). **Training**
+with propensities (labels weighted by 1/P, tempered 0.5 and 1) was tested on
+2026-10-11 and not shipped: Safe Bets gained IPS recall exactly where
+Discover lost it - the corrected ranker takes the lesser-known hits Discover
+already showed, it does not find new ones (Results 2026-10-11).
 
 ## 5. Which population model: the reproducibility evidence
 
@@ -118,12 +137,20 @@ al. (RecSys 2022): tuned iALS is competitive with or beats newer methods.
 strongest top-N baseline. For sequential models, SASRec properly trained
 (gSASRec, RecSys 2023) matches later models.
 
-**malrec today.** Shrunk item-kNN + ALS + co-occurrence + a stacker - i.e.
-the tuned-simple family that holds up best. Good.
+**malrec today.** Shrunk item-kNN + ALS + co-occurrence + EASE + a
+stacker - the tuned-simple family that holds up best - fitted on ~18,700
+lists since 2026-10-10. EASE shipped as a relevance signal on 2026-09-27.
 
-**To do.** EASE as one more population signal for **retrieval** (it's
-excellent at "what will they watch"): one ~15k x 15k solve, cheap to test in
-`exp_final`. Sequential and generative models: not at this data size.
+Tried and rejected since (MODEL.md, "What was tried and rejected"):
+- a **two-tower** retrieval model with content features and the logQ
+  correction (`exp_twotower.py`, 2026-10-09): worse recall and top-10 hits
+  than production at every list size, alone or mixed in; it only helps
+  titles no list contains, which Safe Bets never shows;
+- **user-kNN** ("like-minded lists", `exp_uknn.py`, 2026-10-10): adds
+  nothing the item-based layer lacks; for the reference profile its
+  neighbours point the wrong way.
+
+Sequential and generative models: still not at this data size.
 
 ## 6. Lists, not just scores: calibration and diversity
 
@@ -131,10 +158,25 @@ excellent at "what will they watch"): one ~15k x 15k solve, cheap to test in
 mix of a list should match the user's history (KL divergence, greedy
 re-ranking); survey in ACM TORS 2025.
 
-**malrec today.** A hand-set genre-overlap penalty (`diversity_weight`).
+**malrec today.** Calibrated re-ranking (strength 0.7) replaced the
+overlap penalty on 2026-09-27 (`exp_calib.py`: recall up in Safe Bets and
+Discover at every size, genre KL down); the penalty remains the fallback when
+no genre profile is known.
 
-**To do.** Replace it with calibrated re-ranking, and measure recall and
-list-level genre KL. A principled version of the same idea.
+**Learning to rank.** Burges' LambdaMART optimises a list metric (nDCG)
+directly with gradient-boosted trees; it is the standard learned ranker.
+Rejected in 2026-09 *as the rating model* (180 rows per user - too few),
+it is now **shipped as the Safe Bets order** (2026-10-10, `recsys/ltr.py`):
+one global LightGBM lambdarank model, trained on ~2,300 held-out stacker
+lists at five history sizes, re-ranks the top 600 of the hand-tuned key and
+is mixed with it 50/50. Its inputs are the model's own terms (prediction,
+relevance, risk parts, popularity, acclaim, genre fit, novelty, list size)
+plus the user's long-series taste. Since 2026-10-11 **Discover and Hidden
+Gems** have their own rankers, trained on each tab's pool (Discover without
+the titles Safe Bets shows, Hidden Gems past popularity #1,200). Unbiased-LTR
+work (Joachims et al. 2017) corrects such a ranker for the position and
+popularity bias in its labels; the popularity correction was tried and not
+kept (section 4).
 
 ## 7. LLMs
 
@@ -142,9 +184,9 @@ list-level genre KL. A principled version of the same idea.
 RMSE/MAE). On ranked lists, strong LLMs are competitive; hybrids feeding CF
 signals into an LLM report sizeable gains on sparse or cold-start items.
 
-**For malrec.** Not for scoring. Plausible later uses: natural-language
-explanations from the existing breakdown, or cold-start content for titles
-with no ratings (Coming Soon) - both optional.
+**For malrec.** Not for scoring. Explanations are written from the
+model's own reasons by templates (English/German) and need no LLM; Coming
+Soon shows no score. Nothing here is on the agenda.
 
 ## 8. Evaluation methodology
 
@@ -153,9 +195,22 @@ and random splits leak the future (Campos et al. 2014; RecSys 2025
 "Time to Split").
 
 **malrec today.** Per-user temporal holdouts with cutoff-consistent
-features, plus strictly out-of-time nested tests (exp_displaycal). In line
-with best practice; a global time split for the population sample would be
-stricter still.
+features, plus strictly out-of-time nested tests (exp_displaycal). Since
+2026-10: a frozen **benchmark** (`experiments/bench.py`, paired per user,
++-2 SE) that every ranking change must pass, a population **exam** on the
+newest batch of lists neither model has seen, and the **prospective** check
+on ratings given after recommendations.
+
+Since 2026-10-11 the benchmark builds every tab as served: the
+long-memory model when `safe_bets_memory_mix` is on, each tab's learned
+order, the key's settings, and it records the settings it ran with. It
+also reports IPS recall for all three discovery tabs. A real-use check
+next to the prospective one: `malrec eval-lists --cut DATE` compares the
+titles shown before and after a change by what users did with them
+(added, rated well / dropped, rated badly) within a fixed window. One known
+gap remains: the reference profile is scored on nested splits of one list
+(8 splits, 26 sequel ratings were 6-8 titles), so its +-2 SE flags
+overstate certainty.
 
 ## Results so far (2026-09-27)
 
@@ -284,15 +339,143 @@ ratings, an unfamiliar genre, 50+ episodes, or predates 2005. Four rounds:
    +-0.15 lifted the reference profile (top-10 hits .225 -> .263, recall@50
    .432 -> .460), held-out users within noise.
 
-## Recommended order
+## Not for me, two-tower (2026-10-09)
 
-1. Finish the level-drift experiment; if it passes, add a day effect and
-   re-tune the recency half-life with the drift term in place (section 1).
-2. Conformal intervals, then ordinal probabilities; define Safe Bets by the
-   lower bound (sections 2-3).
-3. IPS-weighted sanity check of the key conclusions (section 4).
-4. EASE as a retrieval signal; calibrated re-ranking in place of the genre
-   penalty (sections 5-6).
+**"Not for me"** (`exp_notforme.py`, simulated dismissals on the benchmark):
+beyond hiding the title, a dismissal now counts as an implicit rating one
+point under the user's mean at weight 0.4, in the personal model and the
+population fold-in, and the rest of its franchise leaves the pool. Recall of
+the rebuilt list up .005-.008 at 150-400 entries (top-10 hits +.024 at 150)
+for .003-.009 of rank correlation; heavier weights cost more (-.012 to
+-.029). **Two-tower retrieval**: rejected (section 5).
+
+## The fourfold sample and the learned order (2026-10-10)
+
+**Sample.** 5,129 -> 20,374 lists (`scripts/expand_population.sh`, 1-1.5 req/s,
+one night: 8 hours). The refit won the exam on 3,000 unseen lists by +.010 rank
+correlation (clearly beyond noise) and cost the reference profile .022 on
+its 8 splits; the gate vetoed it. Diagnosis (`exp_source`, `exp_models`,
+`exp_params`, `exp_refitems`): not the stacker, the factor settings, a leak
+or the current season - the many new lists rate mainstream titles the
+reference profile rated low (isekai sequels, shounen) higher, and pull its
+predictions with them. The owner chose the larger sample; the gate now lets a
+clearly better exam outweigh the gate user (MODEL.md, The population gate).
+Model 15 (18,699 lists, 7.8M ratings) is active.
+
+**Where the lists miss** (`bench_misses.py`): of liked future titles outside
+the Safe Bets top 50, thin lists lose most to relevance and popularity, long
+lists to the prediction itself; ~25 % are filtered by design (side stories,
+formats, NSFW, < 2,000 scorers); the scored misses sit far down (median place
+~400), out of reach of small re-weightings.
+
+**Learned order** (section 6; `exp_ltr.py`, `exp_blend.py`), top-10 hit rate
+/ recall@50, today -> mixed 50/50:
+
+| list entries | hit10 | r50 | IPS r50 | pop# top 20 |
+|---|---|---|---|---|
+| 25 | .179 -> .222 | .176 -> .197 | +.011 | 159 -> 112 |
+| 150 | .277 -> .317 | .211 -> .241 | +.011 | 222 -> 183 |
+| 400 | .369 -> .455 | .206 -> .234 | +.007 | 374 -> 282 |
+| reference profile | .388 -> .500 | .477 -> .477 | +.004 | 154 -> 87 |
+
+The pure learned order (weight 1) gains more for sampled users but costs the
+reference profile recall (-.029) and makes its top 20 the most popular
+titles (#59); the mix keeps both. The long-series taste inputs (share of
+started titles that are long, rating lift on them, drop rate) add a little
+for sampled lists, none for the reference profile, and make its top 20 less
+mainstream (#59 -> #87).
+
+**Counterweights for the reference profile, all rejected:** more personal
+weight (`exp_refcap`: at its real 152 ratings any share above 0.5 is worse,
+.798 -> .746 at 1.0); like-minded lists (section 5); the Up Next sequel rule
+in every prediction (`exp_seqall.py`: sampled sequels RMSE 1.13 -> 1.04, but
+the reference profile -.012 to -.022 overall at every weight and
+carry-over - its sequel ratings sit near its mean whatever the first season
+got). The common thread: this taste departs from the crowd in ways other
+lists cannot reveal; its own ratings and "Not for me" are what move it.
+
+**More lists** were not pursued: the 5k -> 20k step gained .010 on unseen
+lists, a further doubling would likely gain less, and the shared 15 GB host
+already needs 27 minutes and most of the lab's 5 GB for one fit.
+
+## The agenda worked through (2026-10-11)
+
+One benchmark run, eight arms, each paired with the first - production as
+served: long-memory mix 0.5, learned Safe Bets order 0.5
+(`exp_blend.py`, `results_points_2026-10-11.txt`). Changes against it,
++/- = beyond two standard errors:
+
+| arm | 25 entries | 150 | 400 | reference profile |
+|---|---|---|---|---|
+| long-memory mix off | 0 | 0 | 0 | Safe Bets 0, Discover r50 -.011 |
+| risk out of the key | 0 | 0 | r50 -.008-, IPS -.008- | r50 +.011 |
+| both | 0 | 0 | hit10 -.017-, Discover +.005+ | hit10 -.038- |
+| hand key only (no ranker) | r50 -.019-, hit10 -.047- | r50 -.030-, hit10 -.032- | r50 -.028-, hit10 -.066- | hit10 -.100- |
+| IPS labels 0.5 | hit10 -.013- | Safe Bets IPS +.011+, Discover IPS -.005- | Safe Bets IPS +.007+, Discover IPS -.008- | r50 +.011, Discover IPS -.010 |
+| IPS labels 1 | 0 | Safe Bets IPS +.006+, Discover IPS -.006- | Safe Bets IPS +.008+, Discover IPS -.011-, Discover hit10 +.017+ | Discover r50 -.017 |
+| Discover + Hidden Gems rankers | Discover r50 +.015+ | Discover r50 +.015+, hit10 +.034+; Gems r50 +.008+, hit10 +.023+ | Discover r50 +.024+, hit10 +.035+; Gems r50 +.015+, hit10 +.044+ | Discover r50 .038 -> .091+ |
+
+**A1, long memory: kept.** With the learned order on, the
+every-rating-equal model no longer moves Safe Bets for anyone (all
+differences within noise). But Safe Bets' order decides what Discover may
+show, and without it the reference profile's Discover recall@50 fell both
+times it was measured (-.011 without, -.013 with the new Discover ranker;
+same splits, so one finding, within noise). Dropping it would save one user
+model per rebuild and gain nothing measured, so it stays at 0.5 until the
+real-use check says otherwise.
+
+**A2, risk in the key: kept.** Leaving the four risk parts to the ranker
+alone costs long lists recall (-.008 at 400 entries); it gains the
+reference profile .011 that is within its noise. The key's risk term and
+the ranker's risk features are not redundant: the key sets which 600
+titles the ranker sees.
+
+**B1, popularity-corrected labels: not shipped.** At both strengths Safe
+Bets gained IPS recall exactly where Discover lost it - the corrected ranker
+pulls the lesser-known hits that Discover already showed into Safe Bets
+instead of finding new ones - and plain recall did not move. For a tab
+meant to be backed by the user's own ratings that is the wrong trade.
+
+**B2, learned orders for Discover and Hidden Gems: shipped** (0.5 each). The
+largest gain of the day: Discover's recall@50 up by a fifth to a third at
+every size and more than doubled for the reference profile, Hidden Gems' up
+at 150 and 400 entries, Safe Bets untouched. The gain is not bought with
+popularity: IPS recall rises with plain recall (Discover +.008 / +.010,
+Hidden Gems +.007 / +.015 at 150 / 400 entries).
+
+**A3, real use.** `malrec eval-lists` (MODEL.md, Evaluation) compares a
+tab's top 10 before and after a date. Baseline for the Safe Bets order
+(cut 2026-10-10, 7-day windows): before, 112 titles, 5.4 % acted on
+positively, 4.5 % negatively (user means 3.5 % / 3.3 %); the first 7-day
+windows after the cut close on 2026-10-17, the 28-day ones on 2026-11-07.
+Discover and Hidden Gems: cut 2026-10-11, same dates a day later. Small
+numbers - seven active users - so read the user means and expect wide
+intervals.
+
+## Open questions (2026-10-11, evening)
+
+**A3. Read the real-use check** (`malrec eval-lists --cut 2026-10-10`, then
+`--surface discover|hidden_gems --cut 2026-10-11`) on 2026-10-17 and
+2026-11-07. Note that the monthly refresh on 2026-11-01 may activate a new
+population model (and retrain the rankers) inside the 28-day window.
+
+**B3. The Discover and Hidden Gems ranker weights.** Only 0.5 was measured
+(as for Safe Bets, where 1.0 cost the reference profile); 0.75 / 1 may gain
+more in tabs that are about breadth. One `exp_blend.py` run with cached
+rankers, ~30 minutes.
+
+**C1. Remove flags that were tested and stayed off for weeks:**
+`use_affinity_features`, `content_staff`, `content_audience`,
+`content_staff_aff`, `stack_extras`, `safe_bets_floor`, and now
+`order_ranker_ips`. Their results stay in MODEL.md and
+`experiments/`; the code paths go.
+
+**D. Off the agenda** (measured, or not worth it at this scale): level drift
+and day effect, less recency decay, an ordinal head, sequential / generative
+models, two-tower retrieval, user-kNN, the sequel rule everywhere, more
+personal weight for long lists, a nightly fetch beyond ~20k lists, LLMs for
+scoring, popularity-corrected ranker labels, the risk term only as ranker
+features.
 
 ## Sources
 
@@ -320,6 +503,13 @@ ratings, an unfamiliar genre, 50+ episodes, or predates 2005. Four rounds:
   https://dl.acm.org/doi/10.1145/3789266
 - LLMs vs CF on ratings vs ranked lists: https://journals.sagepub.com/doi/10.3233/FAIA260019
 - Conformal prediction for rating intervals: https://arxiv.org/pdf/2412.12110
+- Burges, From RankNet to LambdaRank to LambdaMART: An Overview (MSR-TR-2010-82):
+  https://www.microsoft.com/en-us/research/publication/from-ranknet-to-lambdarank-to-lambdamart-an-overview/
+- Joachims, Swaminathan, Schnabel, Unbiased Learning-to-Rank with Biased
+  Feedback (WSDM 2017): https://arxiv.org/abs/1608.04468
+- Yi et al., Sampling-Bias-Corrected Neural Modeling for Large Corpus Item
+  Recommendations (RecSys 2019, the logQ correction):
+  https://dl.acm.org/doi/10.1145/3298689.3346996
 - Time-aware evaluation: Campos et al. survey
   https://www.researchgate.net/publication/257671605 ; Time to Split (RecSys 2025):
   https://arxiv.org/pdf/2507.16289

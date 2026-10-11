@@ -25,3 +25,6 @@ data/
 # benchmark output (the frozen data lives under experiments/bench/data on the server)
 experiments/bench/latest.json
 .torchlib/
+
+# audit reports (scripts/audit.sh) can quote what they found
+audit/
