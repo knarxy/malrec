@@ -36,6 +36,7 @@ rate highly and goes looking for the rest.
 | ⏭️ **Next Up** | The next season of the shows you finished and liked |
 | 📺 **This Season** | What's airing right now, ranked for you |
 | 📅 **Coming Soon** | Announced sequels and films from franchises you love |
+| 📋 **Plan to Watch** | Your own Plan to Watch, ranked by how much you'll likely enjoy each |
 | 🎁 **Side Stories** | OVAs and specials from series you already know |
 
 Along with the lists:
