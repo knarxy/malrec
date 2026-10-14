@@ -35,7 +35,9 @@ from .config import settings
 from .db import conn, query, scalar
 from .model import Model, load_or_train
 from .rank import (
+    AgeMix,
     Candidate,
+    age_mix,
     attach_reasons,
     model_drivers,
     relevance_bonus,
@@ -51,6 +53,9 @@ SURFACES = ("safe_bets", "discover", "hidden_gems", "next_up", "coming_soon",
             "plan_to_watch", "side_stories", "this_season")
 # surfaces ordered by rerank(); a filtered read re-runs it on the shortlist
 RERANKED = ("discover", "hidden_gems", "this_season", "safe_bets")
+# held to the user's release-age mix (rank.age_mix); This Season is new by
+# definition
+AGED = ("safe_bets", "discover", "hidden_gems")
 POOL_KEEP = 300         # shortlist kept per surface for re-ranking
 BUILD_LIMIT = 60        # list length build_all() stores
 
@@ -306,7 +311,8 @@ def _hidden_gems(user_id: int, model: Model, spec: SurfaceSpec, limit: int
                             learned=context_for(user_id, model, "hidden_gems"))
     seen: list[Candidate] = []
     return pool, rerank(pool, spec.novelty_weight, spec.diversity_weight, limit,
-                        considered=seen, profile=genre_profile(user_id)), seen
+                        considered=seen, profile=genre_profile(user_id),
+                        ages=user_age_mix(user_id)), seen
 
 
 PTW_SQL = """
@@ -398,6 +404,27 @@ def genre_profile(user_id: int, exclude: list[str] | tuple = ()) -> dict[str, fl
     return {g: v / tot for g, v in mix.items()}
 
 
+def user_age_mix(user_id: int, years: dict[int, int | None] | None = None) -> AgeMix | None:
+    """rank.age_mix of the user's list, ages counted from this year. A
+    candidate's release year comes from `years` (a read's stored shortlist)
+    or the item store (a build)."""
+    entries = query("SELECT le.mal_id, le.status, a.season_year,"
+                    "       coalesce(le.finished_at::timestamptz, le.updated_at) AS at"
+                    "  FROM list_entry le JOIN anime a USING (mal_id) WHERE le.user_id = %s",
+                    (user_id,))
+    known = {e["mal_id"]: e["season_year"] for e in entries}
+    if years is None:
+        from .recsys.service import item_store
+        rows = item_store().rows
+
+        def year_of(m: int) -> int | None:
+            return known[m] if m in known else (rows.get(m) or {}).get("season_year")
+    else:
+        def year_of(m: int) -> int | None:
+            return known[m] if m in known else years.get(m)
+    return age_mix(entries, year_of, dt.datetime.now(dt.UTC).year)
+
+
 def long_memory_model(user_id: int, model):
     """The user's hybrid model refitted with every rating weighted equally,
     for Safe Bets' ordering. None for the legacy per-user model."""
@@ -459,7 +486,8 @@ def build_surface(user_id: int, surface: str = "discover", limit: int = 50,
             mean_shown = float(model.calibrate(np.array([model.baseline]))[0])
             pool = [c for c in pool if c.predicted >= mean_shown + floor]
         cands = rerank(pool, spec.novelty_weight, spec.diversity_weight, limit,
-                       considered=seen, profile=genre_profile(user_id))
+                       considered=seen, profile=genre_profile(user_id),
+                       ages=user_age_mix(user_id))
 
     # What is kept for re-ranking: the best of the scored pool, plus anything
     # that made the default list from further down.
@@ -674,12 +702,14 @@ def read_ranked(user_id: int, surface: str, limit: int = 30, offset: int = 0,
                 relevance=rel, relevance_z=r["relevance_z"],
                 personal_share=r["personal_share"], bonus=r["bonus"] or 0.0,
                 row={"mal_genres": r["mal_genres"]}))
+        ages = (user_age_mix(user_id, {r["mal_id"]: r["season_year"] for r in rows})
+                if surface in AGED else None)
         # same novelty scale and cut-off as the build, so an unfiltered read
         # reproduces the stored list exactly
         scale = rows[0]["novelty_scale"] if rows else 1.0
         ranked = rerank(cands, spec.novelty_weight * scale, spec.diversity_weight,
                         limit=max(offset + limit, rows[0]["build_limit"]), scale_novelty=False,
-                        profile=genre_profile(user_id, filters.exclude_genres))
+                        profile=genre_profile(user_id, filters.exclude_genres), ages=ages)
         ordered = [(by_id[c.mal_id], c.final) for c in ranked]
     else:
         ordered = [(r, r["predicted"]) for r in rows]

@@ -66,6 +66,9 @@ Along with the lists:
 5. **📈 The learned order.** For Safe Bets, Discover and Hidden Gems, a
    ranker trained on what thousands of lists went on to rate highly has
    half a say in the final order.
+6. **🗓️ Your mix of old and new.** Those three lists keep the balance of
+   new releases and older titles that your own list shows, so a
+   back-catalogue fan isn't handed only this year's shows.
 
 Every setting was measured on held-out users before it shipped. The full
 story, with the numbers, is in **[docs/MODEL.md](docs/MODEL.md)**.

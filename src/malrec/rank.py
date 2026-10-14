@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import math
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -50,6 +51,50 @@ class Candidate:
     risk: float = 0.0            # the disagreement penalty's part of `bonus` (>= 0, subtracted)
     row: dict = field(repr=False, default_factory=dict)
     reasons: list[dict] = field(default_factory=list)
+
+
+# ------------------------------------------------------------- release age --
+
+# How old a title is when someone watches it. Their own mix, read from their
+# list at the time they watched each title, is what the era balance in
+# rerank() aims a list at: without it the learned orders filled even a
+# back-catalogue watcher's lists with this year's shows (2026-10-13).
+AGE_EDGES = (2, 5, 10, 20)     # buckets: 0-1, 2-4, 5-9, 10-19 and 20+ years
+AGE_MIN_ENTRIES = 10           # fewer dated titles: no era balance
+
+
+def age_bucket(age: float) -> int:
+    return int(np.searchsorted(AGE_EDGES, max(age, 0.0), side="right"))
+
+
+@dataclass
+class AgeMix:
+    """A user's release-age mix (shares per AGE_EDGES bucket) and how to age
+    a candidate: `ref_year` minus its release year."""
+    share: np.ndarray
+    ref_year: int
+    year_of: Callable[[int], int | None]
+
+    def bucket(self, mal_id: int) -> int | None:
+        y = self.year_of(mal_id)
+        return None if y is None else age_bucket(self.ref_year - y)
+
+
+def age_mix(entries: list[dict], year_of: Callable[[int], int | None],
+            ref_year: int) -> AgeMix | None:
+    """From a list's entries (mal_id, status, at): every started title's age
+    when it was watched (`at`'s year minus its release year), counted equally -
+    the whole history, since 'I also watch older shows' is a long-run habit.
+    None below AGE_MIN_ENTRIES dated titles."""
+    counts = np.zeros(len(AGE_EDGES) + 1)
+    for e in entries:
+        y = year_of(e["mal_id"])
+        if e["status"] == "plan_to_watch" or y is None or e.get("at") is None:
+            continue
+        counts[age_bucket(e["at"].year - y)] += 1
+    if counts.sum() < AGE_MIN_ENTRIES:
+        return None
+    return AgeMix(counts / counts.sum(), ref_year, year_of)
 
 
 # --------------------------------------------------------------- retrieval --
@@ -309,7 +354,8 @@ def rerank(cands: list[Candidate], novelty_weight: float | None = None,
            diversity_weight: float | None = None, limit: int = 50,
            scale_novelty: bool = True,
            considered: list[Candidate] | None = None,
-           profile: dict[str, float] | None = None) -> list[Candidate]:
+           profile: dict[str, float] | None = None,
+           ages: AgeMix | None = None) -> list[Candidate]:
     """Collapse franchises, then trade predicted score against novelty and
     genre balance.
 
@@ -318,7 +364,9 @@ def rerank(cands: list[Candidate], novelty_weight: float | None = None,
     that best trades relevance against the KL divergence between the user's
     genre mix and the list's. Measured (experiments/exp_calib.py): recall@50
     up in both tabs at every list size, genre mix closer to the user's. The
-    older overlap penalty is the fallback without a profile.
+    older overlap penalty is the fallback without a profile. With `ages`
+    (and age_calibration > 0) the list's release-age mix is held to the
+    user's the same way.
 
     Franchise collapse matters more than it looks: without it the list fills
     with four seasons of the same show, all scoring nearly identically.
@@ -356,7 +404,7 @@ def rerank(cands: list[Candidate], novelty_weight: float | None = None,
     if profile and lam > 0 and picked:
         for c in picked:                # the plain key, without the overlap penalty
             c.final = c.predicted + c.relevance + c.bonus + nw * c.novelty
-        return calibrated(picked, profile, lam, limit)
+        return calibrated(picked, profile, lam, limit, ages, settings().age_calibration)
     picked.sort(key=lambda c: -c.final)
     return picked[:limit]
 
@@ -366,9 +414,11 @@ CALIB_ALPHA = 0.01          # smoothing of the list's genre mix toward the user'
 
 
 def calibrated(cands: list[Candidate], profile: dict[str, float], lam: float,
-               limit: int) -> list[Candidate]:
+               limit: int, ages: AgeMix | None = None, mu: float = 0.0) -> list[Candidate]:
     """Steck's greedy calibrated selection over the franchise-collapsed
-    candidates; returns the selected titles ordered by their ranking key."""
+    candidates; returns the selected titles ordered by their ranking key.
+    With `ages` each step also pays mu x the KL divergence between the
+    user's release-age mix and the list's."""
     genres = sorted({g for c in cands for g in (c.row.get("mal_genres") or [])} | set(profile))
     gi = {g: k for k, g in enumerate(genres)}
     G = np.zeros((len(cands), len(genres)))
@@ -381,6 +431,15 @@ def calibrated(cands: list[Candidate], profile: dict[str, float], lam: float,
     key = np.array([c.final for c in cands])
     rel = (key - key.min()) / (key.max() - key.min() + 1e-9)
     counts = np.zeros(len(genres))
+    aged = ages is not None and mu > 0
+    pa = ages.share if ages is not None else np.ones(1)
+    A = np.zeros((len(cands), len(pa)))
+    acounts = np.zeros(len(pa))
+    if aged and ages is not None:
+        for r, c in enumerate(cands):
+            b = ages.bucket(c.mal_id)
+            if b is not None:
+                A[r, b] = 1.0
     left = np.ones(len(cands), bool)
     out, total = [], 0.0
     for _ in range(min(limit, len(cands))):
@@ -390,15 +449,35 @@ def calibrated(cands: list[Candidate], profile: dict[str, float], lam: float,
         q = np.divide(C, tot, out=np.zeros_like(C), where=tot > 0)
         qt = (1 - CALIB_ALPHA) * q + CALIB_ALPHA * p
         kl = (p[mask] * np.log(p[mask] / qt[:, mask])).sum(1) if mask.any() else 0.0
-        b = idx[int(np.argmax((1 - lam) * (total + rel[idx]) - lam * kl))]
+        gain = (1 - lam) * (total + rel[idx]) - lam * kl
+        if aged:
+            gain = gain - mu * _kl(pa, acounts + A[idx])
+        b = idx[int(np.argmax(gain))]
         out.append(cands[b]); left[b] = False
         total += rel[b]; counts += G[b]
+        acounts += A[b]
     # The calibration decides WHICH titles make the list; their ORDER is the
     # ranking key's. In selection order the first picks are made almost
     # purely on genre fit (a 6.8 title led a list of 8s); exp_calib.py
-    # measured the set (recall@50), which this keeps.
-    out.sort(key=lambda c: -c.final)
-    return out
+    # measured the set (recall@50), which this keeps. Sorting the whole list
+    # by the key, though, puts whatever the key favours at the top whatever
+    # the mix: a back-catalogue watcher's 60 had their age mix, the first 20
+    # were all this year's. With calibration_block the key orders each block
+    # of that many picks - the greedy picks are calibrated as a prefix, so
+    # every block keeps the mix and the best of each block leads it. Only
+    # for lists held to an age mix: the rest (This Season) was not measured.
+    block = (settings().calibration_block if ages is not None and mu > 0 else 0) or len(out)
+    return [c for k in range(0, len(out), block)
+            for c in sorted(out[k:k + block], key=lambda c: -c.final)]
+
+
+def _kl(p: np.ndarray, C: np.ndarray) -> np.ndarray:
+    """KL(p || q) for each row of counts C, q smoothed toward p by CALIB_ALPHA."""
+    tot = C.sum(1, keepdims=True)
+    q = np.divide(C, tot, out=np.zeros_like(C), where=tot > 0)
+    qt = (1 - CALIB_ALPHA) * q + CALIB_ALPHA * p
+    m = p > 0
+    return (p[m] * np.log(p[m] / qt[:, m])).sum(1) if m.any() else np.zeros(len(C))
 
 
 # --------------------------------------------------------------- explanation --

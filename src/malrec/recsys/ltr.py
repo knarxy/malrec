@@ -42,7 +42,13 @@ BASE_FEATURES = ("shown", "rel_z", "pop_prior", "risk_long", "risk_disagree",
 # title's length the ranker can learn who likes them, instead of one penalty
 # for everyone
 TASTE_FEATURES = ("user_long_share", "user_long_lift", "user_long_drop")
-FEATURES = BASE_FEATURES + TASTE_FEATURES
+# The same for release age (rank.age_mix): the title's age when the list is
+# built - not its year, which put this season's shows past anything seen in
+# training, so the ranker read "newest" as "best" - and how much of the
+# user's watching, and how well rated, was of titles that old
+AGE_FEATURES = ("age", "user_age_share", "user_age_lift")
+FEATURES = (tuple(f for f in BASE_FEATURES if f != "year") + TASTE_FEATURES
+            + AGE_FEATURES)
 LONG_PRIOR = 3.0      # pseudo-titles pulling a thin record toward "no opinion"
 TRAIN_BUDGETS = (10, 25, 60, 150, 400)    # list sizes a training user is cut to
 SHORTLIST = 600                            # the key's top this many are reordered
@@ -135,6 +141,18 @@ class RankContext:
     n_scored: int                  # ratings their model was fitted on
     weight: float                  # share of the learned order in the key
     taste: dict[str, float] = field(default_factory=dict)   # user_taste()
+    ages: AgeTaste | None = None                             # age_taste()
+
+
+@dataclass
+class AgeTaste:
+    """What a list says about release age (AGE_FEATURES): per rank.AGE_EDGES
+    bucket the share of started titles watched at that age and their rating
+    lift over the user's mean, pulled toward 0 by LONG_PRIOR pseudo-titles;
+    `ref_year` is the year candidates are aged from."""
+    share: np.ndarray
+    lift: np.ndarray
+    ref_year: int
 
 
 # ------------------------------------------------------------- features --
@@ -161,9 +179,28 @@ def user_taste(entries: list[dict], store: ItemStore) -> dict[str, float]:
                               / (len(long_) + LONG_PRIOR)}
 
 
+def age_taste(entries: list[dict], store: ItemStore, ref_year: int) -> AgeTaste:
+    """AgeTaste from a list's entries (mal_id, score, status, at)."""
+    from ..rank import AGE_EDGES, age_bucket
+    k = len(AGE_EDGES) + 1
+    n, lift, rated = np.zeros(k), np.zeros(k), np.zeros(k)
+    scores = [float(e["score"]) for e in entries if e["score"] > 0]
+    mean = float(np.mean(scores)) if scores else 0.0
+    for e in entries:
+        y = (store.rows.get(e["mal_id"]) or {}).get("season_year")
+        if e["status"] == "plan_to_watch" or y is None or e.get("at") is None:
+            continue
+        b = age_bucket(e["at"].year - y)
+        n[b] += 1
+        if e["score"] > 0:
+            lift[b] += float(e["score"]) - mean
+            rated[b] += 1
+    return AgeTaste(n / n.sum() if n.sum() else n, lift / (rated + LONG_PRIOR), ref_year)
+
+
 def features(model, terms, order: list[int], ids: list[int], ctx_familiar, profile,
              n_scored: int, store: ItemStore, taste: dict[str, float] | None = None,
-             names: tuple[str, ...] = FEATURES) -> np.ndarray:
+             names: tuple[str, ...] = FEATURES, ages: AgeTaste | None = None) -> np.ndarray:
     """The `names` features for the rows at `order` of a pool; `terms` is the
     pool's rank.OrderTerms (before any learned shift)."""
     from ..rank import novelty
@@ -172,6 +209,7 @@ def features(model, terms, order: list[int], ids: list[int], ctx_familiar, profi
     st, pe = model.um.predict_parts(sid) if model.um.inner is not None else (
         model.um.predict(sid), np.full(len(sid), np.nan))
     taste = taste or {}
+    from ..rank import age_bucket
     X = np.zeros((len(sid), len(names)), dtype=np.float32)
     for j, (k, m) in enumerate(zip(order, sid)):
         r = store.rows.get(m) or {}
@@ -190,6 +228,13 @@ def features(model, terms, order: list[int], ids: list[int], ctx_familiar, profi
             "log_pop_rank": math.log10(max(r.get("mal_popularity") or 99999, 1)),
             "year": r.get("season_year") or 2010, "episodes": r.get("num_episodes") or 0,
             "novelty": novelty(r.get("mal_popularity")), **taste}
+        y = r.get("season_year")
+        if ages is not None:
+            age = ages.ref_year - y if y is not None else math.nan
+            b = age_bucket(age) if y is not None else None
+            col["age"] = age
+            col["user_age_share"] = ages.share[b] if b is not None else 0.0
+            col["user_age_lift"] = ages.lift[b] if b is not None else 0.0
         X[j] = [col.get(n, 0.0) for n in names]
     return X
 
@@ -209,7 +254,7 @@ def learned_shift(model, terms, ids: list[int], ctx: RankContext, store: ItemSto
     key = terms.key[order]
     names = tuple(ctx.ranker.meta.get("features") or BASE_FEATURES)
     s = ctx.ranker.predict(features(model, terms, order, ids, ctx.familiar, ctx.profile,
-                                    ctx.n_scored, store, ctx.taste, names))
+                                    ctx.n_scored, store, ctx.taste, names, ctx.ages))
     w = ctx.weight
     mixed = float(np.mean(key)) + float(np.std(key)) * ((1 - w) * _z(key) + w * _z(s))
     shift[order] = mixed - key
@@ -336,7 +381,7 @@ def train(pop: PopulationModel, stacker, store: ItemStore, pool: list[int],
             ids = [r["mal_id"] for r in q_rows]
             order = shortlist(terms)
             X = features(scorer, terms, order, ids, fam, genre_mix(li, store), len(sc), store,
-                         user_taste(seen, store), names)
+                         user_taste(seen, store), names, age_taste(seen, store, cutoff.year))
             y = _labels([ids[k] for k in order], {m: s for m, s, _ in test_s}, mean, ipw)
             if y.sum() == 0:
                 continue                    # a query with no positive teaches nothing
@@ -500,10 +545,16 @@ def context_for(user_id: int, model, surface: str = "safe_bets") -> RankContext 
     ranker = active_ranker(surface)
     if ranker is None:
         return None
+    import datetime as dt
+
     from ..db import query
     from ..rank import familiar_genres
     from ..surfaces import genre_profile
     from .service import item_store
-    entries = query("SELECT mal_id, score, status FROM list_entry WHERE user_id=%s", (user_id,))
+    entries = query("SELECT mal_id, score, status,"
+                    " coalesce(finished_at::timestamptz, updated_at) AS at"
+                    " FROM list_entry WHERE user_id=%s", (user_id,))
+    store = item_store()
     return RankContext(ranker, familiar_genres(user_id), genre_profile(user_id),
-                       len(model._scores), w, user_taste(entries, item_store()))
+                       len(model._scores), w, user_taste(entries, store),
+                       age_taste(entries, store, dt.datetime.now(dt.UTC).year))

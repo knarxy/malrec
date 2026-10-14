@@ -265,6 +265,19 @@ class Settings(BaseSettings):
     diversity_weight: float = 0.07    # fallback when no genre profile is known
     # Calibrated re-ranking strength (Steck 2018); 0 = the old overlap penalty
     genre_calibration: float = 0.7
+    # The same for the age mix (rank.age_mix: how old titles were when the
+    # user watched them): the weight of its KL term in Safe Bets, Discover and
+    # Hidden Gems; 0 = off. Shipped at 1 with calibration_block 20 and the
+    # ranker's age features (exp_blend.py, 2026-10-13): the distance of the
+    # top 20's age mix from the user's own fell by about half on every tab
+    # (Safe Bets .29-.33 -> .15-.18 at 25/150/400 entries) while recall@50
+    # rose (+.023/+.009/+.005); at 2, recall gives part of that back.
+    age_calibration: float = 0.0
+    # Calibrated lists are ordered by the ranking key within blocks of this
+    # many titles (0 = the whole list, as measured in exp_calib.py). Without
+    # blocks the calibrated set is right but its newest titles still sort to
+    # the top: the visible top 20 hardly changed.
+    calibration_block: int = 0
 
     @property
     def conninfo(self) -> str:

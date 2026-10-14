@@ -32,6 +32,7 @@ function requestedUser(): string | null {
   return new URLSearchParams(window.location.search).get('user')?.trim() || null
 }
 
+const QUIZ_MAX_SCORED = 60
 const AUTH_ERRORS = ['access_denied', 'cancelled', 'expired', 'profile', 'blocked']
 
 /** Reads ?auth_error= left by the OAuth callback and removes it from the URL. */
@@ -341,6 +342,9 @@ function Main({ lang, setLangState }: { lang: Lang; setLangState: (l: Lang) => v
   // recommendations, and only once you are signed in. Usage is reported for
   // your own lists only, too.
   const isOwn = !!auth?.signed_in && !!user && auth.username?.toLowerCase() === user.toLowerCase()
+  // the rating round fills thin lists; from QUIZ_MAX_SCORED ratings on it only
+  // offers popular titles a long list has skipped on purpose
+  const quizOpen = isOwn && !!profile && profile.scored < QUIZ_MAX_SCORED
 
   useEffect(() => { if (isOwn && ready) track({ kind: 'app_open' }) }, [isOwn, ready])
   useEffect(() => {
@@ -550,13 +554,13 @@ function Main({ lang, setLangState }: { lang: Lang; setLangState: (l: Lang) => v
               </span>
             </button>
           )}
-          {isOwn && <button className="bar-btn bar-extra" onClick={() => setQuiz(true)}>{t('Rate titles')}</button>}
+          {quizOpen && <button className="bar-btn bar-extra" onClick={() => setQuiz(true)}>{t('Rate titles')}</button>}
           {isOwn && <button className="bar-btn bar-extra" onClick={() => setTogether(true)}>{t('Watch together')}</button>}
           <button className="bar-btn bar-extra" onClick={() => setInsights(true)} disabled={!profile}>{t('Your taste')}</button>
           <ThemeToggle key={prefs.theme ?? 'system'} onChange={(th) => savePrefs({ theme: th })} />
           {auth.is_admin && <AdminBell onOpenPanel={() => setAdminView(true)} />}
           <AccountMenu username={auth.username ?? ''} picture={auth.picture} viewing={isOwn ? null : user}>
-            {isOwn && <button className="menu-extra" onClick={() => setQuiz(true)}>{t('Rate titles')}</button>}
+            {quizOpen && <button className="menu-extra" onClick={() => setQuiz(true)}>{t('Rate titles')}</button>}
             {isOwn && <button className="menu-extra" onClick={() => setTogether(true)}>{t('Watch together')}</button>}
             <button className="menu-extra" onClick={() => setInsights(true)} disabled={!profile}>{t('Your taste')}</button>
             {auth.is_admin && <button onClick={() => setAdminView(true)}>{t('adm.menu')}</button>}
@@ -602,7 +606,7 @@ function Main({ lang, setLangState }: { lang: Lang; setLangState: (l: Lang) => v
             </button>
           </section>
         )}
-        {isOwn && profile && profile.scored < 60 && !refresh && (
+        {quizOpen && !refresh && (
           <div className="notice">
             {t('quiz.banner')}{' '}
             <button className="button-link" onClick={() => setQuiz(true)}>{t('Rate titles')}</button>

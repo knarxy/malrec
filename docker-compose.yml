@@ -85,6 +85,11 @@ services:
       # (experiments/exp_blend.py, 2026-10-11)
       DISCOVER_RANKER_WEIGHT: ${DISCOVER_RANKER_WEIGHT:-0.5}
       GEMS_RANKER_WEIGHT: ${GEMS_RANKER_WEIGHT:-0.5}
+      # the three tabs follow the user's own age mix (how old titles were when
+      # they watched them), ordered within blocks of 20 (exp_blend.py,
+      # 2026-10-13: against recency bias, recall@50 unchanged or better)
+      AGE_CALIBRATION: ${AGE_CALIBRATION:-1}
+      CALIBRATION_BLOCK: ${CALIBRATION_BLOCK:-20}
       # blend handover, personal-share cap, and the list size the ranking dials
       # follow (experiments/exp_handover.py, 2026-10-03)
       BLEND_SIZE_N0: ${BLEND_SIZE_N0:-150}

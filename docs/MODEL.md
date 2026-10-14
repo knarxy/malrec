@@ -195,6 +195,10 @@ Then:
 - **franchise collapse** — one entry per franchise
 - **genre balance** — calibrated re-ranking toward the user's genre mix
   (below, Rating round, ranges, genre balance)
+- **age balance** (Safe Bets, Discover, Hidden Gems) — the same toward the
+  user's age mix: how old titles were when they watched them (0-1, 2-4,
+  5-9, 10-19, 20+ years). The list is then ordered by the key within blocks
+  of 20, so the visible top 20 keeps the mix too (below)
 
 **The learned order** (Safe Bets; `recsys/ltr.py`, `order_ranker_weight`
 0.5). A LightGBM lambdarank model re-ranks the top 600 of the hand-built key
@@ -206,8 +210,11 @@ stacker's held-out lists, each cut at two of five history sizes (10-400 entries)
 a title is a positive if the user later rated it at least their mean (7+),
 a strong one at mean + 1.5 (9+). Its inputs are the key's own terms -
 prediction and its population / personal parts, relevance, each risk part,
-popularity prior, acclaim, genre fit, novelty, list size - plus the
-user's long-series taste: the share of started titles that run 50+ episodes,
+popularity prior, acclaim, genre fit, novelty, list size, the title's age
+(years since release, not its release year: an absolute year put every
+current title past the end of the training range, where the trees read
+"newest" as "best") - plus the user's age taste (how much of their list
+they watched at this age, and how they rated it) and long-series taste: the share of started titles that run 50+ episodes,
 how they rate those against their mean, and how often they drop them. No
 hard length rule: the ranker learns per user whether long series land.
 Without a ranker for the active model, Safe Bets uses the hand key alone.
@@ -591,8 +598,9 @@ the order:
 
 ### Rating round, ranges, genre balance
 
-**Rating round** (signed-in, "Rate titles"; a banner suggests it below 60
-ratings): one card at a time, 1-10 / "haven't seen it" / skip, most-listed
+**Rating round** (signed-in, "Rate titles", only below 60 ratings, where a
+banner also suggests it; since 2026-10-14 it is hidden from longer lists,
+whose owners skipped its popular titles card after card): one card at a time, 1-10 / "haven't seen it" / skip, most-listed
 titles first; ratings go to MAL like any other. Simulated on held-out users
 (`exp_elicit.py`): 15 ratings on top of 10 known ones double recall@50
 (.120 -> .239; IPS .079 -> .115) at ~33 cards. A "smart" pick (P(seen) x
@@ -615,6 +623,36 @@ out of the target). `exp_calib.py`: recall@50 up in Safe Bets and Discover at
 every list size (reference profile Safe Bets .336 -> .368, Discover .078 ->
 .100) with the genre mix closer to the user's; the old overlap penalty is the
 fallback.
+
+**Age balance** (2026-10-13, after a user who watches a lot of older anime
+found each tab's top 20 dominated by the latest releases).
+Three causes: the learned orders read the absolute release year, and the
+current year lies past their training range; the future ratings they learn
+from are recency-heavy by nature (people rate what just aired); and
+Hidden Gems' pool past popularity #1,200 is mostly new titles. Fix: the
+rankers see a title's age instead of its year, plus the user's age taste;
+the calibrated re-ranking adds a KL term for the user's age mix
+(`age_calibration` 1; the age is counted at watch time, finished or last
+updated, so someone who watches each season as it airs keeps getting new
+titles); and the calibrated list is ordered by the key within blocks of 20
+(`calibration_block`), since sorting all 60 by the key put the newest at the
+top again. `exp_blend.py` (`results_age_2026-10-13.txt`), against the
+production of that day, at 25 / 150 / 400 entries:
+
+| | Safe Bets recall@50 | hit@10 | age gap top 20 | Discover age gap | Hidden Gems age gap |
+|---|---|---|---|---|---|
+| before | .196 / .240 / .236 | .23 / .32 / .46 | .32 / .29 / .33 | .32 / .31 / .37 | .37 / .37 / .40 |
+| shipped | +.023+ / +.009+ / +.005 | +.01 / +.03+ / +.02+ | -.15+ / -.14+ / -.17+ | -.13+ / -.16+ / -.18+ | -.16+ / -.18+ / -.19+ |
+
+(age gap: total-variation distance of the top 20's age mix from the user's
+whole history; lower is closer.) Discover's and Hidden Gems' recall did not
+move beyond noise (Discover +.007+ at 150 entries). The age features alone
+raise recall but make the lists newer still (age gap up to +.05); the
+calibration alone, with the old year feature, costs a little recall
+(Discover -.007- at 25 entries, Safe Bets -.004 at 400). Strength 2 gains a little more balance and gives part of
+the recall back. Reference profile: Safe Bets recall .477 -> .487, hit@10
+.50 -> .54+, Discover recall .091 -> .062 (8 splits, within noise at
+strength 1).
 
 **Sequels** in Up Next are predicted half by the model, half by "your score
 for the previous season plus how raters of both typically move"
@@ -691,6 +729,7 @@ environment variable. The values that matter:
 | `safe_bets_memory_mix` | 0.0 (0.5 in compose) | Safe Bets' share of the every-rating-equal model |
 | `order_ranker_weight` | 0.0 (0.5 in compose) | Safe Bets' learned order; needs `malrec ranker train` |
 | `discover_ranker_weight` / `gems_ranker_weight` | 0.0 (0.5 in compose) | Discover's and Hidden Gems' own learned orders |
+| `age_calibration` / `calibration_block` | 0 / 0 (1 / 20 in compose) | the three tabs held to the user's age mix, ordered within blocks of 20 (2026-10-13) |
 | `safe_bets_key_risk` | 1.0 | share of the risk term in Safe Bets' hand key (0 = left to the ranker; measured worse) |
 | `order_ranker_ips` | 0.0 | popularity correction of the rankers' training labels (tested, not shipped) |
 | `not_interested_offset` / `_weight` / `_foldin` / `_franchise` | -1 / 0.4 / on / on | "Not for me" as an implicit rating under the user's mean, also in the fold-in; the franchise leaves the pool (`exp_notforme.py`) |

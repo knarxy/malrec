@@ -843,3 +843,65 @@ def test_key_risk_share_leaves_the_parts_to_the_learned_order(monkeypatch):
     assert list(np.argsort(-full.key)) == [1, 2, 0]   # the risky title drops
     off = rank.order_terms(M(), rows, risk_scale=0.0)
     assert list(np.argsort(-off.key)) == [0, 1, 2] and np.all(off.risk == 0)
+
+
+def test_age_mix_counts_how_old_a_title_was_when_it_was_watched():
+    import datetime as dt
+
+    from malrec.rank import age_bucket, age_mix
+    years = {1: 2024, 2: 2005, 3: 1998, 4: 2020}
+    at = dt.datetime(2025, 6, 1, tzinfo=dt.UTC)
+    entries = ([{"mal_id": 1, "status": "completed", "at": at}] * 6     # 1 year old then
+               + [{"mal_id": 2, "status": "completed", "at": at}] * 3   # 20 years old
+               + [{"mal_id": 3, "status": "completed", "at": dt.datetime(2000, 1, 1, tzinfo=dt.UTC)}]
+               + [{"mal_id": 4, "status": "plan_to_watch", "at": at}] * 5)   # says nothing
+    mix = age_mix(entries, years.get, 2026)
+    assert mix is not None and mix.share.sum() == pytest.approx(1.0)
+    assert mix.share[age_bucket(1)] == pytest.approx(0.6)
+    assert mix.share[age_bucket(20)] == pytest.approx(0.3)
+    assert mix.share[age_bucket(2)] == pytest.approx(0.1)
+    assert mix.bucket(1) == age_bucket(2) and mix.bucket(99) is None   # aged from 2026
+    assert age_mix(entries[:9], years.get, 2026) is None      # too few to say
+
+
+def test_age_balance_brings_older_titles_back_for_a_back_catalogue_watcher(monkeypatch):
+    from malrec import rank
+    from malrec.config import settings
+    years = {i: (2026 if i < 6 else 2008) for i in range(10)}
+    # the six newest titles score highest; the user watches old and new alike
+    cands = [rank.Candidate(mal_id=i, title=str(i), franchise_id=i, predicted=9 - 0.1 * i,
+                            novelty=0.0, final=9 - 0.1 * i, row={"mal_genres": ["Drama"]})
+             for i in range(10)]
+    share = np.zeros(len(rank.AGE_EDGES) + 1)
+    share[rank.age_bucket(0)] = share[rank.age_bucket(18)] = 0.5
+    ages = rank.AgeMix(share, 2026, years.get)
+    plain = rank.calibrated(cands, {"Drama": 1.0}, 0.7, 6)
+    assert all(years[c.mal_id] == 2026 for c in plain)
+    held = rank.calibrated(cands, {"Drama": 1.0}, 0.7, 6, ages, 1.0)
+    assert sum(years[c.mal_id] == 2008 for c in held) >= 2     # traded against the key
+    strict = rank.calibrated(cands, {"Drama": 1.0}, 0.7, 6, ages, 10.0)
+    assert sum(years[c.mal_id] == 2008 for c in strict) == 3   # the user's half-and-half
+    finals = [c.final for c in held]
+    assert finals == sorted(finals, reverse=True)       # still ordered by the key
+    monkeypatch.setattr(settings(), "age_calibration", 0.0)
+    assert [c.mal_id for c in rank.rerank(cands, 0.0, 0.0, 6, scale_novelty=False,
+                                          profile={"Drama": 1.0}, ages=ages)] == \
+        [c.mal_id for c in plain]                       # off by default
+
+
+def test_ranker_sees_age_and_the_users_age_taste_not_the_year():
+    import datetime as dt
+    from types import SimpleNamespace
+
+    from malrec.rank import age_bucket
+    from malrec.recsys import ltr
+    assert "year" not in ltr.FEATURES and set(ltr.AGE_FEATURES) <= set(ltr.FEATURES)
+    store = SimpleNamespace(rows={1: {"season_year": 2010}, 2: {"season_year": 2024}})
+    at = dt.datetime(2025, 1, 1, tzinfo=dt.UTC)
+    entries = ([{"mal_id": 1, "score": 9, "status": "completed", "at": at}] * 3
+               + [{"mal_id": 2, "score": 6, "status": "completed", "at": at}])
+    t = ltr.age_taste(entries, store, 2026)
+    old, new = age_bucket(15), age_bucket(1)
+    assert t.share[old] == pytest.approx(0.75) and t.share[new] == pytest.approx(0.25)
+    assert t.lift[old] > 0 > t.lift[new]                 # rates the older ones higher
+    assert t.ref_year == 2026

@@ -20,8 +20,10 @@ reference profile's 8 splits. The tabs are built as served: the long-memory
 model when `safe_bets_memory_mix` is on, and each enabled tab's learned order
 (trained on the snapshot, cached by a hash of its code and settings). Each
 metric (rho, RMSE; recall@50, IPS-weighted recall@50, hit@10, bad@10 of Safe
-Bets; recall@50, IPS recall@50 and hit@10 of Discover and Hidden Gems) is
-compared per user with `bench/baseline.json`; anything worse by more than
+Bets; recall@50, IPS recall@50 and hit@10 of Discover and Hidden Gems; for
+all three the age gap - distance of the top 20's age mix from the user's -
+and, for information, the share of titles at most a year old) is compared
+per user with `bench/baseline.json`; anything worse by more than
 two standard errors fails the run, and settings that differ from the
 baseline's are named. About 8 minutes with cached models; the population
 model is refitted (≈6 minutes) only when its code changes, a learned order
@@ -33,7 +35,10 @@ once a change is accepted.
 overrides (`all:discover_ranker_weight=0.5:0.5`), and prints every metric
 paired with the first arm; `results_points_2026-10-11.txt` is the run that
 decided the long-memory mix, the key's risk share, the popularity-corrected
-labels and the Discover / Hidden Gems rankers (docs/RESEARCH.md).
+labels and the Discover / Hidden Gems rankers (docs/RESEARCH.md);
+`results_age_2026-10-13.txt` the age balance against recency bias (its
+feature-set argument: `taste` = the rankers with the release year, the
+default = with the title's age).
 
 ## Protocol
 

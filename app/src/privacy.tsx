@@ -44,7 +44,7 @@ const TEXT: Record<'en' | 'de', { title: string; intro: string; sections: Sectio
       {
         h: 'The public-list sample',
         p: [
-          'The “viewers with your taste” part of the model learns from a sample of other people’s public MyAnimeList lists. Accounts of this app are kept out of that sample. Once a list is fetched, its username is no longer stored.',
+          'The “viewers with a similar list” part of the model learns from a sample of other people’s public MyAnimeList lists. Accounts of this app are kept out of that sample. Once a list is fetched, its username is no longer stored.',
         ],
       },
       {
@@ -93,7 +93,7 @@ const TEXT: Record<'en' | 'de', { title: string; intro: string; sections: Sectio
       {
         h: 'Die Stichprobe öffentlicher Listen',
         p: [
-          'Der Teil „Zuschauer mit deinem Geschmack“ lernt aus einer Stichprobe öffentlicher MyAnimeList-Listen anderer Leute. Konten dieser App sind davon ausgenommen. Sobald eine Liste geladen ist, wird ihr Name nicht mehr gespeichert.',
+          'Der Teil „Zuschauer mit ähnlicher Liste“ lernt aus einer Stichprobe öffentlicher MyAnimeList-Listen anderer Leute. Konten dieser App sind davon ausgenommen. Sobald eine Liste geladen ist, wird ihr Name nicht mehr gespeichert.',
         ],
       },
       {

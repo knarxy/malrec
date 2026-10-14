@@ -294,7 +294,7 @@ function VoiceReasons({ side, extra }: { side: Side | null | undefined; extra?: 
   )
 }
 
-/** "Why this?" as two voices: what your own ratings say, what viewers with
+/** "Why this?" as two voices: what your preferences say, what viewers with
  *  your taste say, how the two are weighed into the shown score, and what
  *  moves the title within its list. */
 function WhyPanel({ user, mal_id, surface, rank }: {
@@ -366,7 +366,8 @@ function WhyPanel({ user, mal_id, surface, rank }: {
             <div className="weigh-legend">
               <span>{t('why2.w_you', { p })}</span><span>{t('why2.w_them', { q: 100 - p })}</span>
             </div>
-            <p>{t('why2.mixed')} <b>{b.raw.toFixed(2)}</b>. {t('why2.more')}</p>
+            <p>{t('why2.mixed')} <b>{b.raw.toFixed(2)}</b>.{' '}
+              {t(b.share_measured ? 'why2.share_tested' : 'why2.share_size')}</p>
           </>
         ) : (
           <p>{t('why2.only_them')}</p>

@@ -392,6 +392,9 @@ class HybridScorer:
             "population": round(stack, 2),
             "personal": round(personal, 2) if personal is not None else None,
             "personal_share": round(lam, 3),
+            # long lists: the share was tested on their newest ratings
+            # (service.blend_mode), not set from list size
+            "share_measured": um.mode == "blend",
             "raw": round(raw, 2),
             "calibration": {"slope": round(float(a), 3), "intercept": round(float(b), 3)},
             "shown": round(float(np.clip(a * raw + b, 1.0, 10.0)), 2),

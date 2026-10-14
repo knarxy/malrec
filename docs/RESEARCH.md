@@ -1,7 +1,7 @@
 # Research notes: rating models, drift, and what "state of the art" means here
 
 Written 2026-09-26 before changing how ratings are learned; brought up to date
-2026-10-11. Each section: what the literature says, where malrec stands, and
+2026-10-13. Each section: what the literature says, where malrec stands, and
 what (if anything) is left to do. The dated results sections below are a log
 and stay as written; **Open questions** at the end is the current agenda.
 Sources at the end.
@@ -128,6 +128,14 @@ with propensities (labels weighted by 1/P, tempered 0.5 and 1) was tested on
 Discover lost it - the corrected ranker takes the lesser-known hits Discover
 already showed, it does not find new ones (Results 2026-10-11).
 
+**The same bias in time** (2026-10-13). What people rate next is mostly
+what just aired, so labels and held-out ratings are recency-heavy as they
+are popularity-heavy, and the benchmark rewards newness the way it rewards
+popularity. A user who watches a lot of older anime reported it: each
+tab's top 20 was dominated by the latest releases. Measured as the
+gap between the top 20's age mix and the user's own, and corrected by
+calibration rather than by reweighting labels (Results 2026-10-13).
+
 ## 5. Which population model: the reproducibility evidence
 
 **Literature.** Ferrari Dacrema et al. (RecSys 2019, TOIS 2021): 11 of 12
@@ -178,6 +186,13 @@ work (Joachims et al. 2017) corrects such a ranker for the position and
 popularity bias in its labels; the popularity correction was tried and not
 kept (section 4).
 
+Calibration is not only for genres. Since 2026-10-13 the three discovery
+tabs are calibrated to the user's **age mix** too - how old titles were
+when they watched them - and ordered by the key within blocks of 20, since a
+calibrated set sorted as a whole by the key put its newest titles on top
+again. The rankers see a title's age, not its release year (Results
+2026-10-13).
+
 ## 7. LLMs
 
 **Literature (2024-26).** On rating prediction, classic CF beats LLMs (lower
@@ -210,7 +225,10 @@ titles shown before and after a change by what users did with them
 (added, rated well / dropped, rated badly) within a fixed window. One known
 gap remains: the reference profile is scored on nested splits of one list
 (8 splits, 26 sequel ratings were 6-8 titles), so its +-2 SE flags
-overstate certainty.
+overstate certainty. Since 2026-10-13 it reports the **age gap** of each
+tab's top 20 (total-variation distance from the user's age mix): the
+benchmark's labels favour new titles (section 4), so recall alone would
+never flag a list that is all this year's.
 
 ## Results so far (2026-09-27)
 
@@ -452,12 +470,59 @@ Discover and Hidden Gems: cut 2026-10-11, same dates a day later. Small
 numbers - seven active users - so read the user means and expect wide
 intervals.
 
-## Open questions (2026-10-11, evening)
+## Recency bias (2026-10-13)
+
+A user who watches a lot of older anime found Safe Bets', Discover's and
+Hidden Gems' top 20 dominated by the latest releases. The hand key alone
+gave far fewer of them: most of it came from the learned orders, which read the absolute release year (the current
+one lies past their training range, where trees continue the last trend)
+and learn from future ratings, which are mostly of new titles. The rest:
+the calibrated selection of 60 had roughly the user's age mix but was then
+sorted by the key as a whole, and Hidden
+Gems' pool is mostly new titles.
+
+One benchmark run, six arms (`exp_blend.py`,
+`results_age_2026-10-13.txt`), paired with production as served; the
+rankers retrained per feature set. Age gap = distance of the top 20's age
+mix from the user's whole history, lower is better.
+
+| arm | Safe Bets r50 (25/150/400) | Safe Bets age gap | Discover / Gems age gap | reference profile |
+|---|---|---|---|---|
+| calibration 1 + blocks of 20 | +.003 / -.001 / -.004 | -.15+ / -.15+ / -.18+ | -.13 to -.21+ | r50 -.005, Discover r50 -.019 |
+| blocks of 20 alone | 0 | -.01 / 0 / -.02+ | -.01 to -.03+ | 0 |
+| age features (age, user's age share and lift) | +.025+ / +.010+ / +.009+ | 0 / +.03- / +.02- | 0 to +.05- | r50 +.010, Discover r50 -.026 |
+| age features + calibration 1 + blocks | +.023+ / +.009+ / +.005 | -.15+ / -.14+ / -.17+ | -.13+ to -.19+ | r50 +.010, hit10 +.038+, Discover r50 -.028 |
+| age features + calibration 2 + blocks | +.023+ / +.007 / +.003 | -.17+ / -.18+ / -.22+ | -.15+ to -.25+ | r50 +.016+, Discover r50 -.028- |
+
+**Shipped: age features, calibration 1, blocks of 20.** The age features are
+the better ranker input on their own (recall up at every size) but, read
+honestly, they learn recency more cleanly than the year did; with the
+calibration on top the lists halve their age gap and keep the recall gain.
+Discover's recall did not fall for sampled users (+.007+ at 150 entries);
+Hidden Gems' did not move. Strength 2 balances further and gives part
+of the recall back - and a recency-heavy benchmark undercounts what balance
+is worth, so 1 is the cautious choice, not the measured optimum. The
+reference profile's Discover recall fell .091 -> .062 in every arm with the
+age features (8 splits, flagged only at strength 2); it came from .038 two
+days earlier, and the real-use check will say more than its splits can.
+The age is counted at watch time (finished, else last updated), so someone
+who watches each season as it airs keeps getting new titles; the
+alternative, the release-era mix of the list, would push everyone toward
+older titles and is not implemented.
+
+## Open questions (2026-10-13)
 
 **A3. Read the real-use check** (`malrec eval-lists --cut 2026-10-10`, then
 `--surface discover|hidden_gems --cut 2026-10-11`) on 2026-10-17 and
 2026-11-07. Note that the monthly refresh on 2026-11-01 may activate a new
-population model (and retrain the rankers) inside the 28-day window.
+population model (and retrain the rankers) inside the 28-day window. The
+age balance changed all three tabs three days into those windows, so
+their "after" side now reads the learned orders and the age balance
+together; A4 separates the two.
+
+**A4. Real use of the age balance.** `malrec eval-lists --cut 2026-10-14`
+(the rebuilt lists went live in the night of 2026-10-13/14), for all three
+tabs; first 7-day windows close 2026-10-21, 28-day ones 2026-11-11.
 
 **B3. The Discover and Hidden Gems ranker weights.** Only 0.5 was measured
 (as for Safe Bets, where 1.0 cost the reference profile); 0.75 / 1 may gain
@@ -475,7 +540,7 @@ and day effect, less recency decay, an ordinal head, sequential / generative
 models, two-tower retrieval, user-kNN, the sequel rule everywhere, more
 personal weight for long lists, a nightly fetch beyond ~20k lists, LLMs for
 scoring, popularity-corrected ranker labels, the risk term only as ranker
-features.
+features, manga lists (decided 2026-10-13: the project stays with anime).
 
 ## Sources
 

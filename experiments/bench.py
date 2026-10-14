@@ -78,7 +78,7 @@ from malrec.recsys.cf import CFParams, PopulationModel
 from malrec.recsys.hybrid import fit_stacker, fit_user, split_user
 from malrec.recsys.scorer import HybridScorer
 from malrec.recsys.service import blend_mode, blend_opts
-from malrec.surfaces import SPECS
+from malrec.surfaces import AGED, SPECS
 
 HERE = Path(__file__).resolve().parent / "bench"
 DATA = HERE / "data"
@@ -93,9 +93,9 @@ REF_SPLITS = (25, 30, 35, 40, 45, 50, 55, 60)
 LIMIT = 60
 STATUS = ("watching", "completed", "on_hold", "dropped", "plan_to_watch")
 HIGHER = {"rho": True, "rmse": False, "r50": True, "ips50": True, "hit10": True,
-          "bad10": False, "disc_r50": True, "disc_ips50": True, "disc_hit10": True,
-          "disc_bad10": False, "gems_r50": True, "gems_ips50": True, "gems_hit10": True,
-          "gems_bad10": False}
+          "bad10": False, "agegap": False, "disc_r50": True, "disc_ips50": True,
+          "disc_hit10": True, "disc_bad10": False, "disc_agegap": False, "gems_r50": True,
+          "gems_ips50": True, "gems_hit10": True, "gems_bad10": False, "gems_agegap": False}
 CFG = settings()
 
 
@@ -296,13 +296,21 @@ def make_scorer(pop, stacker, store, sc, im, li, calibration, scorer_cls=HybridS
     return scorer
 
 
+def year_of(store):
+    def f(m: int) -> int | None:
+        return (store.rows.get(m) or {}).get("season_year")
+    return f
+
+
 def ranked(scorer, rows, li, familiar, store, surface: str = "safe_bets",
            taken: frozenset[int] | set[int] = frozenset(), history: list[dict] | None = None,
-           long_model=None):
+           long_model=None, cutoff=None):
     """One tab's build (surfaces.build_surface minus the database): the scored
     pool (Candidates, best first) and the reranked list. `history` (the list
-    entries the user model saw) feeds the learned order's taste features;
+    entries the user model saw) feeds the learned order's taste features and,
+    with `cutoff`, the release-age balance (surfaces.user_age_mix);
     `long_model` is Safe Bets' every-rating-equal model (safe_bets_memory_mix)."""
+    ref_year = cutoff.year if cutoff is not None else None
     spec = SPECS[surface]
     if surface == "hidden_gems":
         rows = [r for r in rows if (r.get("mal_popularity") or 99999) > ltr.GEMS_FROM]
@@ -311,8 +319,12 @@ def ranked(scorer, rows, li, familiar, store, surface: str = "safe_bets",
     ranker = RANKERS.get(surface)
     learned = (ltr.RankContext(ranker, familiar, profile_of(li, store), len(scorer._scores),
                                getattr(CFG, ltr.SURFACES[surface]),
-                               ltr.user_taste(history or [], store))
+                               ltr.user_taste(history or [], store),
+                               ltr.age_taste(history or [], store, ref_year)
+                               if ref_year is not None else None)
                if ranker is not None else None)
+    ages = (rank.age_mix(history or [], year_of(store), ref_year)
+            if ref_year is not None and surface in AGED else None)
     mix = CFG.safe_bets_memory_mix if long_model is not None else 0.0
     real = rank.familiar_genres
     rank.familiar_genres = lambda _uid: familiar
@@ -326,7 +338,7 @@ def ranked(scorer, rows, li, familiar, store, surface: str = "safe_bets",
         mean_shown = float(scorer.calibrate(np.array([scorer.baseline]))[0])
         pool = [c for c in pool if c.predicted >= mean_shown + floor]
     top = rank.rerank(pool, spec.novelty_weight, spec.diversity_weight, LIMIT,
-                      considered=[], profile=profile_of(li, store))
+                      considered=[], profile=profile_of(li, store), ages=ages)
     return pool, top
 
 
@@ -343,6 +355,23 @@ def ips50(top: list[int], liked: set[int]) -> float:
     def w(m: int) -> float:
         return 1.0 / (float(PROP[m]) if 0 <= m < len(PROP) and PROP[m] > 0 else 1.0)
     return sum(w(t) for t in set(top[:50]) & liked) / sum(w(t) for t in liked)
+
+
+def age_metrics(top: list[int], ages, prefix: str = "") -> dict:
+    """How far the top 20's release-age mix is from the user's own (rank.age_mix
+    of their history; total variation distance, 0 = the same mix, 1 = no
+    overlap) and the share of it at most a year old. Recall rewards recent
+    titles by construction - what people rate next is mostly what just
+    aired - so this is what catches a list drifting to the new season."""
+    if ages is None or len(top) < 20:
+        return {}
+    b = [ages.bucket(m) for m in top[:20]]
+    b = [x for x in b if x is not None]
+    if not b:
+        return {}
+    q = np.bincount(b, minlength=len(ages.share)) / len(b)
+    return {f"{prefix}agegap": float(0.5 * np.abs(q - ages.share).sum()),
+            f"{prefix}new20": float(np.mean([x == 0 for x in b]))}
 
 
 def list_metrics(top: list[int], liked: set[int], disliked: set[int], prefix: str) -> dict:
@@ -424,12 +453,13 @@ def run(max_eval: int) -> dict:
            "order_ranker_weight": CFG.order_ranker_weight,
            "settings": {k: getattr(CFG, k) for k in (
                "safe_bets_memory_mix", "safe_bets_key_risk", "order_ranker_ips",
-               "discover_ranker_weight", "gems_ranker_weight")}}
+               "discover_ranker_weight", "gems_ranker_weight", "age_calibration",
+               "calibration_block")}}
 
     def genres(ids):
         return {g for m in ids for g in ((store.rows.get(m) or {}).get("mal_genres") or [])}
 
-    def evaluate(hist, cutoff, listed, items, truth, liked, disliked, cal):
+    def evaluate(hist, cutoff, listed, items, truth, liked, disliked, cal, full_hist):
         """Safe Bets, Discover and Hidden Gems for one user; their metrics and
         the Safe Bets top 20."""
         sc, im, li = examples(hist, cutoff)
@@ -442,14 +472,23 @@ def run(max_eval: int) -> dict:
             sc2, im2, li2 = ltr.history_examples(hist, cutoff, float("inf"))
             long_model = make_scorer(pop, stacker, store, sc2, im2, li2, cal)
         rows = [row_of(store, m) for m in pool_all if m not in listed]
-        _, sb = ranked(scorer, rows, li, fam, store, history=hist, long_model=long_model)
+        _, sb = ranked(scorer, rows, li, fam, store, history=hist, long_model=long_model,
+                       cutoff=cutoff)
         top = [c.mal_id for c in sb]
-        _, disc = ranked(scorer, rows, li, fam, store, "discover", taken=set(top), history=hist)
+        _, disc = ranked(scorer, rows, li, fam, store, "discover", taken=set(top), history=hist,
+                         cutoff=cutoff)
         gems_rows = [row_of(store, m) for m in gems_all if m not in listed]
-        _, gems = ranked(scorer, gems_rows, li, fam, store, "hidden_gems", history=hist)
+        _, gems = ranked(scorer, gems_rows, li, fam, store, "hidden_gems", history=hist,
+                         cutoff=cutoff)
+        # measured against the whole history before the cutoff, not the
+        # budget's sample: the habit, not what the model happened to see
+        ages = rank.age_mix(full_hist, year_of(store), cutoff.year)
         m = user_metrics(scorer, top, items, truth, liked, disliked)
+        m |= age_metrics(top, ages)
         m |= list_metrics([c.mal_id for c in disc], liked, disliked, "disc_")
+        m |= age_metrics([c.mal_id for c in disc], ages, "disc_")
         m |= list_metrics([c.mal_id for c in gems], liked, disliked, "gems_")
+        m |= age_metrics([c.mal_id for c in gems], ages, "gems_")
         return m, top[:20]
 
     for budget in BUDGETS:
@@ -472,7 +511,8 @@ def run(max_eval: int) -> dict:
             disliked = {m for m, s, _ in test_s if s < mean - 1}
             disliked |= {e["mal_id"] for e in es if e["status"] == "dropped" and e["at"] >= cutoff}
             m, top = evaluate(seen, cutoff, listed, [m for m, _, _ in test_s],
-                              np.array([s for _, s, _ in test_s]), liked, disliked, (1.0, 0.0))
+                              np.array([s for _, s, _ in test_s]), liked, disliked, (1.0, 0.0),
+                              history)
             if m is None:
                 continue
             per[str(u)] = m
@@ -501,7 +541,7 @@ def run(max_eval: int) -> dict:
                           [r["mal_id"] for r in test],
                           np.array([float(r["score"]) for r in test]),
                           {r["mal_id"] for r in test if r["score"] >= max(mean, 7.0)},
-                          {r["mal_id"] for r in test if r["score"] < mean - 1}, ref["cal"])
+                          {r["mal_id"] for r in test if r["score"] < mean - 1}, ref["cal"], hist)
         if m is None:
             continue
         per[f"split {h}"] = m

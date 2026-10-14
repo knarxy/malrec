@@ -14,8 +14,10 @@ Each arm is "population:settings:weight":
                     it - only the reference profile counts)
   settings    key=value,... overrides of config (empty: as configured)
   weight      order_ranker_weight (0 = the hand-tuned key)
-  features    optional: "base" (the first ranker's 19) or "taste" (with the
-              user's long-series taste, recsys/ltr.py; the default)
+  features    optional: "base" (the first ranker's 19), "taste" (with the
+              user's long-series taste - the rankers shipped until 2026-10-13,
+              with the release year) or "age" (release age and the user's
+              age taste instead of the year, recsys/ltr.py; the default)
 Every metric is compared per user with the first arm (paired, +/- beyond
 two standard errors).
 
@@ -35,8 +37,11 @@ from malrec.recsys import ltr
 from malrec.recsys.hybrid import unit_hash
 
 METRICS = (("rho", True), ("r50", True), ("ips50", True), ("hit10", True), ("bad10", False),
+           ("agegap", False), ("new20", False),
            ("disc_r50", True), ("disc_ips50", True), ("disc_hit10", True),
-           ("gems_r50", True), ("gems_ips50", True), ("gems_hit10", True))
+           ("disc_agegap", False), ("disc_new20", False),
+           ("gems_r50", True), ("gems_ips50", True), ("gems_hit10", True),
+           ("gems_agegap", False), ("gems_new20", False))
 
 
 def parse(arm: str) -> tuple[str, dict, float, str]:
@@ -47,7 +52,7 @@ def parse(arm: str) -> tuple[str, dict, float, str]:
         k, v = kv.split("=")
         cur = getattr(cfg, k)
         out[k] = type(cur)(float(v)) if isinstance(cur, (int, float)) else type(cur)(v)
-    return pop, out, float(w), (fs[0] if fs else "taste")
+    return pop, out, float(w), (fs[0] if fs else "age")
 
 
 def main(arms: list[str], max_eval: int):
@@ -81,7 +86,8 @@ def main(arms: list[str], max_eval: int):
             setattr(cfg, k, v)
         bench.population = lambda *a, f=fitted, **k: f
         real_features = ltr.FEATURES
-        ltr.FEATURES = ltr.BASE_FEATURES if fset == "base" else ltr.BASE_FEATURES + ltr.TASTE_FEATURES
+        ltr.FEATURES = {"base": ltr.BASE_FEATURES, "taste": ltr.BASE_FEATURES + ltr.TASTE_FEATURES
+                        }.get(fset, real_features)
         if pname != "all":
             # the ranker learns from this population's own stacker users
             sb = subsets[pname][1]

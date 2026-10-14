@@ -121,6 +121,8 @@ export interface Breakdown {
   population: number
   personal: number | null
   personal_share: number
+  /** tested on the newest ratings (long lists), not set from list size */
+  share_measured?: boolean
   raw: number
   calibration: { slope: number; intercept: number }
   shown: number
