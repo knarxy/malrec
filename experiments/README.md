@@ -38,7 +38,9 @@ decided the long-memory mix, the key's risk share, the popularity-corrected
 labels and the Discover / Hidden Gems rankers (docs/RESEARCH.md);
 `results_age_2026-10-13.txt` the age balance against recency bias (its
 feature-set argument: `taste` = the rankers with the release year, the
-default = with the title's age).
+default = with the title's age);
+`results_series_2026-10-15.txt` the series and franchises without bridges
+(a benchmark against the baseline) and series-weighted evidence (three arms).
 
 ## Protocol
 

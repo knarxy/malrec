@@ -139,13 +139,11 @@ def migrate() -> list[str]:
     return applied
 
 
-def refresh_franchises() -> int:
-    """Recompute connected components over `relation`. Returns passes needed."""
-    with conn() as c, c.cursor() as cur:
-        cur.execute("SELECT refresh_franchises() AS passes")
-        n = returned(cur)["passes"]
-        c.commit()
-    return n
+def refresh_franchises() -> tuple[int, int]:
+    """Recompute series and franchises from `relation` (recsys/series.py).
+    Returns how many of each have more than one title."""
+    from .recsys.series import refresh
+    return refresh()
 
 
 def log_ingest(job: str, status: str, detail: dict | None = None) -> None:

@@ -510,6 +510,37 @@ who watches each season as it airs keeps getting new titles; the
 alternative, the release-era mix of the list, would push everyone toward
 older titles and is not implemented.
 
+## Series (2026-10-15)
+
+A user's profile genres were led by the genres of one long show they had
+rated highly throughout, genres they rate below their average elsewhere.
+Two fixes, measured separately (`results_series_2026-10-15.txt`):
+
+**Series and franchises without bridges** (MODEL.md, Series and franchises).
+Benchmark against the 2026-10-14 baseline with the population model
+refitted: every metric within noise, the reference profile identical.
+Shipped.
+
+**Series-weighted evidence** (`series_weight_power`: each rating counts
+1 / n^power, n the user's entries in its series) in the personal model, the
+size calibration, the stacker's and the rankers' training lists. Three arms
+paired, rankers retrained per arm:
+
+| power | Safe Bets r50 (25/150/400) | Discover IPS50 (25/150/400) | Gems IPS50 (25/150/400) | reference r50 |
+|---|---|---|---|---|
+| 0.5 | +.002 / -.001 / -.004 | 0 / -.008 / -.007- | 0 / -.002 / -.008- | +.025 |
+| 1 | +.001 / -.001 / -.007- | -.001 / -.012- / -.006 | +.001 / -.004 / -.010- | +.023 |
+
+Not shipped (0). Long lists lose accuracy in Discover and Hidden Gems;
+apparently the repeated ratings of one show still say something about what
+else a person rates highly. The profile is a description, not a
+prediction, so it weights series fully (1 / n) and asks for four different
+series per genre, which takes such a show's genres out of the profile.
+
+**Follow-up (not done).** Franchise collapse, "Not for me" and the best
+title per franchise use franchises; spin-offs are then one entry with their
+original. Series would let a spin-off appear next to it. Not measured.
+
 ## Open questions (2026-10-13)
 
 **A3. Read the real-use check** (`malrec eval-lists --cut 2026-10-10`, then

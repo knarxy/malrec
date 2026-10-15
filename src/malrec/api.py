@@ -203,21 +203,11 @@ def profile(v: Approved, user: str | None = None) -> dict:
         """,
         (uid,),
     )
-    top_genres = query(
-        """
-        WITH mu AS (SELECT avg(score)::real m FROM list_entry
-                     WHERE user_id=%(uid)s AND score>0),
-        g AS (SELECT unnest(a.mal_genres) AS genre, le.score
-                FROM list_entry le JOIN anime a ON a.mal_id = le.mal_id
-               WHERE le.user_id=%(uid)s AND le.score>0)
-        SELECT genre, count(*) AS n,
-               round((avg(g.score) - (SELECT m FROM mu))::numeric, 2) AS lift
-          FROM g GROUP BY genre HAVING count(*) >= 4
-         ORDER BY lift DESC LIMIT 8
-        """,
-        {"uid": uid},
-    )
-    return {"user": name, **(stats or {}), "top_genres": top_genres}
+    from .recsys.series import genre_lifts
+    rated = query("SELECT le.mal_id, le.score, a.mal_genres FROM list_entry le"
+                  " JOIN anime a ON a.mal_id = le.mal_id WHERE le.user_id = %s AND le.score > 0",
+                  (uid,))
+    return {"user": name, **(stats or {}), "top_genres": genre_lifts(rated)[:8]}
 
 
 @app.get("/anime/{mal_id}")

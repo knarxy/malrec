@@ -219,9 +219,10 @@ def eval_lists_cmd(cut: str = typer.Option(..., help="the change's date, e.g. 20
 
 @sync_app.command("franchises")
 def sync_franchises() -> None:
-    """Recompute franchise connected components."""
+    """Recompute series and franchises from the relations (recsys/series.py)."""
     _setup()
-    typer.echo(f"converged in {refresh_franchises()} passes")
+    n_series, n_franchises = refresh_franchises()
+    typer.echo(f"{n_series} series and {n_franchises} franchises with more than one title")
 
 
 population_app = typer.Typer(help="The population model learned from sampled MAL lists")

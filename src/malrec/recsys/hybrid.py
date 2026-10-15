@@ -34,6 +34,7 @@ from sklearn.linear_model import Ridge
 from ..features import Vocabulary, build_vocabulary, vectorise
 from .cf import FoldIn, PopulationModel
 from .items import ItemStore
+from .series import weights as series_weights
 
 log = logging.getLogger(__name__)
 
@@ -430,7 +431,8 @@ def fit_stacker(pop: PopulationModel, users: dict[int, list[tuple]], store: Item
         n = int(rng.choice([10, 25, 60, 150, 10_000]))
         train = [train[i] for i in rng.permutation(len(train))[:n]]
         r = {m: s for m, s, _ in train}
-        w = {m: recency_weight(a, cutoff) for m, _, a in train}
+        share = series_weights(r)
+        w = {m: recency_weight(a, cutoff) * share.get(m, 1.0) for m, _, a in train}
         fi = pop.fold_in(r, w)
         taste = store.taste_vector(r, w) if "tag_cos" in extras else None
         items = [m for m, _, _ in test]

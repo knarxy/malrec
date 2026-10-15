@@ -263,6 +263,15 @@ class Settings(BaseSettings):
     # below all of them so a working model always gets the full setting.
     novelty_ref_sd: float = 0.30
     diversity_weight: float = 0.07    # fallback when no genre profile is known
+    # How much a series' entries count as evidence of taste: each entry
+    # weighs 1 / n ** this, n the user's entries in that series
+    # (recsys/series.py). Thirteen seasons of one show rated 10 say "loves this
+    # show", not thirteen times "loves its genres". 0 = every entry counts
+    # fully. Applies to the user model's ratings and listed titles and the
+    # population stacker's training lists. Off: 0.5 and 1 cost Discover and
+    # Hidden Gems accuracy on long lists (2026-10-15). The genre profile
+    # weights series on its own (series.PROFILE_SERIES_POWER).
+    series_weight_power: float = 0.0
     # Calibrated re-ranking strength (Steck 2018); 0 = the old overlap penalty
     genre_calibration: float = 0.7
     # The same for the age mix (rank.age_mix: how old titles were when the

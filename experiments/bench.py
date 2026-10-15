@@ -85,7 +85,7 @@ DATA = HERE / "data"
 BASELINE = HERE / "baseline.json"
 LATEST = HERE / "latest.json"
 SRC = Path(__file__).resolve().parents[1] / "src" / "malrec"
-POP_CODE = ("recsys/cf.py", "recsys/hybrid.py", "recsys/items.py")
+POP_CODE = ("recsys/cf.py", "recsys/hybrid.py", "recsys/items.py", "recsys/series.py")
 
 SEED = 3
 BUDGETS = (25, 150, 400)
@@ -194,10 +194,29 @@ def load_snapshot():
 
 # ------------------------------------------------------------ population --
 
+# set by run(): a hash of the live series and franchise tables (groupings)
+GROUPS = ""
+
+
+def groupings(store) -> str:
+    """Series and franchises come from the live tables, not the snapshot:
+    they are derived from MAL's relations by code (recsys/series.py), and a
+    change to that code is what a run should measure. Overwrites the
+    snapshot store's franchise ids; returns a hash of both tables."""
+    from malrec.db import query
+    fr = {r["mal_id"]: r["franchise_id"] for r in query("SELECT mal_id, franchise_id FROM franchise")}
+    se = {r["mal_id"]: r["series_id"] for r in query("SELECT mal_id, series_id FROM series")}
+    for m, row in store.rows.items():
+        row["franchise_id"] = fr.get(m, m)
+    return hashlib.sha256(repr((sorted(fr.items()), sorted(se.items()))).encode()).hexdigest()[:8]
+
+
 def code_hash() -> str:
     h = hashlib.sha256()
     for p in POP_CODE:
         h.update((SRC / p).read_bytes())
+    # the stacker's training lists are series-weighted
+    h.update(f"{GROUPS}:{CFG.series_weight_power}".encode())
     h.update(repr(vars(CFParams())).encode())
     h.update(str(CFG.relevance_ease).encode())
     snap = DATA / "entries.npz"         # a new snapshot is new data: refit
@@ -425,6 +444,8 @@ def run(max_eval: int) -> dict:
     t0 = time.time()
     entries, static = load_snapshot()
     store, derived = static["store"], static["derived"]
+    global GROUPS
+    GROUPS = groupings(store)
     rng = np.random.default_rng(SEED)
     users = entries.users_with_scored(15)
     rng.shuffle(users)
@@ -454,7 +475,7 @@ def run(max_eval: int) -> dict:
            "settings": {k: getattr(CFG, k) for k in (
                "safe_bets_memory_mix", "safe_bets_key_risk", "order_ranker_ips",
                "discover_ranker_weight", "gems_ranker_weight", "age_calibration",
-               "calibration_block")}}
+               "calibration_block", "series_weight_power")}, "groupings": GROUPS}
 
     def genres(ids):
         return {g for m in ids for g in ((store.rows.get(m) or {}).get("mal_genres") or [])}

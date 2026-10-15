@@ -1,0 +1,179 @@
+==== BENCH (series groupings, power 0) vs baseline Do 15. Okt 16:32:38 CEST 2026
+snapshot 2026-10-10: 18264 users (13150 fit / 2374 stack / 2740 eval), pool 4851, population model fitted, safe_bets order trained (weight 0.5), discover order trained (weight 0.5), hidden_gems order trained (weight 0.5) [6895s]
+  sampled 25: 100 users [6977s]
+  sampled 150: 100 users [7211s]
+  sampled 400: 100 users [7498s]
+
+== sampled 25 (100 users)
+   metric        now     base   change    ±2se  verdict
+   rho        0.4986   0.4986  +0.0000  0.0000  same
+   rmse       1.3663   1.3663  +0.0000  0.0000  same
+   r50        0.2180   0.2183  -0.0003  0.0005  noise
+   ips50      0.1100   0.1102  -0.0002  0.0004  noise
+   hit10      0.2380   0.2390  -0.0010  0.0020  noise
+   bad10      0.0160   0.0160  +0.0000  0.0000  same
+   agegap     0.1796   0.1786  +0.0010  0.0014  noise
+   disc_r50   0.0665   0.0665  -0.0001  0.0006  noise
+   disc_ips50   0.0597   0.0598  -0.0001  0.0003  noise
+   disc_hit10   0.0580   0.0580  +0.0000  0.0028  noise
+   disc_bad10   0.0080   0.0080  +0.0000  0.0000  same
+   disc_agegap   0.1901   0.1903  -0.0003  0.0013  noise
+   gems_r50   0.0472   0.0474  -0.0003  0.0005  noise
+   gems_ips50   0.0619   0.0621  -0.0002  0.0006  noise
+   gems_hit10   0.0690   0.0700  -0.0010  0.0020  noise
+   gems_bad10   0.0110   0.0110  +0.0000  0.0000  same
+   gems_agegap   0.2132   0.2126  +0.0007  0.0010  noise
+   overlap     0.044    0.044
+   pop#      199.500  200.000
+== sampled 150 (100 users)
+   metric        now     base   change    ±2se  verdict
+   rho        0.5658   0.5658  +0.0000  0.0000  same
+   rmse       1.3045   1.3045  +0.0000  0.0000  same
+   r50        0.2487   0.2490  -0.0004  0.0007  noise
+   ips50      0.1303   0.1305  -0.0002  0.0004  noise
+   hit10      0.3430   0.3430  +0.0000  0.0000  same
+   bad10      0.0220   0.0220  +0.0000  0.0000  same
+   agegap     0.1514   0.1514  +0.0000  0.0000  same
+   disc_r50   0.0957   0.0958  -0.0001  0.0002  noise
+   disc_ips50   0.0857   0.0857  -0.0000  0.0000  noise
+   disc_hit10   0.1270   0.1280  -0.0010  0.0020  noise
+   disc_bad10   0.0120   0.0130  -0.0010  0.0020  noise
+   disc_agegap   0.1583   0.1579  +0.0003  0.0025  noise
+   gems_r50   0.0658   0.0661  -0.0004  0.0006  noise
+   gems_ips50   0.0849   0.0861  -0.0012  0.0023  noise
+   gems_hit10   0.1060   0.1060  +0.0000  0.0000  same
+   gems_bad10   0.0090   0.0090  +0.0000  0.0000  same
+   gems_agegap   0.1894   0.1889  +0.0005  0.0010  noise
+   overlap     0.046    0.046
+   pop#      235.000  235.000
+== sampled 400 (100 users)
+   metric        now     base   change    ±2se  verdict
+   rho        0.5922   0.5922  +0.0000  0.0000  same
+   rmse       1.2496   1.2496  +0.0000  0.0000  same
+   r50        0.2404   0.2404  +0.0000  0.0000  same
+   ips50      0.1244   0.1244  +0.0000  0.0000  same
+   hit10      0.4760   0.4760  +0.0000  0.0000  same
+   bad10      0.0110   0.0110  +0.0000  0.0000  same
+   agegap     0.1680   0.1685  -0.0005  0.0010  noise
+   disc_r50   0.1027   0.1027  -0.0001  0.0004  noise
+   disc_ips50   0.0823   0.0823  -0.0000  0.0001  noise
+   disc_hit10   0.2310   0.2310  +0.0000  0.0028  noise
+   disc_bad10   0.0120   0.0120  +0.0000  0.0000  same
+   disc_agegap   0.1830   0.1834  -0.0004  0.0018  noise
+   gems_r50   0.0783   0.0779  +0.0003  0.0005  noise
+   gems_ips50   0.0964   0.0962  +0.0002  0.0003  noise
+   gems_hit10   0.1970   0.1960  +0.0010  0.0035  noise
+   gems_bad10   0.0080   0.0080  +0.0000  0.0000  same
+   gems_agegap   0.2183   0.2182  +0.0001  0.0014  noise
+   overlap     0.040    0.040
+   pop#      316.000  316.000
+== reference (8 splits)
+   metric        now     base   change    ±2se  verdict
+   rho        0.7546   0.7546  +0.0000  0.0000  same
+   rmse       0.8094   0.8094  +0.0000  0.0000  same
+   r50        0.4867   0.4867  +0.0000  0.0000  same
+   ips50      0.4077   0.4077  +0.0000  0.0000  same
+   hit10      0.5375   0.5375  +0.0000  0.0000  same
+   bad10      0.0000   0.0000  +0.0000  0.0000  same
+   agegap     0.1268   0.1268  +0.0000  0.0000  same
+   disc_r50   0.0624   0.0624  +0.0000  0.0000  same
+   disc_ips50   0.0525   0.0525  +0.0000  0.0000  same
+   disc_hit10   0.0000   0.0000  +0.0000  0.0000  same
+   disc_bad10   0.0000   0.0000  +0.0000  0.0000  same
+   disc_agegap   0.1090   0.1090  +0.0000  0.0000  same
+   gems_r50   0.0281   0.0281  +0.0000  0.0000  same
+   gems_ips50   0.0616   0.0616  +0.0000  0.0000  same
+   gems_hit10   0.0625   0.0625  +0.0000  0.0000  same
+   gems_bad10   0.0000   0.0000  +0.0000  0.0000  same
+   gems_agegap   0.2510   0.2510  +0.0000  0.0000  same
+   pop#      175.000  175.000
+
+note: the population code changed since the baseline (model refitted)
+
+note: ranking settings {'safe_bets_memory_mix': 0.5, 'safe_bets_key_risk': 1.0, 'order_ranker_ips': 0.0, 'discover_ranker_weight': 0.5, 'gems_ranker_weight': 0.5, 'age_calibration': 1.0, 'calibration_block': 20, 'series_weight_power': 0.0}, baseline {'safe_bets_memory_mix': 0.5, 'safe_bets_key_risk': 1.0, 'order_ranker_ips': 0.0, 'discover_ranker_weight': 0.5, 'gems_ranker_weight': 0.5, 'age_calibration': 1.0, 'calibration_block': 20}
+
+PASS  [7522s, peak 5111 MB]
+==== ARMS Do 15. Okt 18:38:05 CEST 2026
+snapshot 2026-10-10: 18264 users (13150 fit / 2374 stack / 2740 eval), pool 4851, population model fitted, safe_bets order cached (weight 0.5), discover order cached (weight 0.5), hidden_gems order cached (weight 0.5) [4s]
+  sampled 25: 100 users [81s]
+  sampled 150: 100 users [310s]
+  sampled 400: 100 users [603s]
+  all::0.5 done [1246s]
+
+== sampled 25
+   arm                                                       rho              r50            ips50            hit10            bad10           agegap            new20         disc_r50       disc_ips50       disc_hit10      disc_agegap       disc_new20         gems_r50       gems_ips50       gems_hit10      gems_agegap       gems_new20   pop#
+   all::0.5                                               0.4986           0.2180           0.1100           0.2380           0.0160           0.1796           0.3455           0.0665           0.0597           0.0580           0.1901           0.3555           0.0472           0.0619           0.0690           0.2132           0.3915    200
+
+== sampled 150
+   arm                                                       rho              r50            ips50            hit10            bad10           agegap            new20         disc_r50       disc_ips50       disc_hit10      disc_agegap       disc_new20         gems_r50       gems_ips50       gems_hit10      gems_agegap       gems_new20   pop#
+   all::0.5                                               0.5658           0.2487           0.1303           0.3430           0.0220           0.1514           0.3805           0.0957           0.0857           0.1270           0.1583           0.4070           0.0658           0.0849           0.1060           0.1894           0.4366    235
+
+== sampled 400
+   arm                                                       rho              r50            ips50            hit10            bad10           agegap            new20         disc_r50       disc_ips50       disc_hit10      disc_agegap       disc_new20         gems_r50       gems_ips50       gems_hit10      gems_agegap       gems_new20   pop#
+   all::0.5                                               0.5922           0.2404           0.1244           0.4760           0.0110           0.1680           0.4545           0.1027           0.0823           0.2310           0.1830           0.4852           0.0783           0.0964           0.1970           0.2183           0.5192    316
+
+== reference
+   arm                                                       rho              r50            ips50            hit10            bad10           agegap            new20         disc_r50       disc_ips50       disc_hit10      disc_agegap       disc_new20         gems_r50       gems_ips50       gems_hit10      gems_agegap       gems_new20   pop#
+   all::0.5                                               0.7546           0.4867           0.4077           0.5375           0.0000           0.1268           0.3000           0.0624           0.0525           0.0000           0.1090           0.4000           0.0281           0.0616           0.0625           0.2510           0.5687    175
+
+(+/- : better/worse than the first arm by more than two standard errors, paired)
+snapshot 2026-10-10: 18264 users (13150 fit / 2374 stack / 2740 eval), pool 4851, population model fitted, safe_bets order trained (weight 0.5), discover order trained (weight 0.5), hidden_gems order trained (weight 0.5) [6013s]
+  sampled 25: 100 users [6086s]
+  sampled 150: 100 users [6301s]
+  sampled 400: 100 users [6578s]
+  all:series_weight_power=0.5:0.5 done [7845s]
+
+== sampled 25
+   arm                                                       rho              r50            ips50            hit10            bad10           agegap            new20         disc_r50       disc_ips50       disc_hit10      disc_agegap       disc_new20         gems_r50       gems_ips50       gems_hit10      gems_agegap       gems_new20   pop#
+   all::0.5                                               0.4986           0.2180           0.1100           0.2380           0.0160           0.1796           0.3455           0.0665           0.0597           0.0580           0.1901           0.3555           0.0472           0.0619           0.0690           0.2132           0.3915    200
+   all:series_weight_power=0.5:0.5                0.4973-0.0013    0.2199+0.0018    0.1122+0.0022    0.2450+0.0070    0.0160+0.0000    0.1787-0.0009    0.3500+0.0045    0.0678+0.0014    0.0596-0.0001    0.0540-0.0040    0.1939+0.0038    0.3690+0.0135-   0.0472+0.0001    0.0615-0.0004    0.0710+0.0020    0.2138+0.0006    0.3924+0.0009     199
+
+== sampled 150
+   arm                                                       rho              r50            ips50            hit10            bad10           agegap            new20         disc_r50       disc_ips50       disc_hit10      disc_agegap       disc_new20         gems_r50       gems_ips50       gems_hit10      gems_agegap       gems_new20   pop#
+   all::0.5                                               0.5658           0.2487           0.1303           0.3430           0.0220           0.1514           0.3805           0.0957           0.0857           0.1270           0.1583           0.4070           0.0658           0.0849           0.1060           0.1894           0.4366    235
+   all:series_weight_power=0.5:0.5                0.5648-0.0010    0.2473-0.0014    0.1308+0.0005    0.3390-0.0040    0.0220+0.0000    0.1529+0.0016    0.3830+0.0025    0.0906-0.0051    0.0773-0.0084    0.1170-0.0100    0.1576-0.0006    0.4085+0.0015    0.0646-0.0012    0.0831-0.0018    0.1070+0.0010    0.1935+0.0042    0.4331-0.0035     229
+
+== sampled 400
+   arm                                                       rho              r50            ips50            hit10            bad10           agegap            new20         disc_r50       disc_ips50       disc_hit10      disc_agegap       disc_new20         gems_r50       gems_ips50       gems_hit10      gems_agegap       gems_new20   pop#
+   all::0.5                                               0.5922           0.2404           0.1244           0.4760           0.0110           0.1680           0.4545           0.1027           0.0823           0.2310           0.1830           0.4852           0.0783           0.0964           0.1970           0.2183           0.5192    316
+   all:series_weight_power=0.5:0.5                0.5925+0.0004    0.2360-0.0043    0.1223-0.0021    0.4700-0.0060    0.0120+0.0010    0.1618-0.0062    0.4450-0.0095+   0.0993-0.0034    0.0751-0.0072-   0.2150-0.0160    0.1831+0.0001    0.4907+0.0055    0.0749-0.0034    0.0887-0.0077-   0.1890-0.0080    0.2207+0.0024    0.5227+0.0035     296
+
+== reference
+   arm                                                       rho              r50            ips50            hit10            bad10           agegap            new20         disc_r50       disc_ips50       disc_hit10      disc_agegap       disc_new20         gems_r50       gems_ips50       gems_hit10      gems_agegap       gems_new20   pop#
+   all::0.5                                               0.7546           0.4867           0.4077           0.5375           0.0000           0.1268           0.3000           0.0624           0.0525           0.0000           0.1090           0.4000           0.0281           0.0616           0.0625           0.2510           0.5687    175
+   all:series_weight_power=0.5:0.5                0.7607+0.0061    0.5112+0.0245    0.4266+0.0189    0.5250-0.0125    0.0000+0.0000    0.1638+0.0370-   0.2562-0.0437+   0.0455-0.0169    0.0402-0.0123    0.0000+0.0000    0.0963-0.0127    0.3750-0.0250    0.0281+0.0000    0.0616+0.0000    0.0625+0.0000    0.2733+0.0223-   0.5875+0.0187     162
+
+(+/- : better/worse than the first arm by more than two standard errors, paired)
+snapshot 2026-10-10: 18264 users (13150 fit / 2374 stack / 2740 eval), pool 4851, population model fitted, safe_bets order trained (weight 0.5), discover order trained (weight 0.5), hidden_gems order trained (weight 0.5) [5925s]
+  sampled 25: 100 users [6002s]
+  sampled 150: 100 users [6231s]
+  sampled 400: 100 users [6509s]
+  all:series_weight_power=1:0.5 done [14377s]
+
+== sampled 25
+   arm                                                       rho              r50            ips50            hit10            bad10           agegap            new20         disc_r50       disc_ips50       disc_hit10      disc_agegap       disc_new20         gems_r50       gems_ips50       gems_hit10      gems_agegap       gems_new20   pop#
+   all::0.5                                               0.4986           0.2180           0.1100           0.2380           0.0160           0.1796           0.3455           0.0665           0.0597           0.0580           0.1901           0.3555           0.0472           0.0619           0.0690           0.2132           0.3915    200
+   all:series_weight_power=0.5:0.5                0.4973-0.0013    0.2199+0.0018    0.1122+0.0022    0.2450+0.0070    0.0160+0.0000    0.1787-0.0009    0.3500+0.0045    0.0678+0.0014    0.0596-0.0001    0.0540-0.0040    0.1939+0.0038    0.3690+0.0135-   0.0472+0.0001    0.0615-0.0004    0.0710+0.0020    0.2138+0.0006    0.3924+0.0009     199
+   all:series_weight_power=1:0.5                  0.4988+0.0002    0.2188+0.0008    0.1112+0.0012    0.2410+0.0030    0.0170+0.0010    0.1794-0.0003    0.3495+0.0040    0.0680+0.0015    0.0583-0.0014    0.0550-0.0030    0.1914+0.0013    0.3650+0.0095-   0.0469-0.0003    0.0629+0.0010    0.0710+0.0020    0.2138+0.0006    0.3939+0.0024     206
+
+== sampled 150
+   arm                                                       rho              r50            ips50            hit10            bad10           agegap            new20         disc_r50       disc_ips50       disc_hit10      disc_agegap       disc_new20         gems_r50       gems_ips50       gems_hit10      gems_agegap       gems_new20   pop#
+   all::0.5                                               0.5658           0.2487           0.1303           0.3430           0.0220           0.1514           0.3805           0.0957           0.0857           0.1270           0.1583           0.4070           0.0658           0.0849           0.1060           0.1894           0.4366    235
+   all:series_weight_power=0.5:0.5                0.5648-0.0010    0.2473-0.0014    0.1308+0.0005    0.3390-0.0040    0.0220+0.0000    0.1529+0.0016    0.3830+0.0025    0.0906-0.0051    0.0773-0.0084    0.1170-0.0100    0.1576-0.0006    0.4085+0.0015    0.0646-0.0012    0.0831-0.0018    0.1070+0.0010    0.1935+0.0042    0.4331-0.0035     229
+   all:series_weight_power=1:0.5                  0.5648-0.0010    0.2482-0.0005    0.1277-0.0026    0.3270-0.0160    0.0230+0.0010    0.1551+0.0038    0.3865+0.0060    0.0860-0.0097-   0.0735-0.0121-   0.1150-0.0120    0.1656+0.0074    0.4095+0.0025    0.0637-0.0020    0.0812-0.0037    0.1040-0.0020    0.1869-0.0025    0.4271-0.0095+    227
+
+== sampled 400
+   arm                                                       rho              r50            ips50            hit10            bad10           agegap            new20         disc_r50       disc_ips50       disc_hit10      disc_agegap       disc_new20         gems_r50       gems_ips50       gems_hit10      gems_agegap       gems_new20   pop#
+   all::0.5                                               0.5922           0.2404           0.1244           0.4760           0.0110           0.1680           0.4545           0.1027           0.0823           0.2310           0.1830           0.4852           0.0783           0.0964           0.1970           0.2183           0.5192    316
+   all:series_weight_power=0.5:0.5                0.5925+0.0004    0.2360-0.0043    0.1223-0.0021    0.4700-0.0060    0.0120+0.0010    0.1618-0.0062    0.4450-0.0095+   0.0993-0.0034    0.0751-0.0072-   0.2150-0.0160    0.1831+0.0001    0.4907+0.0055    0.0749-0.0034    0.0887-0.0077-   0.1890-0.0080    0.2207+0.0024    0.5227+0.0035     296
+   all:series_weight_power=1:0.5                  0.5904-0.0017    0.2334-0.0070-   0.1179-0.0065-   0.4600-0.0160    0.0110+0.0000    0.1669-0.0012    0.4470-0.0075    0.0984-0.0043    0.0761-0.0062    0.2000-0.0310-   0.1928+0.0097-   0.4968+0.0116-   0.0742-0.0040    0.0868-0.0096-   0.1850-0.0120    0.2214+0.0031    0.5207+0.0015     286
+
+== reference
+   arm                                                       rho              r50            ips50            hit10            bad10           agegap            new20         disc_r50       disc_ips50       disc_hit10      disc_agegap       disc_new20         gems_r50       gems_ips50       gems_hit10      gems_agegap       gems_new20   pop#
+   all::0.5                                               0.7546           0.4867           0.4077           0.5375           0.0000           0.1268           0.3000           0.0624           0.0525           0.0000           0.1090           0.4000           0.0281           0.0616           0.0625           0.2510           0.5687    175
+   all:series_weight_power=0.5:0.5                0.7607+0.0061    0.5112+0.0245    0.4266+0.0189    0.5250-0.0125    0.0000+0.0000    0.1638+0.0370-   0.2562-0.0437+   0.0455-0.0169    0.0402-0.0123    0.0000+0.0000    0.0963-0.0127    0.3750-0.0250    0.0281+0.0000    0.0616+0.0000    0.0625+0.0000    0.2733+0.0223-   0.5875+0.0187     162
+   all:series_weight_power=1:0.5                  0.7656+0.0111    0.5092+0.0225    0.4217+0.0140    0.5250-0.0125    0.0000+0.0000    0.1798+0.0529-   0.2375-0.0625+   0.0727+0.0103    0.0638+0.0113    0.0125+0.0125    0.1022-0.0068    0.3750-0.0250    0.0281+0.0000    0.0616+0.0000    0.0625+0.0000    0.2733+0.0223-   0.5875+0.0188     159
+
+(+/- : better/worse than the first arm by more than two standard errors, paired)
+[14377s]
+==== DONE Do 15. Okt 22:37:49 CEST 2026

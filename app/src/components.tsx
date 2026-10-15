@@ -87,7 +87,8 @@ export function Card({
   surface: string
   user: string
   onOpen: (r: Recommendation) => void
-  /** true only when signed in with MyAnimeList and looking at your own list */
+  /** true only when signed in with MyAnimeList and looking at your own list:
+      every action on the card (plan, rate, Not for me) needs it */
   canQueue: boolean
   onRated: (mal_id: number) => void
 }) {
@@ -205,9 +206,13 @@ export function Card({
             onRated={(s, st) => { setScore(s); setListStatus(st); onRated(item.mal_id) }}
           />
         )}
-        <button onClick={dismiss} disabled={busy}>
-          {dismissed ? t('Undo') : t('Not for me')}
-        </button>
+        {/* feedback always goes to the signed-in account, so an admin
+            looking at someone else's lists must not get the button */}
+        {canQueue && (
+          <button onClick={dismiss} disabled={busy}>
+            {dismissed ? t('Undo') : t('Not for me')}
+          </button>
+        )}
         <button className="link" onClick={() => onOpen(item)}>{t('card.full_why')}</button>
       </div>
     </article>

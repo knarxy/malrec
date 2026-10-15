@@ -39,6 +39,7 @@ from .hybrid import (
     user_rng,
 )
 from .items import ItemStore
+from .series import weights as series_weights
 
 log = logging.getLogger(__name__)
 
@@ -108,8 +109,10 @@ def user_listed(user_id: int, cutoff: dt.datetime | None = None,
     now = cutoff or dt.datetime.now(dt.UTC)
     rows = query("""SELECT mal_id, coalesce(finished_at::timestamptz, updated_at, now()) AS at
                       FROM list_entry WHERE user_id = %s""", (user_id,))
-    return {r["mal_id"]: recency_weight(r["at"], now, half_life)
-            for r in rows if (cutoff is None or r["at"] < cutoff) and r["mal_id"] not in exclude}
+    rows = [r for r in rows if (cutoff is None or r["at"] < cutoff) and r["mal_id"] not in exclude]
+    share = series_weights(r["mal_id"] for r in rows)
+    return {r["mal_id"]: recency_weight(r["at"], now, half_life) * share.get(r["mal_id"], 1.0)
+            for r in rows}
 
 
 def dismissed(user_id: int, cutoff: dt.datetime | None = None) -> dict[int, dt.datetime]:
@@ -149,7 +152,11 @@ def user_examples(user_id: int, cutoff: dt.datetime | None = None,
                                        coalesce(finished_at::timestamptz, updated_at, now()) AS at
                                   FROM list_entry WHERE user_id = %s""", (user_id,))
             if r["mal_id"] not in exclude]
-    scored = [Example(r["mal_id"], float(r["score"]), recency_weight(r["at"], now, half_life),
+    # a series' entries share its weight (recsys/series.py), counted over the
+    # list as it stood at the cutoff
+    share = series_weights(r["mal_id"] for r in rows if cutoff is None or r["at"] < cutoff)
+    scored = [Example(r["mal_id"], float(r["score"]),
+                      recency_weight(r["at"], now, half_life) * share.get(r["mal_id"], 1.0),
                       r["at"])
               for r in rows if r["score"] > 0 and (cutoff is None or r["at"] < cutoff)]
     if not scored:
@@ -163,8 +170,8 @@ def user_examples(user_id: int, cutoff: dt.datetime | None = None,
         if cutoff is not None and r["at"] >= cutoff:
             continue
         implicit.append(Example(r["mal_id"], float(min(max(mean + off, 1.0), 10.0)),
-                                cfg.implicit_weight * recency_weight(r["at"], now, half_life),
-                                r["at"]))
+                                cfg.implicit_weight * recency_weight(r["at"], now, half_life)
+                                * share.get(r["mal_id"], 1.0), r["at"]))
     implicit += dismissal_examples(
         {m: at for m, at in dismissed(user_id, cutoff).items() if m not in exclude},
         mean, now, half_life, {r["mal_id"] for r in rows})
@@ -275,7 +282,9 @@ def fit_size_calibration(pop: PopulationModel, stacker, store: ItemStore,
             if len(train) < n:
                 continue
             tr = [train[i] for i in rng.permutation(len(train))[:n]]
-            ex = [Example(m, sc, recency_weight(a, cutoff), a) for m, sc, a in tr]
+            share = series_weights(m for m, _, _ in tr)
+            ex = [Example(m, sc, recency_weight(a, cutoff) * share.get(m, 1.0), a)
+                  for m, sc, a in tr]
             um = fit_user(pop, stacker, store, ex, [], mode=mode if mode != "personal" else "sized")
             items = [m for m, _, _ in test]
             p = um.predict(items)
@@ -631,7 +640,9 @@ def population_exam(gm: GlobalModel, data: dict[int, list[tuple]], users: set[in
             continue
         # seeded per user, so both models see the same split
         train, test, cutoff = split_user(ratings, np.random.default_rng(seed + u))
-        ex = [Example(m, sc, recency_weight(a, cutoff), a) for m, sc, a in train]
+        share = series_weights(m for m, _, _ in train)
+        ex = [Example(m, sc, recency_weight(a, cutoff) * share.get(m, 1.0), a)
+              for m, sc, a in train]
         um = fit_user(gm.pop, gm.stacker, store, ex, [], mode=blend_mode(len(ex)),
                       blend_of="personal", **blend_opts())
         p = np.asarray(um.predict([m for m, _, _ in test]), dtype=float)

@@ -27,6 +27,7 @@ import numpy as np
 
 from ..config import settings
 from .hybrid import Example, fit_user, recency_weight, split_user, unit_hash
+from .series import weights as series_weights
 
 if TYPE_CHECKING:
     from .cf import PopulationModel
@@ -84,14 +85,20 @@ FINGERPRINT_SETTINGS = (
     "safe_bets_popularity", "relevance_ease",
     "model_mode", "implicit_weight", "implicit_offsets", "not_interested_offset",
     "not_interested_weight", "not_interested_foldin", "relevance_weight",
-    "relevance_weight_personal", "safe_bets_key_risk", "order_ranker_ips")
+    "relevance_weight_personal", "safe_bets_key_risk", "order_ranker_ips",
+    "series_weight_power")
+# Settings added after rankers were stored, with the value that leaves the
+# key as it was: at that value they stay out of the fingerprint, so adding one
+# does not retire every stored ranker.
+FINGERPRINT_NEUTRAL = {"series_weight_power": 0.0}
 
 
 def fingerprint() -> str:
     import hashlib
     import json
     cfg = settings()
-    d = {k: getattr(cfg, k) for k in FINGERPRINT_SETTINGS}
+    d = {k: getattr(cfg, k) for k in FINGERPRINT_SETTINGS
+         if k not in FINGERPRINT_NEUTRAL or getattr(cfg, k) != FINGERPRINT_NEUTRAL[k]}
     return hashlib.sha256(json.dumps(d, sort_keys=True, default=str).encode()).hexdigest()[:12]
 
 
@@ -277,17 +284,19 @@ def history_examples(seen: list[dict], cutoff, half_life: float | None = None
     (`half_life` inf: every entry weighted equally, the long-memory model)."""
     cfg = settings()
 
-    def w(at):
-        return recency_weight(at, cutoff, half_life)
-    scored = [Example(e["mal_id"], float(e["score"]), w(e["at"]), e["at"])
+    share = series_weights(e["mal_id"] for e in seen)
+
+    def w(e):
+        return recency_weight(e["at"], cutoff, half_life) * share.get(e["mal_id"], 1.0)
+    scored = [Example(e["mal_id"], float(e["score"]), w(e), e["at"])
               for e in seen if e["score"] > 0]
     if len(scored) < 3:
         return scored, [], {}
     m = float(np.average([x.score for x in scored], weights=[x.weight for x in scored]))
     implicit = [Example(e["mal_id"], float(min(max(m + cfg.implicit_offsets[e["status"]], 1), 10)),
-                        cfg.implicit_weight * w(e["at"]), e["at"])
+                        cfg.implicit_weight * w(e), e["at"])
                 for e in seen if e["score"] == 0 and e["status"] in cfg.implicit_offsets]
-    return scored, implicit, {e["mal_id"]: w(e["at"]) for e in seen}
+    return scored, implicit, {e["mal_id"]: w(e) for e in seen}
 
 
 def genre_mix(listed: dict[int, float], store: ItemStore) -> dict[str, float]:

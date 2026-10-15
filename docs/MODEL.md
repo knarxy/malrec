@@ -119,6 +119,22 @@ list is fetched, then only its hash remains. App users are excluded from the
 sample, so their own ratings can never leak into the data used to evaluate
 them.
 
+**Series and franchises** (`recsys/series.py`, rebuilt by
+`malrec sync franchises` after every catalogue sync). A *series* is one
+story: its seasons and films, other versions of it, and the side stories and
+recaps that hang off it. A *franchise* adds its spin-offs and alternative
+settings. Each pair of related titles gets one kind (continues the story /
+same world / retold / hangs off); continuations and retellings merge
+outright, and a title that hangs off others joins a group only upward, when
+it hangs off exactly one larger group. A crossover short linked to two series
+joins the larger one and bridges nothing. Until 2026-10-15 both were plain
+connected components of the relation graph, and 45 franchises held unrelated
+shows: a crossover special made Monogatari and Nisekoi one franchise, others
+joined Detective Conan and Lupin III, Fairy Tail and Rave, Persona 4 and 5.
+Only one title per franchise could appear in a list, and "Not for me" on one
+removed the other. Now: ~2,900 series and ~2,800 franchises with more than one
+title; Fate, Gintama, Attack on Titan and Sword Art Online stay whole.
+
 ### 2. Model
 
 **Population layer** (`recsys/cf.py`, fitted by `malrec population fit`):
@@ -192,7 +208,7 @@ Then:
   (tv, movie, ona) are required: MAL lists side OVAs as prequels (One Punch
   Man's is "Road to Hero"), which hid 192 main series — One Punch Man, GTO,
   Assassination Classroom, Nichijou among them — until 2026-09-26
-- **franchise collapse** — one entry per franchise
+- **franchise collapse** — one entry per franchise (Data, Series and franchises)
 - **genre balance** — calibrated re-ranking toward the user's genre mix
   (below, Rating round, ranges, genre balance)
 - **age balance** (Safe Bets, Discover, Hidden Gems) — the same toward the
@@ -673,6 +689,13 @@ weighted, the calibration to the shown score, every driver pushing the
 prediction up or down, the rated titles that vouch for it through real
 co-ratings, and the relevance and novelty bonuses that placed it.
 
+**Profile genres** ("genres you rate above your average") count each series
+once: every rating weighs 1 / n, n your entries in its series, and a genre
+needs at least four different series behind it. A long show rated 10
+throughout is a taste for that show, not for its genres; counted per entry,
+a dozen Gintama seasons rated 10 would make Gag Humor, Samurai and Parody
+top genres.
+
 ### Learning from what you do
 
 Every build logs what was shown with its ranking inputs (`rec_log`).
@@ -692,7 +715,6 @@ current value.
 ## Why Postgres does the heavy lifting
 
 - **recursive CTEs** resolve prerequisite chains (`prerequisites()`)
-- **plpgsql label propagation** computes franchise components server-side
 - **pgvector** stores a tag-profile vector per anime and your taste vector, so
   "more like this" is an index lookup (`<=>`)
 - **GIN + trigram** indexes back search across titles and synopses
@@ -732,6 +754,7 @@ environment variable. The values that matter:
 | `age_calibration` / `calibration_block` | 0 / 0 (1 / 20 in compose) | the three tabs held to the user's age mix, ordered within blocks of 20 (2026-10-13) |
 | `safe_bets_key_risk` | 1.0 | share of the risk term in Safe Bets' hand key (0 = left to the ranker; measured worse) |
 | `order_ranker_ips` | 0.0 | popularity correction of the rankers' training labels (tested, not shipped) |
+| `series_weight_power` | 0.0 | each rating counts 1 / n^power as taste evidence, n = the user's entries in its series; 0.5 and 1 cost Discover and Hidden Gems accuracy on long lists (`results_series_2026-10-15.txt`) |
 | `not_interested_offset` / `_weight` / `_foldin` / `_franchise` | -1 / 0.4 / on / on | "Not for me" as an implicit rating under the user's mean, also in the fold-in; the franchise leaves the pool (`exp_notforme.py`) |
 
 ## Notes on the MAL API

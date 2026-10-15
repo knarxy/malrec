@@ -905,3 +905,85 @@ def test_ranker_sees_age_and_the_users_age_taste_not_the_year():
     assert t.share[old] == pytest.approx(0.75) and t.share[new] == pytest.approx(0.25)
     assert t.lift[old] > 0 > t.lift[new]                 # rates the older ones higher
     assert t.ref_year == 2026
+
+
+# ------------------------------------------------------- series, franchises --
+
+def _relations():
+    both = [("sequel", "prequel"), ("side_story", "parent_story"), ("summary", "full_story"),
+            ("spin_off", "parent_story")]
+    rel = []
+    for a, b, (t, back) in [
+            (1, 2, both[0]), (1, 3, both[1]),                   # Monogatari: 2 parts, a side story
+            (10, 11, both[0]),                                  # Nisekoi
+            (1, 99, both[1]), (10, 99, both[1]),                # the crossover short
+            (20, 21, both[0]), (21, 22, both[0]), (20, 23, both[1]), (23, 24, both[2]),
+            (20, 30, both[3]), (30, 31, both[0]),               # Gintama, its film, a recap; a spin-off
+            (1, 40, both[3]), (10, 40, both[3])]:               # a spin-off of both shows
+        rel += [(a, b, t), (b, a, back)]
+    return rel + [(1, 50, "other"), (50, 1, "other")]
+
+
+def test_a_crossover_attaches_to_one_series_and_bridges_none():
+    from malrec.recsys.series import groups
+    series, franchise = groups(range(1, 100), _relations())
+    assert series[2] == series[3] == series[1] and series[11] == series[10]
+    assert series[1] != series[10] and franchise[1] != franchise[10]   # not one franchise
+    assert series[99] in (series[1], series[10])
+    assert len({series[m] for m in (20, 21, 22, 23, 24)}) == 1     # recap of the film too
+    assert series[30] == series[31] != series[20]                 # a spin-off: own series ...
+    assert franchise[30] == franchise[20]                         # ... same franchise
+    assert franchise[40] in (franchise[1], franchise[10])         # a crossover spin-off
+    assert series[50] == 50                                       # 'other' links nothing
+
+
+def test_a_long_series_counts_less_than_its_entries():
+    from malrec.recsys.series import shares
+    series = {m: 20 for m in range(20, 33)}                       # 13 entries of one show
+    w = shares(list(range(20, 33)) + [5], series, 0.5)
+    assert w[5] == 1.0 and w[20] == pytest.approx(13 ** -0.5)
+    assert sum(w[m] for m in range(20, 33)) == pytest.approx(13 ** 0.5)
+    assert shares([20, 21], series, 0.0) == {20: 1.0, 21: 1.0}
+
+
+def test_series_weights_reach_the_user_model_inputs(monkeypatch):
+    import datetime as dt
+
+    from malrec.config import settings
+    from malrec.recsys import ltr, series
+    at = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
+    seen = ([{"mal_id": m, "score": 10, "status": "completed", "at": at} for m in range(20, 24)]
+            + [{"mal_id": 5, "score": 7, "status": "completed", "at": at},
+               {"mal_id": 6, "score": 0, "status": "dropped", "at": at}])
+    monkeypatch.setattr(series, "series_of", lambda: {m: 20 for m in range(20, 24)})
+    monkeypatch.setattr(settings(), "series_weight_power", 1.0)
+    sc, im, li = ltr.history_examples(seen, at + dt.timedelta(days=1))
+    w = {e.mal_id: e.weight for e in sc}
+    assert w[20] == pytest.approx(w[5] / 4)                       # four entries share one weight
+    assert li[21] == pytest.approx(li[5] / 4) and [e.mal_id for e in im] == [6]
+    monkeypatch.setattr(settings(), "series_weight_power", 0.0)
+    sc, _, _ = ltr.history_examples(seen, at + dt.timedelta(days=1))
+    assert len({e.weight for e in sc}) == 1                       # off: every entry counts fully
+
+
+def test_profile_genres_need_several_series():
+    from malrec.recsys.series import genre_lifts
+    gintama = [{"mal_id": m, "score": 10, "mal_genres": ["Samurai", "Comedy"]} for m in range(20, 33)]
+    other = [{"mal_id": m, "score": 7, "mal_genres": ["Comedy"]} for m in range(40, 45)]
+    other.append({"mal_id": 45, "score": 6, "mal_genres": ["Samurai"]})
+    series = {m: 20 for m in range(20, 33)}
+    genres = {g["genre"]: g for g in genre_lifts(gintama + other, series)}
+    assert "Samurai" not in genres                                # two series: one show's taste
+    assert "Comedy" in genres and genres["Comedy"]["n"] == 18
+
+
+def test_a_new_setting_at_its_neutral_value_keeps_stored_rankers_current(monkeypatch):
+    from malrec.config import settings
+    from malrec.recsys import ltr
+    before = ltr.fingerprint()
+    monkeypatch.setattr(ltr, "FINGERPRINT_SETTINGS",
+                        tuple(k for k in ltr.FINGERPRINT_SETTINGS if k != "series_weight_power"))
+    assert ltr.fingerprint() == before                 # as it was before the setting existed
+    monkeypatch.undo()
+    monkeypatch.setattr(settings(), "series_weight_power", 0.5)
+    assert ltr.fingerprint() != before                 # switched on: rankers must be retrained
