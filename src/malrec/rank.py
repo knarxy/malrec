@@ -531,6 +531,7 @@ def attach_reasons(user_id: int, cands: list[Candidate], user_mean: float,
                                   [c.relevance for c in cands])
         for c, reasons in zip(cands, explained):
             c.reasons = reasons
+        attach_evidence(user_id, cands)
         return
     baseline = None
     if model is not None:
@@ -545,6 +546,18 @@ def attach_reasons(user_id: int, cands: list[Candidate], user_mean: float,
             drivers = model_drivers(model, c.row, baseline=baseline)
             if drivers:
                 c.reasons.append(drivers)
+
+
+def attach_evidence(user_id: int, cands: list[Candidate]) -> None:
+    """What the user's own ratings clearly say about each title's attributes
+    (taste.evidence_many): the card's personal reasons, the same lines as in
+    "Why this?" - not the personal model's terms, which often said the
+    opposite (experiments/exp_evidence.py)."""
+    from . import taste
+    ev = taste.evidence_many(user_id, [c.mal_id for c in cands], fresh=True)
+    for c in cands:
+        if ev.get(c.mal_id):
+            c.reasons.append({"kind": "evidence", "items": ev[c.mal_id]})
 
 
 # ------------------------------------------------------- model attribution --
@@ -611,8 +624,9 @@ def _label(name: str, value: float = 0.0) -> str | None:
         return _TYPE_LABELS.get(name[3:])
     if name.startswith("len:"):
         return f"{name[4:]} episodes"
-    if name.startswith("dec:"):
-        return f"{name[4:]}s anime"
+    if name.startswith("dec:"):                 # five-year buckets (features._cat_tokens)
+        y = int(name[4:])
+        return f"{y}–{y + 4}"
     if name.startswith("rt:"):
         return None                     # age rating is noise in an explanation
     return name                         # AniList tags are already readable

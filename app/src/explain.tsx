@@ -1,21 +1,20 @@
 // Written explanations and the likely-rating range shown on cards and in the
 // details drawer. Built only from the reasons the API attached (no free text
-// is generated), so every sentence is backed by the model's actual drivers.
+// is generated), so every sentence is backed by the model or by the user's own
+// ratings (the "evidence" reason: what they clearly rate above their average).
 import type { ReactNode } from 'react'
-import type { Reason, Recommendation } from './api'
+import type { Evidence, Reason, Recommendation } from './api'
 import { useI18n } from './i18n'
+import { TagLink } from './tags'
 
-// Driver labels that describe general acclaim rather than this user's taste,
-// and ones that read badly inside a sentence (handled separately or dropped).
+// Driver labels that describe general acclaim rather than this user's taste.
 const CONSENSUS = new Set([
   "loved by those who've seen it", 'highly rated on MyAnimeList', 'highly rated on AniList',
   'widely watched', 'a favourite for many people', 'broadly liked', 'rarely dropped',
 ])
-const SKIP = new Set([
-  'a popular title', 'under the radar', 'often dropped', 'divides opinion',
-  'common on lists like yours', 'fits your taste profile', 'similar to shows you rated highly',
-  'matches your tag profile', 'recommended alongside shows you rate highly',
-])
+// How well known a title is says nothing about taste, and raw counts
+// misjudge new titles.
+export const POPULARITY = new Set(['a popular title', 'under the radar', 'widely watched'])
 const PROFILE = new Set([
   'fits your taste profile', 'similar to shows you rated highly', 'matches your tag profile',
 ])
@@ -47,7 +46,8 @@ export function Why({ reasons }: { reasons: Reason[] }) {
   const drivers = reasons.find(
     (r): r is Extract<Reason, { kind: 'drivers' }> => r.kind === 'drivers')
   const labels = drivers?.items.map((d) => d.label) ?? []
-  const traits = labels.filter((l) => !CONSENSUS.has(l) && !SKIP.has(l)).slice(0, 3)
+  // the user's tastes it matches: only what their own ratings clearly back
+  const traits = pros(reasons).map((e) => e.label).slice(0, 3)
   const acclaimed = labels.some((l) => CONSENSUS.has(l))
   const common = labels.includes('common on lists like yours')
   const profile = labels.some((l) => PROFILE.has(l))
@@ -87,6 +87,13 @@ export function Why({ reasons }: { reasons: Reason[] }) {
   )
 }
 
+/** The attributes the user's own ratings clearly rate above their average. */
+function pros(reasons: Reason[]): Evidence[] {
+  const ev = reasons.find(
+    (r): r is Extract<Reason, { kind: 'evidence' }> => r.kind === 'evidence')
+  return ev?.items.filter((e) => e.lift > 0) ?? []
+}
+
 /** Drivers are drawn on one fixed scale, so bars compare across cards. */
 const DRIVER_SCALE = 1.05
 
@@ -103,9 +110,15 @@ export function Reasons({ item }: { item: Recommendation }) {
     (r): r is Extract<Reason, { kind: 'continues' }> => r.kind === 'continues')
   const coming = reasons.find(
     (r): r is Extract<Reason, { kind: 'coming' }> => r.kind === 'coming')
-  const drivers = (reasons.find(
+  // your side: the attributes your ratings clearly back (as in "Why this?"),
+  // the community's: the model's consensus terms
+  const community = (reasons.find(
     (r): r is Extract<Reason, { kind: 'drivers' }> => r.kind === 'drivers')?.items ?? [])
-    .filter((d) => d.weight > 0).sort((a, b) => b.weight - a.weight).slice(0, 4)
+    .filter((d) => !d.personal && d.weight > 0 && !POPULARITY.has(d.label))
+  const drivers = [
+    ...pros(reasons).map((e) => ({ label: e.label, weight: e.lift, personal: true, tag: e.kind === 'theme' ? e.name : null })),
+    ...community.map((d) => ({ ...d, tag: null })),
+  ].sort((a, b) => b.weight - a.weight).slice(0, 4)
   const tags = reasons.find(
     (r): r is Extract<Reason, { kind: 'tags' }> => r.kind === 'tags')?.tags ?? []
   const gem = reasons.some((r) => r.kind === 'deep_cut')
@@ -147,7 +160,9 @@ export function Reasons({ item }: { item: Recommendation }) {
           {drivers.map((d) => (
             <div className="r-driver" key={d.label}
                  title={t(d.personal ? 'r.from_you' : 'r.from_all')}>
-              <span className="r-label">{label(d.label)}</span>
+              <span className="r-label">
+                {d.tag ? <TagLink tag={d.tag}>{label(d.label)}</TagLink> : label(d.label)}
+              </span>
               <span className="r-track">
                 <span className={d.personal ? 'r-bar you' : 'r-bar all'}
                       style={{ width: `${Math.min(100, (d.weight / DRIVER_SCALE) * 100)}%` }} />
@@ -158,7 +173,7 @@ export function Reasons({ item }: { item: Recommendation }) {
       )}
       {tags.length > 0 && (
         <div className="r-tags">
-          {tags.slice(0, 5).map((g) => <span className="tag" key={g}>{label(g)}</span>)}
+          {tags.slice(0, 5).map((g) => <TagLink tag={g} className="tag" key={g} />)}
         </div>
       )}
     </div>
@@ -180,7 +195,7 @@ export function ReasonLegend() {
   )
 }
 
-/** "likely 7-9 · 35 % chance of 9+" under a prediction. */
+/** "most likely 7-8 · 35 % chance of 9+" under a prediction. */
 export function Likely({ item }: { item: Recommendation }) {
   const { t } = useI18n()
   const l = item.likely

@@ -104,3 +104,29 @@ def test_nightly_mails_only_on_errors(mailer):
     assert notify.nightly([{"user": "a", "changed": False}]) is False
     assert notify.nightly([{"user": "a", "error": "MalApiError: 404"}]) is True
     assert "Listen-Abgleich" in mailer[-1]["Subject"]
+
+
+def _plain(msg) -> str:
+    return next(p for p in msg.walk() if p.get_content_type() == "text/plain"
+                ).get_payload(decode=True).decode()
+
+
+@pytest.mark.parametrize("line, shown", [
+    ('anilist refreshed: {"scope":"all","due":123,"fetched":120}',
+     "120 von 123 fälligen Titeln aktualisiert"),
+    ("anilist refresh FAILED (non-fatal)", "Aktualisierung fehlgeschlagen"),
+])
+def test_monthly_reports_the_anilist_refresh_from_the_log(mailer, monkeypatch, line, shown):
+    monkeypatch.setattr(notify, "scalar", lambda *a, **k: 7)
+    log = f"=== monthly refresh ===\n{line}\nnew model not activated; users unchanged\n"
+    assert notify.monthly({"candidate": 8, "passed": False}, log) is True
+    assert shown in _plain(mailer[-1])
+
+
+def test_weekly_reports_the_anilist_refresh(mailer, monkeypatch):
+    monkeypatch.setattr(notify, "query", lambda *a, **k: [
+        {"mal_username": "a", "n": 2, "top": ["X", "Y"], "season": 31}])
+    assert notify.weekly({"catalog": 9000, "related": 2, "anilist": 340}) is True
+    text = _plain(mailer[-1])
+    assert "AniList aktualisiert" in text and "340" in text
+    assert "Aktuelle Season: 31 Titel" in text

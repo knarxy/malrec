@@ -27,7 +27,7 @@ from .surfaces import SURFACES
 router = APIRouter()
 
 KINDS = ("app_open", "tab_view", "card_seen", "details_open")
-PLACES = frozenset(SURFACES) | {"search", ""}
+PLACES = frozenset(SURFACES) | {"search", "tag", ""}
 KEEP_DAYS = 180
 MAX_BATCH = 60
 

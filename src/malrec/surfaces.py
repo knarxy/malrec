@@ -301,10 +301,12 @@ def continuation_ids(user_id: int) -> set[int]:
 
 def _hidden_gems(user_id: int, model: Model, spec: SurfaceSpec, limit: int
                  ) -> tuple[list[Candidate], list[Candidate], list[Candidate]]:
+    from .recsys.popularity import gem_ids
     skip, gone = continuation_ids(user_id) | derived_ids(), dismissed_franchises(user_id)
+    gems = gem_ids(settings().gems_popularity)
     rows = [r for r in retrieve(user_id, min_scorers=spec.min_scorers,
                                 media_types=spec.formats)
-            if (r.get("mal_popularity") or 99999) > 1200 and r["mal_id"] not in skip
+            if r["mal_id"] in gems and r["mal_id"] not in skip
             and r["franchise_id"] not in gone]
     from .recsys.ltr import context_for
     pool = score_candidates(user_id, model, rows, shortlist=settings().shortlist_size,
@@ -514,6 +516,8 @@ def build_surface(user_id: int, surface: str = "discover", limit: int = 50,
                               [c.relevance for c in cands])
         for c, reasons in zip(cands, extra):
             c.reasons.extend(r for r in reasons if r["kind"] in ("drivers", "tags"))
+        from .rank import attach_evidence
+        attach_evidence(user_id, cands)
     else:
         for c in cands:
             drivers = model_drivers(model, c.row) if c.row else None
@@ -594,9 +598,9 @@ def read_surface(user_id: int, surface: str, limit: int = 30, offset: int = 0) -
 def with_likely(user_id: int, items: list[dict]) -> list[dict]:
     """Adds the likely rating range and the chance of a 9+ to each item."""
     from .uncertainty import band, user_quantiles
-    q, idx = user_quantiles(user_id)
+    q = user_quantiles(user_id)
     for it in items:
-        it["likely"] = band(it.get("predicted_score"), q, idx)
+        it["likely"] = band(it.get("predicted_score"), q)
     return items
 
 

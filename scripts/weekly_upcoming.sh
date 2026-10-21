@@ -1,6 +1,7 @@
 #!/bin/sh
 # Weekly "coming soon" refresh (scheduled by /etc/cron.d/malrec): newly
-# announced seasons and films, then every user's Coming Soon list. The admin
+# announced seasons and films, AniList data of what is airing, upcoming or
+# recent, then every user's Coming Soon and This Season lists. The admin
 # gets the result by mail, or the log's tail if it failed (malrec.notify).
 set -u
 cd /opt/malrec

@@ -73,7 +73,7 @@ import numpy as np
 from malrec import rank
 from malrec.config import settings
 from malrec.eval import spearman
-from malrec.recsys import ltr
+from malrec.recsys import ltr, popularity
 from malrec.recsys.cf import CFParams, PopulationModel
 from malrec.recsys.hybrid import fit_stacker, fit_user, split_user
 from malrec.recsys.scorer import HybridScorer
@@ -196,6 +196,31 @@ def load_snapshot():
 
 # set by run(): a hash of the live series and franchise tables (groupings)
 GROUPS = ""
+# set by run(): the snapshot's day and every title's rank by age-fair member
+# count (recsys/popularity.py), for the Hidden Gems pool rule
+SNAP_DAY = dt.date(2026, 10, 10)
+GEM_RANKS: dict[int, int] = {}            # the age-fair rank, for the tail metric
+GEM_BARS: list[float] = [0.0, 0.0]          # popularity.bars, for the pool rule
+
+
+def popularity_columns(store, day: dt.date) -> None:
+    """Members and start dates are not in the snapshot: they come from the
+    live table (ten days on, a few percent more members for new titles), the
+    ranks are taken as of the snapshot's day."""
+    from malrec.db import query
+    rows = query("SELECT mal_id, mal_num_list_users, start_date FROM anime")
+    for r in rows:
+        row = store.rows.get(r["mal_id"])
+        if row is not None:
+            row["members"], row["start_date"] = r["mal_num_list_users"], r["start_date"]
+    GEM_RANKS.clear()
+    GEM_RANKS.update(popularity.grown_ranks(
+        ((r["mal_id"], r["mal_num_list_users"], r["start_date"]) for r in rows), day))
+    GEM_BARS[:] = popularity.bars(r["mal_num_list_users"] for r in rows)
+
+
+def gem(row) -> bool:
+    return popularity.is_gem(row, CFG.gems_popularity, (GEM_BARS[0], GEM_BARS[1]), SNAP_DAY)
 
 
 def groupings(store) -> str:
@@ -285,9 +310,11 @@ def order_ranker(entries, store, pop, stacker, B, pool, surface: str = "safe_bet
     stacker users - as `malrec ranker train` does for the live one. Cached
     with the population model's hash, recsys/ltr.py's, rank.py's, the tab
     and the ranking settings' (ltr.fingerprint); the newest six are kept."""
+    pool_key = (f"{CFG.gems_popularity}:{len(pool)}".encode()   # the shipped rule keeps old keys
+                if surface == "hidden_gems" and CFG.gems_popularity != "rank" else b"")
     h = hashlib.sha256((SRC / "recsys/ltr.py").read_bytes() + (SRC / "rank.py").read_bytes()
                        + ltr.fingerprint().encode() + surface.encode()
-                       + ",".join(ltr.FEATURES).encode()).hexdigest()[:8]
+                       + ",".join(ltr.FEATURES).encode() + pool_key).hexdigest()[:8]
     path = DATA / f"ltr-{code_hash()}-{h}.pkl"
     if path.exists():
         path.touch()
@@ -332,7 +359,7 @@ def ranked(scorer, rows, li, familiar, store, surface: str = "safe_bets",
     ref_year = cutoff.year if cutoff is not None else None
     spec = SPECS[surface]
     if surface == "hidden_gems":
-        rows = [r for r in rows if (r.get("mal_popularity") or 99999) > ltr.GEMS_FROM]
+        rows = [r for r in rows if gem(store.rows[r["mal_id"]])]
     if taken:                                   # Discover starts where Safe Bets ends
         rows = [r for r in rows if r["mal_id"] not in taken]
     ranker = RANKERS.get(surface)
@@ -393,6 +420,38 @@ def age_metrics(top: list[int], ages, prefix: str = "") -> dict:
             f"{prefix}new20": float(np.mean([x == 0 for x in b]))}
 
 
+def repeats(top: list[int], store, prefix: str = "") -> dict:
+    """Share of the top 20 whose franchise already appeared higher up: 0
+    with one title per franchise (rank.rerank); what a looser collapse
+    lets through (results_grouplevel_2026-10-16.txt)."""
+    if len(top) < 20:
+        return {}
+    fr = [store.rows[m].get("franchise_id") or m for m in top[:20]]
+    return {f"{prefix}rep20": 1.0 - len(set(fr)) / len(fr)}
+
+
+DMIX_EVERY = (2, 3, 5)
+
+
+def interleave(main: list[int], extra: list[int], skip: set[int], every: int,
+               limit: int = 60) -> list[int]:
+    """`main` with every `every`-th slot taken by the next of `extra`; nothing
+    from `skip`, nothing twice."""
+    out: list[int] = []
+    used = set(skip)
+    a, b = iter(main), iter(extra)
+    while len(out) < limit:
+        src = (b, a) if (len(out) + 1) % every == 0 else (a, b)
+        nxt = next((x for x in src[0] if x not in used), None)
+        if nxt is None:
+            nxt = next((x for x in src[1] if x not in used), None)
+        if nxt is None:
+            break
+        out.append(nxt)
+        used.add(nxt)
+    return out
+
+
 def list_metrics(top: list[int], liked: set[int], disliked: set[int], prefix: str) -> dict:
     """recall@50 (plain and IPS) / hit@10 / bad@10 of another tab's list."""
     out = {}
@@ -444,8 +503,10 @@ def run(max_eval: int) -> dict:
     t0 = time.time()
     entries, static = load_snapshot()
     store, derived = static["store"], static["derived"]
-    global GROUPS
+    global GROUPS, SNAP_DAY
     GROUPS = groupings(store)
+    SNAP_DAY = dt.datetime.fromisoformat(static["created"]).date()
+    popularity_columns(store, SNAP_DAY)
     rng = np.random.default_rng(SEED)
     users = entries.users_with_scored(15)
     rng.shuffle(users)
@@ -459,9 +520,7 @@ def run(max_eval: int) -> dict:
     PROP = (np.bincount(ma.astype(np.int64)) + 1.0) / (len(A) + 2.0)
     RANKERS.clear()
     pools = {"safe_bets": (pool_all, None), "discover": (pool_all, pool_all),
-             "hidden_gems": ([m for m in gems_all
-                              if (store.rows[m].get("mal_popularity") or 99999) > ltr.GEMS_FROM],
-                             None)}
+             "hidden_gems": ([m for m in gems_all if gem(store.rows[m])], None)}
     for tab, setting in ltr.SURFACES.items():
         if getattr(CFG, setting) > 0:
             RANKERS[tab], rhow = order_ranker(entries, store, pop, stacker, B, pools[tab][0],
@@ -475,7 +534,8 @@ def run(max_eval: int) -> dict:
            "settings": {k: getattr(CFG, k) for k in (
                "safe_bets_memory_mix", "safe_bets_key_risk", "order_ranker_ips",
                "discover_ranker_weight", "gems_ranker_weight", "age_calibration",
-               "calibration_block", "series_weight_power")}, "groupings": GROUPS}
+               "calibration_block", "series_weight_power", "gems_popularity",
+               "gems_skip_safe_bets")}, "groupings": GROUPS}
 
     def genres(ids):
         return {g for m in ids for g in ((store.rows.get(m) or {}).get("mal_genres") or [])}
@@ -500,16 +560,37 @@ def run(max_eval: int) -> dict:
                          cutoff=cutoff)
         gems_rows = [row_of(store, m) for m in gems_all if m not in listed]
         _, gems = ranked(scorer, gems_rows, li, fam, store, "hidden_gems", history=hist,
-                         cutoff=cutoff)
+                         cutoff=cutoff, taken=set(top[:CFG.gems_skip_safe_bets]))
         # measured against the whole history before the cutoff, not the
         # budget's sample: the habit, not what the model happened to see
         ages = rank.age_mix(full_hist, year_of(store), cutoff.year)
         m = user_metrics(scorer, top, items, truth, liked, disliked)
-        m |= age_metrics(top, ages)
+        m |= age_metrics(top, ages) | repeats(top, store)
         m |= list_metrics([c.mal_id for c in disc], liked, disliked, "disc_")
         m |= age_metrics([c.mal_id for c in disc], ages, "disc_")
+        m |= repeats([c.mal_id for c in disc], store, "disc_")
         m |= list_metrics([c.mal_id for c in gems], liked, disliked, "gems_")
         m |= age_metrics([c.mal_id for c in gems], ages, "gems_")
+        m |= repeats([c.mal_id for c in gems], store, "gems_")
+        # the lesser-known liked titles each list finds in its first 20, by
+        # MAL's raw rank and by the age-fair one - fixed definitions, whatever
+        # the pool rule
+        tails = {"r": {x for x in liked if (store.rows[x].get("mal_popularity") or 99999)
+                       > popularity.GEMS_FROM},
+                 "g": {x for x in liked if GEM_RANKS.get(x, 99999) > popularity.GEMS_FROM}}
+        gem_ids = [c.mal_id for c in gems]
+        lists = {"": top, "disc_": [c.mal_id for c in disc], "gems_": gem_ids}
+        # one Discover tab with every Nth slot a gem, in place of two tabs:
+        # every arm measures each N, so it compares paired with plain Discover
+        for n in DMIX_EVERY:
+            lists[f"dmix{n}_"] = mixed = interleave(lists["disc_"], gem_ids, set(top), n)
+            m |= list_metrics(mixed, liked, disliked, f"dmix{n}_")
+            m |= age_metrics(mixed, ages, f"dmix{n}_")
+        for prefix, ids in lists.items():
+            for k, t in tails.items():
+                if t:
+                    m[f"{prefix}tl20{k}"] = len(set(ids[:20]) & t) / len(t)
+        m["gems_sb20"] = len(set(gem_ids[:20]) & set(top[:20])) / 20
         return m, top[:20]
 
     for budget in BUDGETS:

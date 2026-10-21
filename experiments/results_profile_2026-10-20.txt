@@ -1,0 +1,111 @@
+python -m experiments.exp_profile --per-bucket 500 --seed 23  (2026-10-20)
+30656 titles, 12733 with tags; 3422 lists (12 app users) [1s]
+
+3422 computed, 0 errors [64s]
+
+== scale (share of lists per size)
+   headline                       1-19    20-49    50-99  100-199  200-399  400-799     800+      all
+   scale.aligned                  0.03     0.17     0.20     0.22     0.24     0.25     0.21     0.19
+   scale.few                      0.62     0.15     0.05     0.03     0.01     0.01     0.01     0.12
+   scale.generous                 0.03     0.16     0.17     0.16     0.17     0.15     0.13     0.14
+   scale.much_generous            0.02     0.12     0.12     0.10     0.08     0.08     0.09     0.09
+   scale.much_strict              0.02     0.10     0.17     0.19     0.22     0.28     0.30     0.19
+   scale.none                     0.21     0.10     0.04     0.04     0.02     0.02     0.01     0.06
+   scale.one_score                0.06     0.09     0.07     0.04     0.03     0.01     0.01     0.04
+   scale.strict                   0.02     0.10     0.17     0.22     0.22     0.21     0.23     0.17
+
+== genres (share of lists per size)
+   headline                       1-19    20-49    50-99  100-199  200-399  400-799     800+      all
+   genres.down                    0.00     0.03     0.05     0.07     0.03     0.02     0.00     0.03
+   genres.few                     0.98     0.48     0.17     0.09     0.04     0.03     0.03     0.25
+   genres.none                    0.01     0.31     0.34     0.18     0.08     0.02     0.01     0.13
+   genres.up_down                 0.00     0.02     0.09     0.21     0.39     0.49     0.41     0.24
+   genres.up_one                  0.00     0.09     0.15     0.15     0.07     0.03     0.01     0.07
+   genres.up_two                  0.00     0.03     0.12     0.20     0.19     0.12     0.06     0.11
+   genres.up_watched_lower        0.00     0.01     0.05     0.08     0.19     0.29     0.48     0.16
+   genres.watched_lower           0.00     0.03     0.03     0.02     0.01     0.00     0.00     0.01
+
+== themes (share of lists per size)
+   headline                       1-19    20-49    50-99  100-199  200-399  400-799     800+      all
+   themes.(hidden)                1.00     0.94     0.69     0.35     0.12     0.06     0.04     0.44
+   themes.down                    0.00     0.01     0.02     0.03     0.02     0.00     0.00     0.01
+   themes.up_down                 0.00     0.00     0.01     0.08     0.27     0.45     0.63     0.21
+   themes.up_one                  0.00     0.04     0.15     0.20     0.09     0.02     0.01     0.07
+   themes.up_two                  0.00     0.00     0.13     0.34     0.50     0.48     0.32     0.26
+
+== disagree (share of lists per size)
+   headline                       1-19    20-49    50-99  100-199  200-399  400-799     800+      all
+   disagree.(hidden)              0.42     0.14     0.05     0.05     0.03     0.02     0.02     0.10
+   disagree.above                 0.33     0.24     0.17     0.07     0.04     0.03     0.03     0.13
+   disagree.below                 0.12     0.15     0.09     0.08     0.06     0.04     0.03     0.08
+   disagree.both                  0.12     0.45     0.67     0.79     0.87     0.91     0.93     0.68
+   disagree.none                  0.01     0.02     0.01     0.01     0.00     0.00     0.00     0.01
+
+== eras (share of lists per size)
+   headline                       1-19    20-49    50-99  100-199  200-399  400-799     800+      all
+   eras.(hidden)                  0.74     0.07     0.00     0.00     0.00     0.00     0.00     0.12
+   eras.ages_only                 0.24     0.42     0.16     0.09     0.04     0.03     0.03     0.14
+   eras.favourite                 0.00     0.06     0.19     0.28     0.49     0.69     0.81     0.37
+   eras.lower                     0.00     0.02     0.04     0.04     0.04     0.04     0.02     0.03
+   eras.none                      0.02     0.43     0.60     0.58     0.43     0.25     0.14     0.35
+
+== studios (share of lists per size)
+   headline                       1-19    20-49    50-99  100-199  200-399  400-799     800+      all
+   studios.(hidden)               1.00     0.98     0.87     0.68     0.36     0.13     0.08     0.57
+   studios.down                   0.00     0.00     0.01     0.03     0.04     0.03     0.01     0.02
+   studios.up_one                 0.00     0.02     0.11     0.25     0.29     0.22     0.07     0.14
+   studios.up_two                 0.00     0.00     0.01     0.05     0.31     0.62     0.84     0.27
+
+== numbers (median / 90th percentile per size)
+   rated_series      2.0/10.0     15.0/28.0     32.0/56.0     61.0/101.1   115.0/192.0   217.0/369.2   456.0/1089.2
+   clear_genres      0.0/0.0       0.0/1.0       0.0/3.0       2.0/5.0       3.0/8.0       6.0/10.0      9.0/10.0  
+   clear_themes      0.0/0.0       0.0/0.0       0.0/2.0       1.0/5.0       4.0/7.0       6.0/8.0       7.0/9.0   
+   clear_studios     0.0/0.0       0.0/0.0       0.0/1.0       0.0/1.0       1.0/3.0       2.0/6.0       6.0/10.0  
+   era_rows          0.0/0.0       1.0/3.0       3.0/4.0       4.0/6.0       5.0/7.0       6.0/8.0       7.0/10.0  
+   hours            15.5/113.1   144.0/453.0   336.5/759.8   678.5/1253.1 1193.0/2217.4 2099.0/3576.8 3875.0/7878.0
+   scale_diff        0.7/2.4       0.2/1.7       0.1/1.3      -0.1/1.0      -0.2/0.8      -0.2/0.7      -0.3/0.8   
+
+== names in headlines (count)
+   genres.down    Harem 239, Comedy 195, Action 157, Ecchi 136, Fantasy 119, Romance 103, School 71, Isekai 39, Horror 30, Sci-Fi 21, Music 20, Avant Garde 19, Kids 19, Shounen 17, Adventure 16, Mystery 15, Martial Arts 15, Mecha 14, Super Power 14, Josei 13, Shoujo 12, Slice of Life 12, Supernatural 11, Gore 11, Parody 11, Seinen 10, Adult Cast 9, Reverse Harem 9, Mythology 9, High Stakes Game 8, CGDCT 8, Suspense 7, Urban Fantasy 7, Vampire 7, Gag Humor 7, Mahou Shoujo 7, Psychological 6, Otaku Culture 6, Survival 6, Video Game 5, Love Polygon 5, Drama 4, Villainess 4, Sports 4, Workplace 4
+   genres.up      Drama 280, Adult Cast 201, Shounen 140, Historical 111, Adventure 109, Psychological 101, Suspense 96, Mystery 80, Supernatural 73, Seinen 66, Military 54, Gag Humor 50, School 45, Gore 45, Organized Crime 42, Sci-Fi 41, Avant Garde 41, Music 40, Comedy 39, Time Travel 37, Action 35, Fantasy 33, Super Power 32, Sports 32, Childcare 32, Iyashikei 32, Slice of Life 31, CGDCT 28, Romance 28, Mecha 26, Shoujo 22, Parody 21, Space 19, Isekai 19, Love Polygon 19, Otaku Culture 17, Samurai 16, Mythology 15, Josei 12, Performing Arts 11, Team Sports 11, Martial Arts 10, Urban Fantasy 10, Reincarnation 10, Ecchi 9
+   studios.down   J.C.Staff 11, A-1 Pictures 8, Gonzo 5, SILVER LINK. 5, Toei Animation 5, Doga Kobo 3, Studio Deen 3, Madhouse 2, Bones 2, Xebec 2, LIDENFILMS 2, feel. 1, Manglobe 1, Wit Studio 1, AIC 1, Brain's Base 1, Shin-Ei Animation 1, Kyoto Animation 1, CoMix Wave Films 1, Project No.9 1, EMT Squared 1, Production IMS 1, animate Film 1, Bee Train 1
+   studios.up     Madhouse 400, Studio Ghibli 328, Kyoto Animation 210, Bones 181, MAPPA 142, A-1 Pictures 114, Wit Studio 91, Production I.G 87, CloverWorks 71, Sunrise 61, White Fox 55, CoMix Wave Films 44, J.C.Staff 39, Brain's Base 38, Studio Pierrot 32, Shaft 31, Toei Animation 30, Trigger 28, Doga Kobo 28, P.A. Works 27, Studio Deen 25, TMS Entertainment 23, Science SARU 23, Lerche 16, Gainax 16, Gonzo 15, Nippon Animation 11, OLM 11, T-Rex 9, feel. 6, LIDENFILMS 6, SILVER LINK. 6, David Production 6, 8bit 6, AIC 5, Bandai Namco Pictures 4, ufotable 4, Tokyo Movie Shinsha 4, Satelight 4, Manglobe 4, PrimeTime 3, Seven 3, Xebec 3, Lay-duce 3, Ajia-do 3
+   themes.down    Female Harem 431, Magic 30, Cute Girls Doing Cute Things 22, Love Triangle 17, Battle Royale 16, Tsundere 14, Kemonomimi 13, Henshin 10, School Club 9, Swordplay 8, Yandere 8, Death Game 8, Dragons 7, Surreal Comedy 7, Vocal Synth 7, Idol 7, Robots 5, Ojou-sama 5, Proxy Battle 5, Tragedy 4, Body Horror 4, Slapstick 4, Age Gap 4, Elf 4, Video Games 4, Marriage 4, Assassins 3, Aliens 3, Demons 3, Food 3, Artificial Intelligence 3, Post-Apocalyptic 3, Twins 3, Cyberpunk 3, Meta 3, Male Harem 3, Cute Boys Doing Cute Things 3, Superhero 3, Travel 2, Kuudere 2, Unrequited Love 2, Dissociative Identities 2, Guns 2, Revenge 2, Monster Girl 2
+   themes.up      Philosophy 326, Coming of Age 257, Tragedy 119, Travel 90, Orphan 79, Time Skip 74, Foreign 74, Found Family 65, Crime 64, Conspiracy 61, Revenge 56, War 55, Urban 54, Rural 51, Fugitive 46, Memory Manipulation 44, Rehabilitation 44, Environmental 41, Noir 37, Curses 37, Meta 35, Unrequited Love 35, Shapeshifting 35, Politics 34, Body Horror 32, Kuudere 32, Work 30, Amnesia 27, Dystopian 27, Time Manipulation 27, Satire 27, Family Life 26, Class Struggle 26, Anthropomorphism 25, Dissociative Identities 24, Gods 22, Slapstick 21, Cosmic Horror 19, Denpa 18, Medieval 17, Surreal Comedy 17, Youkai 17, Swordplay 16, Guns 15, Magic 15
+
+== headlines never produced: none
+== produced but unknown to the app: none
+
+== examples per headline
+   disagree.above             [{}, {}, {}]
+   disagree.below             [{}, {}, {}]
+   disagree.both              [{}, {}, {}]
+   disagree.none              [{'n': 10}, {'n': 11}, {'n': 14}]
+   eras.ages_only             [{'new': 0.09, 'old': 0.91}, {'new': 0.42, 'old': 0.17}, {'new': 0.07, 'old': 0.21}]
+   eras.favourite             [{'from': 2015, 'to': 2019}, {'from': 2015, 'to': 2019}, {'from': 2010, 'to': 2014}]
+   eras.lower                 [{'from': 2010, 'to': 2014}, {'from': 2015, 'to': 2019}, {'from': 2015, 'to': 2019}]
+   eras.none                  [{}, {}, {}]
+   genres.down                [{'down': 'Supernatural'}, {'down': 'Romance'}, {'down': 'Ecchi'}]
+   genres.few                 [{'missing': 14}, {'missing': 9}, {'missing': 14}]
+   genres.none                [{}, {}, {}]
+   genres.up_down             [{'up': 'Drama', 'down': 'Comedy'}, {'up': 'Fantasy', 'down': 'Mystery'}, {'up': 'Comedy', 'down': 'Mystery'}]
+   genres.up_one              [{'up': 'Shounen'}, {'up': 'Comedy'}, {'up': 'Space'}]
+   genres.up_two              [{'a': 'Psychological', 'b': 'Suspense'}, {'a': 'School', 'b': 'Music'}, {'a': 'Mystery', 'b': 'Gore'}]
+   genres.up_watched_lower    [{'up': 'Seinen', 'down': 'Shounen'}, {'up': 'Drama', 'down': 'Action'}, {'up': 'Drama', 'down': 'Action'}]
+   genres.watched_lower       [{'down': 'Comedy'}, {'down': 'School'}, {'down': 'Comedy'}]
+   scale.aligned              [{'diff': 0.0}, {'diff': 0.1}, {'diff': -0.12}]
+   scale.few                  [{}, {}, {}]
+   scale.generous             [{'diff': 0.68}, {'diff': 0.29}, {'diff': 0.59}]
+   scale.much_generous        [{'diff': 1.12}, {'diff': 0.77}, {'diff': 0.75}]
+   scale.much_strict          [{'diff': -2.91}, {'diff': -0.76}, {'diff': -1.92}]
+   scale.none                 [{}, {}, {}]
+   scale.one_score            [{'score': 9, 'share': 0.73}, {'score': 10, 'share': 0.7}, {'score': 7, 'share': 0.6}]
+   scale.strict               [{'diff': -0.28}, {'diff': -0.52}, {'diff': -0.49}]
+   studios.down               [{'down': 'Gonzo'}, {'down': 'A-1 Pictures'}, {'down': 'A-1 Pictures'}]
+   studios.up_one             [{'up': 'Kyoto Animation'}, {'up': 'Madhouse'}, {'up': 'Madhouse'}]
+   studios.up_two             [{'a': 'Madhouse', 'b': 'Bones'}, {'a': 'Studio Ghibli', 'b': 'Madhouse'}, {'a': 'Madhouse', 'b': 'Trigger'}]
+   themes.down                [{'down': 'Swordplay'}, {'down': 'Tragedy'}, {'down': 'Female Harem'}]
+   themes.up_down             [{'up': 'Coming of Age', 'down': 'Female Harem'}, {'up': 'Philosophy', 'down': 'School Club'}, {'up': 'Slapstick', 'down': 'Body Horror'}]
+   themes.up_one              [{'up': 'Tragedy'}, {'up': 'Tragedy'}, {'up': 'Philosophy'}]
+   themes.up_two              [{'a': 'Amnesia', 'b': 'Philosophy'}, {'a': 'Henshin', 'b': 'Travel'}, {'a': 'Conspiracy', 'b': 'Dystopian'}]
+[64s]

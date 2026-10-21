@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
-  api, ApiError, type AuthState, type Filters, type ModelInfo, type OnboardStatus,
+  api, ApiError, type AuthState, type Filters, type OnboardStatus,
   type Prefs, type Profile, type Recommendation, type Surface,
 } from './api'
 import {
-  BrandMark, Card, Controls, Details, Insights, SearchBox, Skeletons, ThemeToggle,
+  BrandMark, Card, Controls, Details, SearchBox, Skeletons, ThemeToggle,
 } from './components'
 import { ReasonLegend } from './explain'
 import { setTheme } from './theme'
 import { track } from './usage'
 import { Admin, AdminBell } from './admin'
 import { PrivacyPage } from './privacy'
+import { ProfilePage } from './profile'
 import { Quiz } from './quiz'
+import { OpenTag, TagPanel } from './tags'
 import { captureTogetherToken, Together } from './together'
 import {
   I18nContext, initialLang, LANGS, makeT, translateLabel, useI18n, type Lang,
@@ -322,9 +324,14 @@ function Main({ lang, setLangState }: { lang: Lang; setLangState: (l: Lang) => v
   const [items, setItems] = useState<Recommendation[] | null>(null)
   const [note, setNote] = useState('')
   const [profile, setProfile] = useState<Profile | null>(null)
-  const [model, setModel] = useState<ModelInfo | null>(null)
   const [detail, setDetail] = useState<Recommendation | null>(null)
-  const [insights, setInsights] = useState(false)
+  const [tag, setTag] = useState<string | null>(null)
+  const [tagOnTop, setTagOnTop] = useState(false)
+  const openTag = useCallback((t: string) => { setTag(t); setTagOnTop(true) }, [])
+  // the profile page, from the account menu; #profile keeps it across a reload
+  // and lets the browser's back button return to the lists
+  const [page, setPage] = useState<'lists' | 'profile'>(
+    () => (window.location.hash === '#profile' ? 'profile' : 'lists'))
   const [quiz, setQuiz] = useState(false)
   const [linkToken, setLinkToken] = useState<string | null>(captureTogetherToken)
   const [together, setTogether] = useState(linkToken !== null)
@@ -350,9 +357,26 @@ function Main({ lang, setLangState }: { lang: Lang; setLangState: (l: Lang) => v
   useEffect(() => {
     if (isOwn && ready) track({ kind: 'tab_view', surface: active })
   }, [isOwn, ready, active])
+  const openProfile = useCallback(() => {
+    if (window.location.hash !== '#profile') {
+      window.history.pushState(null, '', `${window.location.pathname}${window.location.search}#profile`)
+    }
+    setPage('profile')
+    window.scrollTo(0, 0)
+  }, [])
+  const closeProfile = useCallback(() => {
+    if (window.location.hash === '#profile') window.history.back()
+    else setPage('lists')
+  }, [])
+  useEffect(() => {
+    const onPop = () => setPage(window.location.hash === '#profile' ? 'profile' : 'lists')
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
   const openDetail = useCallback((r: Recommendation, from?: string) => {
     if (isOwn) track({ kind: 'details_open', surface: from ?? active, mal_id: r.mal_id, rank: r.rank })
     setDetail(r)
+    setTagOnTop(false)
   }, [isOwn, active])
 
   // Who is signed in (if anyone). A signed-in user with nothing chosen yet
@@ -479,7 +503,6 @@ function Main({ lang, setLangState }: { lang: Lang; setLangState: (l: Lang) => v
     if (!user || !ready) return
     api.surfaces().then(setSurfaces).catch(() => {})
     api.profile(user).then(setProfile).catch(() => {})
-    api.model(user).then(setModel).catch(() => setModel(null))
   }, [user, ready])
 
   // Load whichever surface is selected, narrowed by the filters.
@@ -536,7 +559,7 @@ function Main({ lang, setLangState }: { lang: Lang; setLangState: (l: Lang) => v
   }
 
   return (
-    <>
+    <OpenTag.Provider value={openTag}>
       <header className="topbar">
         <div className="wrap topbar-inner">
           <span className="brand">mal<span>rec</span></span>
@@ -556,13 +579,12 @@ function Main({ lang, setLangState }: { lang: Lang; setLangState: (l: Lang) => v
           )}
           {quizOpen && <button className="bar-btn bar-extra" onClick={() => setQuiz(true)}>{t('Rate titles')}</button>}
           {isOwn && <button className="bar-btn bar-extra" onClick={() => setTogether(true)}>{t('Watch together')}</button>}
-          <button className="bar-btn bar-extra" onClick={() => setInsights(true)} disabled={!profile}>{t('Your taste')}</button>
           <ThemeToggle key={prefs.theme ?? 'system'} onChange={(th) => savePrefs({ theme: th })} />
           {auth.is_admin && <AdminBell onOpenPanel={() => setAdminView(true)} />}
           <AccountMenu username={auth.username ?? ''} picture={auth.picture} viewing={isOwn ? null : user}>
+            <button onClick={openProfile}>{isOwn ? t('Your profile') : t('profile.title_of', { u: user })}</button>
             {quizOpen && <button className="menu-extra" onClick={() => setQuiz(true)}>{t('Rate titles')}</button>}
             {isOwn && <button className="menu-extra" onClick={() => setTogether(true)}>{t('Watch together')}</button>}
-            <button className="menu-extra" onClick={() => setInsights(true)} disabled={!profile}>{t('Your taste')}</button>
             {auth.is_admin && <button onClick={() => setAdminView(true)}>{t('adm.menu')}</button>}
             {auth.is_admin && !isOwn && <a className="menu-link" href="/">{t('back.own')}</a>}
             <label className="menu-lang">{t('Language')} <LangPicker onChange={changeLang} /></label>
@@ -573,6 +595,9 @@ function Main({ lang, setLangState }: { lang: Lang; setLangState: (l: Lang) => v
       </header>
 
       <main className="wrap">
+        {page === 'profile' ? (
+          <ProfilePage user={user} own={isOwn} onBack={closeProfile} />
+        ) : (<>
         <nav className="tabs" role="tablist">
           {surfaces.map((s) => (
             <button
@@ -648,18 +673,25 @@ function Main({ lang, setLangState }: { lang: Lang; setLangState: (l: Lang) => v
             ))}
           </div>
         )}
+        </>)}
       </main>
 
-      {detail && (
+      {/* whichever was opened last lies on top */}
+      {tag && tagOnTop && detail && (
+        <Details item={detail} user={user} surface={active} canRate={isOwn} onClose={() => setDetail(null)} onRated={onRated} />
+      )}
+      {tag && (
+        <TagPanel tag={tag} user={user} onClose={() => setTag(null)} onOpen={(id) => {
+          api.animeFor(id, user).then((r) => openDetail(r, 'tag')).catch(() => {})
+        }} />
+      )}
+      {detail && !(tag && tagOnTop) && (
         <Details item={detail} user={user} surface={active} canRate={isOwn} onClose={() => setDetail(null)} onRated={onRated} />
       )}
       {quiz && <Quiz onClose={() => setQuiz(false)} onRated={onRated} />}
       {together && <Together onClose={() => setTogether(false)} linkToken={linkToken}
                              onLinkDone={() => setLinkToken(null)} />}
-      {insights && profile && (
-        <Insights profile={profile} model={model} onClose={() => setInsights(false)} />
-      )}
       <Footer />
-    </>
+    </OpenTag.Provider>
   )
 }

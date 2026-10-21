@@ -344,7 +344,7 @@ type ReportValue = {
   population_model?: { id: number; range_coverage_80_by_size: Record<string, number | null> }
   prospective_check?: ProspectiveCheck
   users?: Record<string, {
-    ratings: number; half_life: number | null; range_coverage_80?: number
+    ratings: number; half_life: number | null; range_coverage_80?: number; likely_coverage?: number
     prospective: { pairs: number; spearman?: number; bias?: number }
     gate: string | Record<string, { mean: number }>
   }>
@@ -386,6 +386,11 @@ function Report() {
             {u.range_coverage_80 !== undefined && (
               <div className="surface-note">
                 {t('adm.report.coverage', { p: Math.round(u.range_coverage_80 * 100) })}
+              </div>
+            )}
+            {u.likely_coverage !== undefined && (
+              <div className="surface-note">
+                {t('adm.report.likely', { p: Math.round(u.likely_coverage * 100) })}
               </div>
             )}
             <div className="surface-note">

@@ -4,6 +4,8 @@
 #   1. rotate the CF sample: ~800 new public lists from recent discussion
 #      replies, as many lists older than a year retired (~850 MAL requests at
 #      the configured 1 req/s)
+#   1b. refresh AniList for the whole catalogue (malrec sync anilist-refresh,
+#      ~600 requests at 30/min, ~20 minutes)
 #   2. refit the population model, activated only if the reference profile's (MALREC_USER) temporal
 #      holdout does not get worse (malrec population fit --gate-user)
 #   3. the learned list orders for the active model, if it has none
@@ -43,9 +45,17 @@ lab() { docker compose --profile lab run --rm -T lab "$@"; }
 
 if [ -n "$DRY_RUN" ]; then
     lab malrec sync cf-refresh --help >/dev/null && echo "cf-refresh: command ok (not run)"
+    lab malrec sync anilist-refresh --help >/dev/null && echo "anilist-refresh: command ok (not run)"
     fit=$(lab sh -c 'malrec population fit --dry-run --gate-user "${MALREC_USER:?set MALREC_USER in .env}"')
 else
     lab malrec sync cf-refresh
+    # before the fit, so the new model is trained on current AniList data;
+    # AniList being down only costs this month's refresh
+    if al=$(lab malrec sync anilist-refresh --scope all); then
+        echo "anilist refreshed: $(printf '%s' "$al" | tr -d ' \n')"
+    else
+        echo "anilist refresh FAILED (non-fatal)"
+    fi
     fit=$(lab sh -c 'malrec population fit --refit-all --gate-user "${MALREC_USER:?set MALREC_USER in .env}"')
 fi
 echo "$fit"

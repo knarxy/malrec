@@ -10,12 +10,17 @@ export type Reason =
   | { kind: 'tags'; tags: string[] }
   | { kind: 'same_franchise' }
   | { kind: 'deep_cut' }
+  /** what the user's own ratings clearly say about the title's attributes */
+  | { kind: 'evidence'; items: Evidence[] }
   | {
       kind: 'drivers'
       items: { label: string; weight: number; personal: boolean }[]
       personal_share: number
       has_affinity: boolean
     }
+
+/** lift = the user's series-level mean for the attribute minus their own */
+export interface Evidence { kind: string; name: string; label: string; lift: number; series: number }
 
 export interface Recommendation {
   rank: number
@@ -44,7 +49,7 @@ export interface Recommendation {
   list_score?: number | null
   /** Safe Bets also lists this title (shown on the other tabs' cards) */
   also_in?: string
-  /** 80 % range of the user's actual rating, and the chance it is 9+ */
+  /** the likeliest whole ratings (half of past errors fall in), and the chance of a 9+ */
   likely?: { low: number; high: number; p9: number } | null
 }
 
@@ -108,6 +113,49 @@ export interface Learning {
   current?: { relevance_weight: number; relevance_weight_personal: number; novelty_weight: number }
 }
 
+/** A section's headline: a sentence key (i18n `taste.<key>`) and its arguments. */
+export type Headline = { key: string } & Record<string, string | number>
+
+export interface TasteGroup {
+  name: string
+  series: number
+  mean: number
+  lift: number
+  z: number
+  clear: boolean
+}
+
+export interface TasteTitle {
+  mal_id: number
+  title: string
+  picture: string | null
+  you: number
+  mal: number
+  diff: number
+}
+
+/** GET /profile/taste (malrec.taste): every section only says what the list supports. */
+export interface TasteProfile {
+  stats: {
+    entries: number; series: number; rated: number; mean: number | null; completed: number
+    watching: number; dropped: number; on_hold: number; plan_to_watch: number; hours: number
+  }
+  scale: { headline?: Headline; hist: number[]; compared: number; diff?: number; above?: number; below?: number }
+  taste: { rated_series: number; series_mean: number; enough: boolean; min_series: number }
+  genres: { headline?: Headline; clear: TasteGroup[]; listed: { name: string; n: number }[] }
+  themes: { headline?: Headline; clear: TasteGroup[] }
+  disagree: { headline?: Headline; above: TasteTitle[]; below: TasteTitle[]; compared: number }
+  eras: {
+    headline?: Headline; rows: (TasteGroup & { from: number; to: number })[]
+    ages?: number[]; age_edges?: number[]; new?: number; old?: number
+  }
+  studios: { headline?: Headline; clear: TasteGroup[] }
+  predictions: {
+    headline: Headline; rmse: number; spearman: number | null
+    holdout_min: number | null; holdout_max: number | null
+  } | null
+}
+
 export interface SyncState {
   last_sync_at: string | null
   next_allowed_in: number
@@ -129,6 +177,9 @@ export interface Breakdown {
   up: { label: string; value: number }[]
   down: { label: string; value: number }[]
   because_you_liked: { title: string; your_score: number; weight: number }[]
+  /** what the user's own ratings clearly say about the title's attributes
+      (lift = series-level mean minus their own), best evidenced first */
+  evidence?: Evidence[]
   /** each side's own reasons, in that side's points */
   sides?: {
     population: { up: { label: string; value: number }[]; down: { label: string; value: number }[] }
@@ -141,6 +192,22 @@ export interface Breakdown {
     /** the risk penalty by reason (negative), when there is one */
     risk_parts?: Partial<Record<'long' | 'disagree' | 'unfamiliar' | 'acclaim', number>>
   }
+}
+
+export interface TagTitle {
+  mal_id: number; title: string; title_en: string | null; media_type: string | null
+  season_year: number | null; mal_mean: number | null; picture_medium: string | null
+  predicted_score?: number | null
+  likely?: { low: number; high: number; p9: number } | null
+  list_status?: string; list_score?: number
+}
+
+export interface TagTitles {
+  tag: string
+  unlisted: number
+  titles: TagTitle[]
+  yours: TagTitle[]
+  yours_total: number
 }
 
 export interface AuthState {
@@ -353,7 +420,11 @@ export const api = {
 
   genres: () => req<string[]>('/genres'),
 
+  tag: (tag: string, user: string) =>
+    req<TagTitles>(`/tag/${encodeURIComponent(tag)}?user=${encodeURIComponent(user)}`),
+
   learning: () => req<Learning>('/model/learning'),
+  taste: (user: string) => req<TasteProfile>(`/profile/taste?user=${encodeURIComponent(user)}`),
 
   getPrefs: () => req<Prefs>('/me/prefs'),
 

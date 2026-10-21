@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import datetime as dt
 import html
+import json
 import logging
 import smtplib
 import ssl
@@ -101,14 +102,19 @@ STRINGS: dict[str, dict[str, str]] = {
         "monthly.users": "Konten",
         "monthly.rebuilt": "{ok} neu berechnet, {bad} fehlgeschlagen",
         "monthly.feedback": "Feedback für die Gewichte",
+        "monthly.anilist": "AniList-Daten",
+        "monthly.anilist_val": "{fetched} von {due} fälligen Titeln aktualisiert",
+        "monthly.anilist_failed": "Aktualisierung fehlgeschlagen; die bisherigen Daten bleiben",
         "monthly.passed": "bestanden",
         "monthly.failed": "nicht bestanden",
         "weekly.subject": "Wöchentliche Aktualisierung: {related} neue Verknüpfungen",
-        "weekly.title": "Wöchentliche „Demnächst“-Aktualisierung",
-        "weekly.lead": "Neu angekündigte Staffeln und Filme wurden geladen und die Demnächst-Listen neu berechnet.",
+        "weekly.title": "Wöchentliche Aktualisierung: Demnächst und Aktuelle Season",
+        "weekly.lead": "Neu angekündigte Staffeln und Filme wurden geladen, die AniList-Daten laufender und neuer Titel aktualisiert und die Listen „Demnächst“ und „Aktuelle Season“ neu berechnet.",
         "weekly.catalog": "Katalogeinträge aktualisiert",
         "weekly.related": "Neue Verknüpfungen (Fortsetzungen, Filme …)",
-        "weekly.users": "Demnächst pro Konto",
+        "weekly.anilist": "AniList aktualisiert (laufend, angekündigt, kürzlich)",
+        "weekly.users": "Pro Konto (Demnächst)",
+        "weekly.season": "Aktuelle Season: {n} Titel",
         "weekly.titles": "{n} Titel",
         "weekly.failed": "Fehlgeschlagen",
         "job.subject": "Fehlgeschlagen: {job}",
@@ -172,14 +178,19 @@ STRINGS: dict[str, dict[str, str]] = {
         "monthly.users": "Accounts",
         "monthly.rebuilt": "{ok} rebuilt, {bad} failed",
         "monthly.feedback": "Feedback for the weights",
+        "monthly.anilist": "AniList data",
+        "monthly.anilist_val": "{fetched} of {due} due titles refreshed",
+        "monthly.anilist_failed": "Refresh failed; the existing data stays",
         "monthly.passed": "passed",
         "monthly.failed": "not passed",
         "weekly.subject": "Weekly refresh: {related} new links",
-        "weekly.title": "Weekly “coming soon” refresh",
-        "weekly.lead": "Newly announced seasons and films were loaded and the Coming Soon lists rebuilt.",
+        "weekly.title": "Weekly refresh: Coming Soon and This Season",
+        "weekly.lead": "Newly announced seasons and films were loaded, AniList data of airing and recent titles refreshed, and the Coming Soon and This Season lists rebuilt.",
         "weekly.catalog": "Catalogue entries refreshed",
         "weekly.related": "New links (sequels, films, …)",
-        "weekly.users": "Coming Soon per account",
+        "weekly.anilist": "AniList refreshed (airing, announced, recent)",
+        "weekly.users": "Per account (Coming Soon)",
+        "weekly.season": "This Season: {n} titles",
         "weekly.titles": "{n} titles",
         "weekly.failed": "Failed",
         "job.subject": "Failed: {job}",
@@ -519,6 +530,14 @@ def monthly(fit: dict, log_tail: str = "", dry_run: bool = False, sample: bool =
         sections.append({"h": _t(lang, "monthly.users"),
                          "p": [_t(lang, "monthly.rebuilt", ok=len(rebuilt), bad=len(failed))]
                          + failed})
+    al = next((ln for ln in log_tail.splitlines() if ln.startswith("anilist refresh")), None)
+    if al:
+        try:
+            r = json.loads(al.split(": ", 1)[1])
+            al = _t(lang, "monthly.anilist_val", fetched=r.get("fetched"), due=r.get("due"))
+        except (IndexError, ValueError, AttributeError):
+            al = _t(lang, "monthly.anilist_failed")
+        sections.append({"h": _t(lang, "monthly.anilist"), "p": [al]})
     fb = next((ln for ln in log_tail.splitlines() if '"status": "' in ln and "feedback" in ln), None)
     if fb:
         sections.append({"h": _t(lang, "monthly.feedback"),
@@ -538,22 +557,26 @@ def monthly(fit: dict, log_tail: str = "", dry_run: bool = False, sample: bool =
 
 
 def weekly(result: dict, sample: bool = False) -> bool:
-    """The weekly coming-soon refresh finished: result is `malrec sync
-    upcoming`'s output."""
+    """The weekly coming-soon and this-season refresh finished: result is
+    `malrec sync upcoming`'s output."""
     if not enabled():
         return False
     lang = admin_lang()
     per_user = query("""SELECT u.mal_username, count(r.mal_id) AS n,
-                               (array_agg(coalesce(a.title_en, a.title) ORDER BY r.rank))[1:3] AS top
+                               (array_agg(coalesce(a.title_en, a.title) ORDER BY r.rank))[1:3] AS top,
+                               (SELECT count(*) FROM recommendation s
+                                 WHERE s.user_id = u.id AND s.surface = 'this_season') AS season
                           FROM app_user u
                           LEFT JOIN recommendation r ON r.user_id = u.id AND r.surface = 'coming_soon'
                           LEFT JOIN anime a ON a.mal_id = r.mal_id
                          WHERE u.status = 'approved'
-                         GROUP BY u.mal_username ORDER BY u.mal_username""")
+                         GROUP BY u.id, u.mal_username ORDER BY u.mal_username""")
     rows = [(_t(lang, "weekly.catalog"), str(result.get("catalog", "—"))),
-            (_t(lang, "weekly.related"), str(result.get("related", "—")))]
+            (_t(lang, "weekly.related"), str(result.get("related", "—"))),
+            (_t(lang, "weekly.anilist"), str(result.get("anilist", "—")))]
     users = [(u["mal_username"], _t(lang, "weekly.titles", n=u["n"])
-              + (f" · {', '.join(t for t in (u['top'] or []) if t)}" if u["n"] else ""))
+              + (f" · {', '.join(t for t in (u['top'] or []) if t)}" if u["n"] else "")
+              + " · " + _t(lang, "weekly.season", n=u["season"]))
              for u in per_user]
     sections = [{"rows": rows}, {"h": _t(lang, "weekly.users"), "rows": users}]
     if result.get("failed"):

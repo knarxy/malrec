@@ -37,11 +37,16 @@ from malrec.recsys import ltr
 from malrec.recsys.hybrid import unit_hash
 
 METRICS = (("rho", True), ("r50", True), ("ips50", True), ("hit10", True), ("bad10", False),
-           ("agegap", False), ("new20", False),
+           ("agegap", False), ("new20", False), ("rep20", False),
            ("disc_r50", True), ("disc_ips50", True), ("disc_hit10", True),
-           ("disc_agegap", False), ("disc_new20", False),
+           ("disc_agegap", False), ("disc_new20", False), ("disc_rep20", False),
            ("gems_r50", True), ("gems_ips50", True), ("gems_hit10", True),
-           ("gems_agegap", False), ("gems_new20", False))
+           ("gems_agegap", False), ("gems_new20", False), ("gems_rep20", False),
+           ("tl20r", True), ("tl20g", True), ("disc_tl20r", True), ("disc_tl20g", True),
+           ("gems_tl20r", True), ("gems_tl20g", True), ("gems_sb20", False),
+           *((f"dmix{n}_{k}", h) for n in bench.DMIX_EVERY for k, h in (
+               ("r50", True), ("ips50", True), ("hit10", True), ("bad10", False),
+               ("agegap", False), ("new20", False), ("tl20r", True), ("tl20g", True))))
 
 
 def parse(arm: str) -> tuple[str, dict, float, str]:

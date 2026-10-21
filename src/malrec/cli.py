@@ -82,6 +82,14 @@ def sync_anilist(limit: int = typer.Option(None),
     typer.echo(json.dumps(jobs.sync_anilist(limit, only_missing=not all_), indent=2))
 
 
+@sync_app.command("anilist-refresh")
+def sync_anilist_refresh(scope: str = typer.Option("all", help="'recent' (airing, upcoming, "
+                                                   "recent; weekly) or 'all' (monthly)")) -> None:
+    """Refetch AniList data that has gone stale (~20 minutes for 'all')."""
+    _setup()
+    typer.echo(json.dumps(jobs.refresh_anilist(scope), indent=2))
+
+
 @sync_app.command("all")
 def sync_all(user: str = typer.Option(None),
              catalog: bool = typer.Option(True, "--catalog/--no-catalog")) -> None:
@@ -109,22 +117,30 @@ def sync_users_cmd() -> None:
 
 
 @sync_app.command("upcoming")
-def sync_upcoming_cmd(rebuild: bool = typer.Option(True, help="rebuild every user's coming_soon")) -> None:
-    """Catalogue + relations of newly announced titles (~30-60 requests)."""
+def sync_upcoming_cmd(rebuild: bool = typer.Option(True, help="rebuild every user's coming_soon "
+                                                   "and this_season")) -> None:
+    """Catalogue + relations of newly announced titles (~30-60 requests),
+    AniList for what is airing or recent."""
     _setup()
     from .ingest.jobs import sync_upcoming
     out = sync_upcoming()
     if rebuild:
-        from .surfaces import build_surface
+        from .model import load_or_train
+        from .surfaces import BUILD_LIMIT, build_surface
+        # this_season too: the AniList refresh moves the scores of exactly
+        # the shows it ranks
         failed = {}
         for r in query("SELECT id, mal_username FROM app_user ORDER BY id"):
             try:
-                build_surface(r["id"], "coming_soon", limit=60)
+                model, run_id = load_or_train(r["id"])
+                for s in ("coming_soon", "this_season"):
+                    build_surface(r["id"], s, limit=BUILD_LIMIT, model=model, run_id=run_id)
             except Exception as e:  # noqa: BLE001 - one broken account must not skip the rest
-                logging.getLogger(__name__).warning("coming_soon for %s failed: %s",
+                logging.getLogger(__name__).warning("weekly rebuild for %s failed: %s",
                                                     r["mal_username"], e)
                 failed[r["mal_username"]] = f"{type(e).__name__}: {e}"[:200]
-        out["rebuilt"] = "coming_soon for every user" + (" except those failed" if failed else "")
+        out["rebuilt"] = ("coming_soon and this_season for every user"
+                          + (" except those failed" if failed else ""))
         if failed:
             out["failed"] = failed
     typer.echo(json.dumps(out, indent=2, default=str))

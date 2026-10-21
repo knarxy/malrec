@@ -238,8 +238,8 @@ Without a ranker for the active model, Safe Bets uses the hand key alone.
 **Discover and Hidden Gems** have learned orders of their own
 (`discover_ranker_weight`, `gems_ranker_weight` 0.5; since 2026-10-11), from
 the same pipeline and inputs, each trained on its tab's own pool: Discover's
-without the titles Safe Bets' top 60 shows for that list, Hidden Gems' past
-popularity #1,200. Each is stored per population model and tab
+without the titles Safe Bets' top 60 shows for that list, Hidden Gems' its
+pool (below). Each is stored per population model and tab
 (`malrec ranker train --surface discover`, ~35 minutes each; without
 `--surface` every enabled tab is trained) and falls back to the hand key
 when missing. A ranker records the settings that shape the key it learned
@@ -258,7 +258,7 @@ out from the other candidates.
 |---|---|
 | `safe_bets` | the primary list: strong fits, novelty ignored. Ordered by predicted score plus the relevance bonus, a model that weighs every rating equally (`safe_bets_memory_mix`) and the learned order, so two neighbours can sit out of score order; "Why this?" shows every term and the resulting order score |
 | `discover` | picks up where Safe Bets ends: never repeats it, balanced novelty, its own learned order |
-| `hidden_gems` | strong fit among titles with a small audience, its own learned order |
+| `hidden_gems` | strong fit among titles with a small audience for their age (the member count a title of its age is on course for below what MAL's #1,200 has today, below #2,000's while under a year old; `recsys/popularity.py`), its own learned order |
 | `next_up` | the next full season or film of something you finished |
 | `side_stories` | OVAs, specials and shorts from franchises you know |
 | `this_season` | currently airing, ranked by fit |
@@ -625,12 +625,13 @@ spread of opinion) did worse on every measure (recall .178), so it is not used.
 **Likely range and chance of 9+** on every prediction: from the user's own
 past errors (their temporal holdout) or, for small accounts, those of
 population users with a list the same size (top-of-list errors, as list
-cards show the top). The range is the 5-95 % band of errors: nominally 90 %,
-but errors grow as taste drifts, and measured strictly out of time it covers
-~85 % of later ratings on the reference profile - "8 times out of 10", as the
-app says. (The 10-90 % band covered only 70 %.) Population-based ranges do
-not drift that way: there the 10-90 % band is used, covering 81 % (10
-ratings) and 79 % (60 ratings) of held-out users' later ratings.
+cards show the top). Shown is the shortest run of whole ratings around the
+likeliest one that holds half of the error distribution - "most likely 7-8",
+or one number: strictly out of time it held 56-66 % of later ratings for both
+sources and the top of a list (`exp_range.py`, 2026-10-20). Until 2026-10 the
+5-95 % band was shown ("likely 5-8"), which a user read as "you might rate it
+a 5"; the 25-75 % band held only 45-55 % and was a single number half the
+time. The bands stay internal (`malrec report`).
 
 **Genre balance** is calibrated re-ranking (Steck 2018): each list is built
 greedily, trading relevance against the KL divergence between the user's
@@ -682,19 +683,47 @@ sequel relation backwards and listed prequels; fixed 2026-09-27.)
 Cards explain themselves in up to three plain sentences (English/German),
 built only from the reasons the model produced: what on your list the title
 is tied to, which of your tastes it matches, and context (broad acclaim, a
-little-known find, or an honest "no direct link to your list"). **Why this?** in the details panel
+little-known find, or an honest "no direct link to your list"). "Your
+tastes" and the card's "from your list" bars are the attributes the user's
+own ratings clearly rate above their average (the `evidence` reason, the
+same lines as in "Why this?", attached at list build); the community bars
+are the model's consensus terms, without how well known a title is. **Why this?** in the details panel
 shows the whole derivation (`GET /explain/{mal_id}`): your average, what the
 population layer and your personal model each predict and how they are
 weighted, the calibration to the shown score, every driver pushing the
 prediction up or down, the rated titles that vouch for it through real
-co-ratings, and the relevance and novelty bonuses that placed it.
+co-ratings, and the relevance and novelty bonuses that placed it. Its
+personal side ("your ratings say") lists what the user's own ratings clearly
+say about the title's genres, themes, studio, format, era, length and source
+(`taste.evidence_for`, the profile page's rule: series-level means, enough
+series, a clear difference), each with its distance from the user's average
+and the number of series behind it - not the personal model's largest
+terms, of which only 15 % were backed by the user's ratings and 13 % said
+the opposite (`exp_evidence.py`). When everything clear is against the
+title, the panel says that it is recommended for what similar viewers say.
+How well known a title is stays out of both sides. A tag on a card or in
+the panel opens the catalogue's titles with it (`GET /tag/{tag}`), the ones
+not on the list best predicted first.
 
-**Profile genres** ("genres you rate above your average") count each series
-once: every rating weighs 1 / n, n your entries in its series, and a genre
-needs at least four different series behind it. A long show rated 10
-throughout is a taste for that show, not for its genres; counted per entry,
-a dozen Gintama seasons rated 10 would make Gag Humor, Samurai and Parody
-top genres.
+**Profile page** ("Your profile" in the account menu; `GET /profile/taste`,
+`taste.py`). One card per question, each led by a sentence chosen from a fixed
+set (a key plus arguments, worded in the app): how the user's scale compares
+with MAL's on the same titles, the genres and AniList themes they rate above
+or below their own average, where they disagree most with MAL on titles at
+least 20,000 people rated, their best and worst release years and how old
+titles were when they watched them, studios, and how well the personal model
+predicts their newest ratings. Only what the list supports is said: each
+series counts once (the mean of its rated entries), a genre, studio or era
+needs five different series and a difference of at least two standard
+errors from the user's series average, a theme eight series and 2.5 (hundreds
+of tags are tested). Below 15 rated series the taste cards ask for more
+ratings; a card with nothing clear to say is left out. Labels that describe
+a title rather than a taste, or that a page should not announce about
+someone (adult genres, tags about sex, gender, orientation, suicide,
+religion and the like), never appear. Tried on 3,400 sampled lists of every
+size and the app's users (`exp_profile.py`): no list fails, every sentence
+occurs; with 100-200 entries a typical list gets two clear genres, one or two
+themes and no studio; from 800 entries on almost every card fills.
 
 ### Learning from what you do
 
@@ -814,10 +843,11 @@ writes the findings to `audit/`, which is not tracked.
 |---|---|---|
 | nightly 03:15 | `malrec sync users`: re-read every app user's list (with their MAL token when signed in, so private lists work), rebuild only those that changed - scores and status changes made on MAL itself reach the model within a day | 1-2 MAL requests per user, plus new titles' details |
 | nightly 04:15 | `scripts/backup.sh`: `pg_dump -Fc` to a root-only backup directory, 7 kept, skipped below 20 GB free | ~130 MB, 25 s each |
-| Mondays 03:45 | `malrec sync upcoming`: rankings + season lists, relations for new announcements (>=1,000 members), rebuild `coming_soon` | ~30-60 MAL requests |
-| 1st of month 03:30 | `scripts/monthly_refresh.sh`: sample rotation, gated refit (exam + `MALREC_USER`'s holdout), the learned orders (Safe Bets, Discover, Hidden Gems) for a new model, rebuilds, `learn-weights` report | ~850 MAL requests |
+| Mondays 03:45 | `malrec sync upcoming`: rankings + season lists, relations for new announcements (>=1,000 members), AniList for what is airing, announced or started/finished in the last 120 days (>=1,000 members or on a stored list), rebuild `coming_soon` and `this_season` | ~30-60 MAL requests, one AniList request per 50 titles due |
+| 1st of month 03:30 | `scripts/monthly_refresh.sh`: sample rotation, AniList for the whole catalogue (`malrec sync anilist-refresh`, before the fit so it trains on current scores, tags and recommendations), gated refit (exam + `MALREC_USER`'s holdout), the learned orders (Safe Bets, Discover, Hidden Gems) for a new model, rebuilds, `learn-weights` report | ~850 MAL requests, ~600 AniList (~20 min) |
 
-The MAL jobs share a lock, so they never run at once. Restore a dump with:
+The MAL jobs share a lock, so they never run at once. AniList data is otherwise
+fetched once per anime, on demand; these two passes are what keep it current. Restore a dump with:
 
 ```bash
 docker exec -i malrec-db pg_restore -U malrec -d malrec --clean --if-exists \
@@ -846,7 +876,7 @@ account's app language and in the app's look:
 | an account asks for approval (once per request) | sign-in |
 | background tasks failed - the first at once, then bundled, at most every 30 minutes | the worker |
 | the monthly refresh ran: new model or kept, with the gate's numbers; or it stopped on an error | `monthly_refresh.sh` |
-| the weekly Coming Soon refresh ran, or failed | `weekly_upcoming.sh` |
+| the weekly refresh (Coming Soon, This Season) ran, or failed | `weekly_upcoming.sh` |
 | the nightly list sync or backup failed (no mail when they succeed) | `nightly_sync.sh`, `backup.sh` |
 
 Every mail is recorded in the `notification` table, which also keeps one

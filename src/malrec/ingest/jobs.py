@@ -360,5 +360,51 @@ def sync_upcoming(min_members: int = UPCOMING_MIN_MEMBERS) -> dict:
         " AND coalesce(mal_num_list_users, 0) >= %s ORDER BY mal_num_list_users DESC",
         (min_members,))]
     out = {"catalog": cat["anime"], "related": ensure_graph(ids)}
+    try:
+        out["anilist"] = refresh_anilist("recent", min_members)["fetched"]
+    except Exception as e:  # noqa: BLE001 - AniList being down must not cost Coming Soon
+        log.warning("weekly AniList refresh failed: %s", e)
+        out["anilist"] = f"failed: {type(e).__name__}"
     log_ingest("sync_upcoming", "ok", out)
+    return out
+
+
+# AniList scores, popularity, tags and recommendations keep moving after the
+# first fetch, most while a show airs and in the months after. The weekly job
+# refreshes what is airing, announced or recent; the monthly one the whole
+# catalogue (~600 requests, ~20 minutes at 30/min). Each age sits below its
+# job's interval, so a run that starts a little early skips nothing.
+ANILIST_RECENT_DAYS = 120
+ANILIST_REFRESH_AGE = {"recent": dt.timedelta(days=6), "all": dt.timedelta(days=20)}
+
+
+def refresh_anilist(scope: str = "all", min_members: int = UPCOMING_MIN_MEMBERS) -> dict:
+    """Refetch AniList for every anime in `scope` whose data is older than
+    ANILIST_REFRESH_AGE[scope].
+
+    scope='recent': airing, not yet aired, or started or finished in the last
+    ANILIST_RECENT_DAYS, and with `min_members` list users or on a stored list.
+    scope='all': the whole catalogue.
+
+    Ids AniList had no entry for are retried as well: entries for new
+    announcements often appear there only after the first attempt. Every batch
+    is stored on arrival, so an interrupted run resumes where it stopped."""
+    from .ondemand import ensure_anilist
+    if scope not in ANILIST_REFRESH_AGE:
+        raise ValueError(f"unknown scope {scope!r}; expected 'recent' or 'all'")
+    sql = "SELECT a.mal_id FROM anime a WHERE (a.al_fetched_at IS NULL OR a.al_fetched_at < now() - %(age)s)"
+    if scope == "recent":
+        sql += """
+           AND (a.status IN ('currently_airing', 'not_yet_aired')
+                OR a.start_date >= current_date - %(days)s::int
+                OR a.end_date >= current_date - %(days)s::int)
+           AND (coalesce(a.mal_num_list_users, 0) >= %(members)s
+                OR EXISTS (SELECT 1 FROM list_entry le WHERE le.mal_id = a.mal_id))"""
+    sql += " ORDER BY a.mal_num_list_users DESC NULLS LAST"
+    ids = [r["mal_id"] for r in query(sql, {"age": ANILIST_REFRESH_AGE[scope],
+                                            "days": ANILIST_RECENT_DAYS, "members": min_members})]
+    log.info("anilist refresh (%s): %d anime due (~%.1f min)", scope, len(ids),
+             math.ceil(len(ids) / settings().anilist_batch) / settings().anilist_rpm)
+    out = {"scope": scope, "due": len(ids), "fetched": ensure_anilist(ids, force=True)}
+    log_ingest("refresh_anilist", "ok", out)
     return out

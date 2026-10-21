@@ -29,9 +29,8 @@ from . import store
 
 log = logging.getLogger(__name__)
 
-# How long an enrichment stays fresh before it is worth refetching. Scores and
-# popularity drift slowly; tags and relations barely at all.
-STALE_AFTER = dt.timedelta(days=30)
+# On-demand fetches never refetch: an anime is enriched once, and keeping
+# that data current is the scheduled jobs' work (jobs.refresh_anilist).
 
 
 def _missing(ids: list[int], column: str, max_age: dt.timedelta | None) -> list[int]:
@@ -70,7 +69,14 @@ def ensure_anilist(mal_ids: list[int], max_age: dt.timedelta | None = None,
             if got:
                 _store_anilist_batch(got)
                 fetched += len(got)
-            store.mark_anilist_attempted([c for c in chunk if c not in got])
+            # An id AniList has answered for before is missing from this
+            # response by accident (a GraphQL error), not gone: leave it due
+            # rather than stamp it fresh with the old data.
+            absent = [c for c in chunk if c not in got]
+            known = {r["mal_id"] for r in query(
+                "SELECT mal_id FROM anime WHERE mal_id = ANY(%s) AND anilist_id IS NOT NULL",
+                (absent,))} if absent else set()
+            store.mark_anilist_attempted([c for c in absent if c not in known])
     store.store_tag_vectors()
     # New relation edges only affect franchise collapse once components are
     # recomputed, and enriching a shortlist is exactly when new ones arrive.

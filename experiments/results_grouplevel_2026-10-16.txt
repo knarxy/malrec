@@ -1,0 +1,81 @@
+==== COLLAPSE: franchise vs series Fr 16. Okt 07:23:04 CEST 2026
+snapshot 2026-10-10: 18264 users (13150 fit / 2374 stack / 2740 eval), pool 4851, population model fitted, safe_bets order trained (weight 0.5), discover order trained (weight 0.5), hidden_gems order trained (weight 0.5) [5721s]
+  sampled 25: 100 users [5796s]
+  sampled 150: 100 users [6020s]
+  sampled 400: 100 users [6300s]
+  all::0.5 done [6964s]
+
+== sampled 25
+   arm                                                       rho              r50            ips50            hit10            bad10           agegap            new20            rep20         disc_r50       disc_ips50       disc_hit10      disc_agegap       disc_new20       disc_rep20         gems_r50       gems_ips50       gems_hit10      gems_agegap       gems_new20       gems_rep20   pop#
+   all::0.5                                               0.4986           0.2180           0.1100           0.2380           0.0160           0.1796           0.3455           0.0000           0.0665           0.0597           0.0580           0.1901           0.3555           0.0000           0.0472           0.0619           0.0690           0.2132           0.3915           0.0000    200
+
+== sampled 150
+   arm                                                       rho              r50            ips50            hit10            bad10           agegap            new20            rep20         disc_r50       disc_ips50       disc_hit10      disc_agegap       disc_new20       disc_rep20         gems_r50       gems_ips50       gems_hit10      gems_agegap       gems_new20       gems_rep20   pop#
+   all::0.5                                               0.5658           0.2485           0.1302           0.3430           0.0220           0.1514           0.3805           0.0000           0.0953           0.0852           0.1270           0.1584           0.4070           0.0000           0.0658           0.0849           0.1060           0.1889           0.4361           0.0000    235
+
+== sampled 400
+   arm                                                       rho              r50            ips50            hit10            bad10           agegap            new20            rep20         disc_r50       disc_ips50       disc_hit10      disc_agegap       disc_new20       disc_rep20         gems_r50       gems_ips50       gems_hit10      gems_agegap       gems_new20       gems_rep20   pop#
+   all::0.5                                               0.5922           0.2404           0.1244           0.4760           0.0110           0.1680           0.4545           0.0000           0.1027           0.0823           0.2310           0.1831           0.4852           0.0000           0.0783           0.0964           0.1970           0.2183           0.5192           0.0000    316
+
+== reference
+   arm                                                       rho              r50            ips50            hit10            bad10           agegap            new20            rep20         disc_r50       disc_ips50       disc_hit10      disc_agegap       disc_new20       disc_rep20         gems_r50       gems_ips50       gems_hit10      gems_agegap       gems_new20       gems_rep20   pop#
+   all::0.5                                               0.7546           0.4867           0.4077           0.5375           0.0000           0.1268           0.3000           0.0000           0.0624           0.0525           0.0000           0.1090           0.4000           0.0000           0.0281           0.0616           0.0625           0.2510           0.5687           0.0000    175
+
+(+/- : better/worse than the first arm by more than two standard errors, paired)
+snapshot 2026-10-10: 18264 users (13150 fit / 2374 stack / 2740 eval), pool 4851, population model fitted, safe_bets order cached (weight 0.5), discover order cached (weight 0.5), hidden_gems order cached (weight 0.5) [4s]
+  sampled 25: 100 users [81s]
+  sampled 150: 100 users [311s]
+  sampled 400: 100 users [605s]
+  all:series_collapse=1:0.5 done [7593s]
+
+== sampled 25
+   arm                                                       rho              r50            ips50            hit10            bad10           agegap            new20            rep20         disc_r50       disc_ips50       disc_hit10      disc_agegap       disc_new20       disc_rep20         gems_r50       gems_ips50       gems_hit10      gems_agegap       gems_new20       gems_rep20   pop#
+   all::0.5                                               0.4986           0.2180           0.1100           0.2380           0.0160           0.1796           0.3455           0.0000           0.0665           0.0597           0.0580           0.1901           0.3555           0.0000           0.0472           0.0619           0.0690           0.2132           0.3915           0.0000    200
+   all:series_collapse=1:0.5                      0.4986+0.0000    0.2180+0.0000    0.1100+0.0000    0.2380+0.0000    0.0160+0.0000    0.1796+0.0000    0.3455+0.0000    0.0000+0.0000    0.0664-0.0001    0.0597-0.0000    0.0590+0.0010    0.1902+0.0001    0.3555+0.0000    0.0010+0.0010    0.0472+0.0000    0.0619+0.0000    0.0680-0.0010    0.2128-0.0004    0.3920+0.0005    0.0025+0.0025-    200
+
+== sampled 150
+   arm                                                       rho              r50            ips50            hit10            bad10           agegap            new20            rep20         disc_r50       disc_ips50       disc_hit10      disc_agegap       disc_new20       disc_rep20         gems_r50       gems_ips50       gems_hit10      gems_agegap       gems_new20       gems_rep20   pop#
+   all::0.5                                               0.5658           0.2485           0.1302           0.3430           0.0220           0.1514           0.3805           0.0000           0.0953           0.0852           0.1270           0.1584           0.4070           0.0000           0.0658           0.0849           0.1060           0.1889           0.4361           0.0000    235
+   all:series_collapse=1:0.5                      0.5658+0.0000    0.2484-0.0001    0.1303+0.0001    0.3440+0.0010    0.0220+0.0000    0.1509-0.0005    0.3800-0.0005    0.0010+0.0010    0.0959+0.0006    0.0855+0.0002    0.1270+0.0000    0.1585+0.0001    0.4070-0.0000    0.0010+0.0010    0.0658+0.0000    0.0849+0.0000    0.1060+0.0000    0.1890+0.0002    0.4361+0.0000    0.0020+0.0020-    235
+
+== sampled 400
+   arm                                                       rho              r50            ips50            hit10            bad10           agegap            new20            rep20         disc_r50       disc_ips50       disc_hit10      disc_agegap       disc_new20       disc_rep20         gems_r50       gems_ips50       gems_hit10      gems_agegap       gems_new20       gems_rep20   pop#
+   all::0.5                                               0.5922           0.2404           0.1244           0.4760           0.0110           0.1680           0.4545           0.0000           0.1027           0.0823           0.2310           0.1831           0.4852           0.0000           0.0783           0.0964           0.1970           0.2183           0.5192           0.0000    316
+   all:series_collapse=1:0.5                      0.5922+0.0000    0.2405+0.0002    0.1245+0.0001    0.4760+0.0000    0.0110+0.0000    0.1680+0.0000    0.4545+0.0000    0.0000+0.0000    0.1028+0.0001    0.0832+0.0008    0.2320+0.0010    0.1836+0.0005    0.4857+0.0005    0.0005+0.0005    0.0783+0.0000    0.0964+0.0000    0.1970+0.0000    0.2184+0.0001    0.5197+0.0005    0.0015+0.0015     316
+
+== reference
+   arm                                                       rho              r50            ips50            hit10            bad10           agegap            new20            rep20         disc_r50       disc_ips50       disc_hit10      disc_agegap       disc_new20       disc_rep20         gems_r50       gems_ips50       gems_hit10      gems_agegap       gems_new20       gems_rep20   pop#
+   all::0.5                                               0.7546           0.4867           0.4077           0.5375           0.0000           0.1268           0.3000           0.0000           0.0624           0.0525           0.0000           0.1090           0.4000           0.0000           0.0281           0.0616           0.0625           0.2510           0.5687           0.0000    175
+   all:series_collapse=1:0.5                      0.7546+0.0000    0.4867+0.0000    0.4077+0.0000    0.5375+0.0000    0.0000+0.0000    0.1268+0.0000    0.3000+0.0000    0.0000+0.0000    0.0624+0.0000    0.0525+0.0000    0.0000+0.0000    0.1090+0.0000    0.4000+0.0000    0.0000+0.0000    0.0281+0.0000    0.0616+0.0000    0.0625+0.0000    0.2510+0.0000    0.5687+0.0000    0.0000+0.0000     175
+
+(+/- : better/worse than the first arm by more than two standard errors, paired)
+[7593s]
+==== NOT FOR ME: franchise vs series Fr 16. Okt 09:29:42 CEST 2026
+population model fitted; P=0.3 [599s]
+
+== sampled 25 (100 users, 5.1 dismissals each) [685s]
+   arm                          rho               r50             hit10             bad10
+   HIDE                      0.4976            0.1862            0.2140            0.0160
+   FRAN              0.4976+0.0000     0.1879+0.0017     0.2170+0.0030     0.0170+0.0010 
+   SER               0.4976+0.0000     0.1879+0.0017     0.2170+0.0030     0.0170+0.0010 
+   NEG+F+FRAN        0.4915-0.0061     0.1878+0.0016     0.2080-0.0060     0.0200+0.0040 
+   NEG+F+SER         0.4915-0.0061     0.1878+0.0016     0.2080-0.0060     0.0200+0.0040 
+
+== sampled 150 (100 users, 4.4 dismissals each) [1008s]
+   arm                          rho               r50             hit10             bad10
+   HIDE                      0.5614            0.2146            0.3140            0.0130
+   FRAN              0.5614+0.0000     0.2156+0.0010     0.3160+0.0020     0.0130+0.0000 
+   SER               0.5614+0.0000     0.2151+0.0005     0.3150+0.0010     0.0130+0.0000 
+   NEG+F+FRAN        0.5563-0.0051     0.2264+0.0118+    0.3210+0.0070     0.0140+0.0010 
+   NEG+F+SER         0.5563-0.0051     0.2264+0.0118+    0.3210+0.0070     0.0140+0.0010 
+
+== sampled 400 (100 users, 4.4 dismissals each) [1482s]
+   arm                          rho               r50             hit10             bad10
+   HIDE                      0.5912            0.2130            0.4170            0.0100
+   FRAN              0.5912+0.0000     0.2137+0.0007     0.4220+0.0050+    0.0090-0.0010 
+   SER               0.5912+0.0000     0.2139+0.0009     0.4220+0.0050+    0.0090-0.0010 
+   NEG+F+FRAN        0.5893-0.0019     0.2193+0.0063+    0.4260+0.0090     0.0100+0.0000 
+   NEG+F+SER         0.5893-0.0019     0.2193+0.0063+    0.4260+0.0090     0.0100+0.0000 
+   (+/- : better/worse than HIDE by more than two standard errors, paired)
+[1482s]
+==== DONE Fr 16. Okt 09:54:30 CEST 2026

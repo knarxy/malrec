@@ -1,0 +1,24 @@
+  user done [4s]
+  user done [4s]
+  user done [5s]
+  user done [6s]
+  user done [9s]
+  user done [10s]
+  user done [11s]
+  user done [11s]
+  user done [13s]
+  user done [13s]
+  user done [15s]
+  user done [16s]
+
+== personal lines today: 3778 on 540 cards (7.0 per card)
+   backed          546   14.5%
+   weak           1444   38.2%
+   contradicted    505   13.4%
+   unmapped       1283   34.0%
+   by attribute:  - unmapped 1283; era weak 124, contradicted 95, backed 53; format weak 121, contradicted 76, backed 67; genre weak 445, backed 217, contradicted 130; length weak 131, contradicted 32, backed 2; source weak 100, backed 12, contradicted 5; studio weak 28, backed 8, contradicted 5; theme weak 495, backed 187, contradicted 162
+   cards above the user's mean explained by minuses only: 0
+
+== evidence lines instead: 3.39 per card; none 7.0%, one 19.3%, two+ 73.7%
+   cards above the user's mean explained by minuses only: 11
+[16s]

@@ -537,9 +537,122 @@ else a person rates highly. The profile is a description, not a
 prediction, so it weights series fully (1 / n) and asks for four different
 series per genre, which takes such a show's genres out of the profile.
 
-**Follow-up (not done).** Franchise collapse, "Not for me" and the best
-title per franchise use franchises; spin-offs are then one entry with their
-original. Series would let a spin-off appear next to it. Not measured.
+**Series instead of franchises for the rest** (2026-10-16,
+`results_grouplevel_2026-10-16.txt`). One title per *series* in a list
+instead of per franchise (a spin-off next to its original): every metric
+unchanged within ±.001 at every size and on the reference profile; only
+0-0.25 % of a top 20 became a second title of a franchise. "Not for me"
+removing the dismissed title's series instead of its franchise: the same
+numbers as the franchise rule at 25 and 400 entries, recall .0005 lower at
+150. The franchise rule itself still beats hiding alone on today's
+franchises (recall@50 +.012+ at 150, +.006+ at 400 with the implicit
+rating). Neither change is worth a setting: both stay on franchises. (The
+affinity features that use the best score per franchise are off.)
+
+## A user's report: reasons, popularity, ranges (2026-10-20, overnight)
+
+A user's detailed report raised three things: the "Why this?" panel's
+personal pros and cons named things the user rates the other way (a tag shown
+as a minus rated above their average); new titles counted as little
+watched; and "likely 5-8" read as "you might rate it a 5". Measured
+overnight, nothing shipped.
+
+**The personal lines** (`exp_evidence.py`, `results_evidence_2026-10-20.txt`;
+the app's users, their top 20 in all three tabs, 540 cards). The lines are
+the personal model's largest ridge terms, not what the user's ratings say
+about an attribute. Checked against the user's own series-level ratings of
+that attribute (the profile page's rule): 14.5 % backed, 38.2 % the same
+sign but not clear, 13.4 % contradicted, 34.0 % no attribute at all
+(consensus terms, taste profile). An evidence-based line per clearly
+rated attribute of the title (malrec.taste.evidence) gives 3.4 lines a
+card, two or more on 74 %, none on 7 %. On 2 % of the cards above the
+user's mean every such line is a minus: the model recommends them for
+something else (the consensus side), which the card has to say.
+
+**Popularity fair to age** (`exp_growth.py`, `results_growth_2026-10-20.txt`).
+From the sampled lists' entry dates for titles started 2012 to mid-2021:
+the median title has 35 % of its eventual list users after three months,
+56 % after a year, 75 % after three years, all after about ten
+(movies grow slower, the least and the best known alike). Checked against
+the MAL scorers titles gained in the ten days after the snapshot, the curve
+is right to slightly conservative from three months on and twice too
+steep before (entry dates are completion dates: a season is finished
+when it ends). `recsys.popularity` scales a member count up by the share
+of its age; the Hidden Gems pool rule "grown" ranks those
+(`gems_popularity`). On the catalogue it moves 62 of 439 titles under
+three months and few older ones out of the pool; with the share floored
+at the three-month value only 12 of the young.
+
+**Hidden Gems** (`results_gems_2026-10-20.txt`, 7 arms, rankers retrained
+for each pool). Against the raw rank, at 25 / 150 / 400 entries:
+
+| arm | gems r50 | gems hit10 | gems new20 | liked age-fair tail in top 20 | Safe Bets top 20 in gems top 20 |
+|---|---|---|---|---|---|
+| raw rank (shipped) | .047 / .066 / .078 | .069 / .107 / .196 | .39 / .44 / .52 | .056 / .090 / .099 | 11 / 10 / 11 % |
+| grown | -.003 / -.006 / -.007- | 0 / 0 / -.020- | -.025+ / -.023+ / -.025+ | +.007+ / +.013 / +.022+ | unchanged |
+| young titles out | -.007- / -.010- / -.011- | -.004 / -.014- / -.023 | -.025+ / -.035+ / -.048+ | +.003 / -.010 / -.005 | -1 to -2 points |
+| grown, without Safe Bets' top 20 | -.008- / -.015- / -.017- | -.016- / -.020- / -.065- | -.024+ / -.026+ / -.022+ | +.010 / -.003 / +.001 | 0 |
+
+Recall rewards titles just aired by construction, so a pool with fewer of
+them loses a little of it; what the tab is for - liked titles that are
+little known for their age - grows with "grown". Leaving out Safe Bets'
+top 20 costs the titles a user likes most and finds nothing new.
+
+**One Discover tab instead of two** (`results_dmix_2026-10-21.txt`): every
+Nth Discover slot the next gem, paired per user against plain Discover and
+against the Hidden Gems tab (pool "grown" without Safe Bets' top 20; the
+shipped pool gives the same picture). At 25 / 150 / 400 entries:
+
+| list | Discover r50 | liked age-fair tail in top 20 |
+|---|---|---|
+| Discover | .067 / .096 / .102 | .019 / .043 / .036 |
+| Hidden Gems tab | | .066 / .087 / .100 |
+| every 2nd a gem | -.012- / -.019- / -.014- | .048 / .059 / .061 |
+| every 3rd | -.007- / -.009- / -.010- | .037 / .053 / .054 |
+| every 5th | -.004- / -.005- / -.005- | .035 / .051 / .053 |
+
+A mixed tab costs Discover recall at every rate and finds fewer of the
+little-known liked titles a tab of their own finds: a little over half.
+(Its age mix is not comparable: the mix was interleaved after each list's
+age calibration.)
+The thesis that Discover could take over Hidden Gems does not hold; the
+tab stays, with the age-fair pool.
+
+**Decided 2026-10-21, rule B** (`results_gems_2026-10-21.txt`): "grown",
+and a title under a year old must stay past #2,000 - a season's talking
+point is no hidden gem even when it will not reach the all-time top 1,200.
+The bars are member counts, not ranks: a title is a gem while its grown
+count stays below what raw #1,200 has today (about 244k), or what raw #2,000
+has (about 133k) while it is under a year old. The first version compared
+ranks inside the scaled list instead; every scaled-up new title then pushed
+an older one back past #1,200, and well-known titles from 2013 or 2005
+slid into the tab. With counts only one title of the raw top 1,200 changes
+side, and of the 26 young titles in the app users' gems top 20, 19 leave.
+Against the raw rank at 25 / 150 / 400 entries: gems recall@50 -.010- /
+-.015- / -.021-, hit@10 -.015- / -.020- / -.049-, new in top 20 -.04+ /
+-.05+ / -.05+, age gap -.018+ / -.026+ / -.032+, liked age-fair tail
+-.007 / -.003 / -.000, overlap with Safe Bets' top 20 -2 / -2 / -3 points
+(the rank version: -1 to -2). Less recall bought for a tab of what really
+is little known; Discover is unchanged. Shipped as the default, with the
+panel's personal side from the user's own ratings, the likely set on the
+cards and clickable tags.
+
+**Ranges** (`exp_range.py`, `results_range_2026-10-20.txt`, 300 users per
+regime, strictly after everything a range was derived from). Share of
+later ratings inside the range:
+
+| range | population 25 / 60 / 150 | own holdout 150 / 400 | width | a single number |
+|---|---|---|---|---|
+| 5-95 % (own, shown) | .88 / .91 / .92 | .81 / .80 | 3.1-4.5 | rarely |
+| 10-90 % (population, shown) | .76 / .81 / .83 | .71 / .69 | 2.4-3.2 | 0-17 % |
+| 25-75 % | .45 / .52 / .55 | .48 / .46 | 1.4-1.6 | 44-70 % |
+| half (shortest run of whole ratings holding 50 %) | .56 / .62 / .66 | .58 / .56 | 1.7-2.0 | 0-36 % |
+
+(population: all-title quantiles; the top-of-list quantiles are no
+better.) The 25-75 % band keeps less than its promise and is a single
+number half the time; the "half" set keeps it everywhere, also for the top
+of a list. The own holdout's bands are too narrow later on: its 5-95 %
+range holds 80 %, not 90.
 
 ## Open questions (2026-10-13)
 

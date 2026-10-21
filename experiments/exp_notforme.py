@@ -16,8 +16,10 @@ Arms (all hide the dismissed titles themselves):
   NEG+F o/w     the same, also placed in the population fold-in
   FRAN          plus the rest of a dismissed title's franchise leaves the pool
   NEG+F+FRAN    both, at COMBINED
+  SER, NEG+F+SER  with --series: the dismissed title's *series* leaves the
+                pool instead of its franchise (spin-offs stay; 2026-10-16)
 
-  python -m experiments.exp_notforme [--p 0.3]
+  python -m experiments.exp_notforme [--p 0.3] [--series]
 """
 # build() runs inside the loop iteration that defines it, so its loop variables
 # are the current ones
@@ -34,6 +36,7 @@ import numpy as np
 from experiments import bench
 from malrec.config import settings
 from malrec.recsys.hybrid import split_user
+from malrec.recsys.series import series_of
 from malrec.recsys.service import dismissal_examples
 
 # (offset, weight, also in the population fold-in)
@@ -44,11 +47,12 @@ NEG = ((-1.0, 0.4, False), (-1.0, 0.8, False), (-2.0, 0.4, False),
 COMBINED = (-1.0, 0.4, True)
 
 
-def main(p: float, max_eval: int):
+def main(p: float, max_eval: int, series: bool = False):
     t0 = time.time()
     cfg = settings()
     entries, static = bench.load_snapshot()
     store, derived = static["store"], static["derived"]
+    bench.GROUPS = bench.groupings(store)     # today's franchises, not the snapshot's
     rng = np.random.default_rng(bench.SEED)
     users = entries.users_with_scored(15)
     rng.shuffle(users)
@@ -57,10 +61,12 @@ def main(p: float, max_eval: int):
     (pop, stacker), how = bench.population(entries, store, A, B)
     pool_all = bench.eligible(store, derived)
     fran = {m: (store.rows[m].get("franchise_id") or m) for m in pool_all}
+    ser = series_of()
     print(f"population model {how}; P={p} [{time.time() - t0:.0f}s]", flush=True)
     def name(o, w, f):
         return f"NEG{'+F' if f else ''} {o:g}/{w:g}"
-    arms = ["HIDE", *(name(*n) for n in NEG), "FRAN", "NEG+F+FRAN"]
+    arms = (["HIDE", "FRAN", "SER", "NEG+F+FRAN", "NEG+F+SER"] if series
+            else ["HIDE", *(name(*n) for n in NEG), "FRAN", "NEG+F+FRAN"])
 
     def genres(ids):
         return {g for m in ids for g in ((store.rows.get(m) or {}).get("mal_genres") or [])}
@@ -99,9 +105,11 @@ def main(p: float, max_eval: int):
                 continue
             n_dis.append(len(dis))
             gone_f = {fran[m] for m in dis if m in fran} - {fran.get(m) for m in listed}
+            gone_s = ({ser.get(m, m) for m in dis} - {ser.get(m, m) for m in listed})
             hide = set(dis)
             rows_hide = [r for r in rows if r["mal_id"] not in hide]
             rows_fran = [r for r in rows_hide if fran.get(r["mal_id"]) not in gone_f]
+            rows_ser = [r for r in rows_hide if ser.get(r["mal_id"], r["mal_id"]) not in gone_s]
             sm = float(np.average([x.score for x in sc], weights=[x.weight for x in sc]))
             at = {m: cutoff - dt.timedelta(days=1) for m in dis}
 
@@ -118,10 +126,13 @@ def main(p: float, max_eval: int):
                                           disliked - hide)
 
             M["HIDE"].append(build(rows_hide, None))
-            for n in NEG:
+            for n in () if series else NEG:
                 M[name(*n)].append(build(rows_hide, n))
             M["FRAN"].append(build(rows_fran, None))
             M["NEG+F+FRAN"].append(build(rows_fran, COMBINED))
+            if series:
+                M["SER"].append(build(rows_ser, None))
+                M["NEG+F+SER"].append(build(rows_ser, COMBINED))
         print(f"\n== sampled {budget} ({len(M['HIDE'])} users, {np.mean(n_dis):.1f} dismissals each)"
               f" [{time.time() - t0:.0f}s]")
         print(f"   {'arm':<14}" + "".join(f"{k:>18}" for k in ("rho", "r50", "hit10", "bad10")))
@@ -147,5 +158,6 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--p", type=float, default=0.3)
     ap.add_argument("--users", type=int, default=100)
+    ap.add_argument("--series", action="store_true")
     a = ap.parse_args()
-    main(a.p, a.users)
+    main(a.p, a.users, a.series)

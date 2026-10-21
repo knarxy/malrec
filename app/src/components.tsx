@@ -1,10 +1,11 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import {
-  api, ApiError, type Breakdown, type Filters, type Learning, type ModelInfo, type Profile,
+  api, ApiError, type Breakdown, type Evidence, type Filters,
   type Recommendation, type SearchHit, type SimilarHit,
 } from './api'
-import { Likely, Reasons, Why } from './explain'
+import { Likely, POPULARITY, Reasons, Why } from './explain'
 import { useI18n } from './i18n'
+import { TagLink } from './tags'
 import { effectiveTheme, setTheme, type Theme } from './theme'
 import { track, whenSeen } from './usage'
 
@@ -284,17 +285,47 @@ function Arrow({ up }: { up: boolean }) {
 
 type Side = { up: { label: string }[]; down: { label: string }[] }
 
+
 function VoiceReasons({ side, extra }: { side: Side | null | undefined; extra?: ReactNode }) {
   const { label } = useI18n()
+  const up = side?.up.filter((d) => !POPULARITY.has(d.label)) ?? []
+  const down = side?.down.filter((d) => !POPULARITY.has(d.label)) ?? []
   return (
     <ul>
-      {side?.up.slice(0, 3).map((d) => (
+      {up.slice(0, 3).map((d) => (
         <li key={`u${d.label}`}><span className="sgn-up">+</span><span>{label(d.label)}</span></li>
       ))}
       {extra}
-      {side?.down.slice(0, 2).map((d) => (
+      {down.slice(0, 2).map((d) => (
         <li key={`d${d.label}`}><span className="sgn-down">−</span><span>{label(d.label)}</span></li>
       ))}
+    </ul>
+  )
+}
+
+/** The personal voice: what the user's own ratings clearly say about the
+ *  title's attributes, pros first, each with how many series back it. */
+function EvidenceLines({ items }: { items: Evidence[] }) {
+  const { t, label, lang } = useI18n()
+  if (!items.length) return <p className="ev-none">{t('why2.ev_none')}</p>
+  const num = (x: number) => Math.abs(x).toLocaleString(lang === 'de' ? 'de-DE' : 'en-GB',
+    { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+  const sorted = [...items.filter((e) => e.lift > 0), ...items.filter((e) => e.lift <= 0)]
+  return (
+    <ul>
+      {sorted.map((e) => {
+        const up = e.lift > 0
+        return (
+          <li key={`${e.kind}:${e.name}`}>
+            <span className={up ? 'sgn-up' : 'sgn-down'}>{up ? '+' : '−'}</span>
+            <span>
+              {e.kind === 'theme' ? <TagLink tag={e.name}>{label(e.label)}</TagLink> : label(e.label)}{' '}
+              <b className={up ? 'sgn-up' : 'sgn-down'}>{up ? '+' : '−'}{num(e.lift)}</b>
+              <span className="ev-n">{t('why2.ev_series', { n: e.series })}</span>
+            </span>
+          </li>
+        )
+      })}
     </ul>
   )
 }
@@ -322,6 +353,9 @@ function WhyPanel({ user, mal_id, surface, rank }: {
   if (b === null) return <p className="surface-note">{t('why.none')}</p>
   const p = b.personal !== null ? Math.round(b.personal_share * 100) : 0
   const liked = b.because_you_liked.filter((l) => l.your_score > b.your_mean).slice(0, 2)
+  const evidence = b.evidence ?? []
+  // recommended although everything the ratings clearly say is against it
+  const against = evidence.length > 0 && evidence.every((e) => e.lift < 0)
   const trim = b.shown - b.raw
   const r = b.ranking
   const adjustments = r ? [
@@ -351,7 +385,7 @@ function WhyPanel({ user, mal_id, surface, rank }: {
           <div className="voice you">
             <div className="who-says">{t('why2.you')}</div>
             <div className="num">{b.personal.toFixed(2)}</div>
-            <VoiceReasons side={b.sides?.personal} />
+            <EvidenceLines items={evidence} />
           </div>
         )}
         <div className="voice them">
@@ -360,6 +394,8 @@ function WhyPanel({ user, mal_id, surface, rank }: {
           <VoiceReasons side={b.sides?.population} extra={fans} />
         </div>
       </div>
+      {b.personal !== null && against && <p className="ev-against">{t('why2.ev_against')}</p>}
+      {b.personal !== null && evidence.length > 0 && <p className="ev-note">{t('why2.ev_note')}</p>}
 
       <div className="weigh">
         {b.personal !== null ? (
@@ -605,86 +641,6 @@ export function Controls({ filters, onFilters }: {
           </div>
         </div>
       )}
-    </div>
-  )
-}
-
-/** Taste summary: what the model learned, and how well it scores. */
-export function Insights({
-  profile, model, onClose,
-}: {
-  profile: Profile
-  model: ModelInfo | null
-  onClose: () => void
-}) {
-  const { t, label } = useI18n()
-  const [learn, setLearn] = useState<Learning | null>(null)
-  useEffect(() => { api.learning().then(setLearn).catch(() => {}) }, [])
-  const maxLift = Math.max(0.01, ...profile.top_genres.map((g) => Math.abs(g.lift)))
-  return (
-    <div className="drawer-bg" onClick={onClose}>
-      <div className="drawer" onClick={(e) => e.stopPropagation()}>
-        <button className="close" onClick={onClose}>{t('Close')}</button>
-        <h2>{t('Your taste')}</h2>
-        <div className="stat-grid">
-          <div className="stat"><div className="k">{t('Entries')}</div><div className="v">{profile.entries}</div></div>
-          <div className="stat"><div className="k">{t('Rated')}</div><div className="v">{profile.scored}</div></div>
-          <div className="stat"><div className="k">{t('Completed')}</div><div className="v">{profile.completed}</div></div>
-          <div className="stat"><div className="k">{t('Mean score')}</div><div className="v">{profile.mean_score ?? '—'}</div></div>
-        </div>
-
-        <h3 style={{ fontSize: 14, marginTop: 20 }}>{t('Genres you rate above your own average')}</h3>
-        {profile.top_genres.map((g) => (
-          <div className="bar-row" key={g.genre}>
-            <span className="name">{label(g.genre)}</span>
-            <span className="bar">
-              <div style={{ width: `${(Math.max(g.lift, 0) / maxLift) * 100}%` }} />
-            </span>
-            <span style={{ width: 46, textAlign: 'right' }}>
-              {g.lift > 0 ? '+' : ''}{g.lift}
-            </span>
-          </div>
-        ))}
-
-        {model && (
-          <>
-            <h3 style={{ fontSize: 14, marginTop: 22 }}>{t('Model')}</h3>
-            <div className="stat-grid">
-              <div className="stat">
-                <div className="k">{t('Rank correlation')}</div>
-                <div className="v">{model.metrics.spearman?.toFixed(3) ?? '—'}</div>
-              </div>
-              <div className="stat">
-                <div className="k">{t('RMSE')}</div>
-                <div className="v">{model.metrics.rmse?.toFixed(2) ?? '—'}</div>
-              </div>
-            </div>
-            <p className="surface-note">{t('insights.note')}</p>
-          </>
-        )}
-
-        {learn && (
-          <>
-            <h3 style={{ fontSize: 14, marginTop: 22 }}>{t('learn.title')}</h3>
-            {learn.status === 'ok' && learn.current ? (
-              <div className="whypanel">
-                <div className="drv"><span>{t('learn.relevance')}</span>
-                  <span>{learn.relevance_points_per_sd?.toFixed(2)} ({learn.relevance_ci90?.map((x) => x.toFixed(2)).join('–')}) · {t('learn.now')} {learn.current.relevance_weight}</span></div>
-                <div className="drv"><span>{t('learn.novelty')}</span>
-                  <span>{learn.novelty_points?.toFixed(2)} ({learn.novelty_ci90?.map((x) => x.toFixed(2)).join('–')}) · {t('learn.now')} {learn.current.novelty_weight}</span></div>
-              </div>
-            ) : (
-              <>
-                <div className="bar-row">
-                  <span className="bar"><div style={{ width: `${Math.min(100, learn.events / 2)}%` }} /></span>
-                  <span style={{ width: 70, textAlign: 'right' }}>{learn.events} / 200</span>
-                </div>
-                <p className="surface-note">{t('learn.pending', { p: learn.positive, n: learn.negative })}</p>
-              </>
-            )}
-          </>
-        )}
-      </div>
     </div>
   )
 }

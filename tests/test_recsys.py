@@ -240,38 +240,47 @@ def test_weekly_upcoming_rebuild_survives_a_broken_account(monkeypatch):
 
     from typer.testing import CliRunner
 
-    from malrec import cli, surfaces
+    from malrec import cli, model, surfaces
     from malrec.ingest import jobs
     built = []
 
-    def fake_build(uid, surface, limit):
+    def fake_model(uid):
         if uid == 2:
             raise ValueError("user 2 has no scored entries to learn from")
-        built.append(uid)
+        return f"model{uid}", uid
+
+    def fake_build(uid, surface, limit, model=None, run_id=None):
+        assert model == f"model{uid}"              # one model load serves both lists
+        built.append((uid, surface))
         return []
 
     monkeypatch.setattr(cli, "_setup", lambda *a, **k: None)
     monkeypatch.setattr(cli, "query", lambda sql, *a: [
         {"id": i, "mal_username": f"u{i}"} for i in (1, 2, 3)])
     monkeypatch.setattr(jobs, "sync_upcoming", lambda: {"catalog": 0, "related": 0})
+    monkeypatch.setattr(model, "load_or_train", fake_model)
     monkeypatch.setattr(surfaces, "build_surface", fake_build)
     r = CliRunner().invoke(cli.app, ["sync", "upcoming"])
     assert r.exit_code == 0, r.output
     out = json.loads(r.output[r.output.index("{"):])
-    assert built == [1, 3] and list(out["failed"]) == ["u2"]
+    assert built == [(1, "coming_soon"), (1, "this_season"), (3, "coming_soon"), (3, "this_season")]
+    assert list(out["failed"]) == ["u2"]
 
 
 def test_uncertainty_band_and_coverage():
-    from malrec.uncertainty import band, coverage, residual_quantiles
+    from malrec.uncertainty import band, coverage, likely_coverage, residual_quantiles
     rng = np.random.default_rng(0)
     pred = rng.uniform(6, 8.5, 4000)
     truth = np.clip(np.round(pred + rng.normal(0, 1.0, 4000)), 1, 10)
     q = residual_quantiles(pred[:2000], truth[:2000])
     assert 0.82 < coverage(q, pred[2000:], truth[2000:]) < 0.97   # 5-95 % band
     b = band(8.0, q)
-    assert b["low"] <= 8 <= b["high"] and 0.2 < b["p9"] < 0.5
+    assert b["low"] <= 8 <= b["high"] and b["high"] - b["low"] <= 1 and 0.2 < b["p9"] < 0.5
     assert band(8.0, None) is None and band(float("nan"), q) is None
     assert band(6.0, q)["p9"] < band(8.0, q)["p9"]
+    # the shown set holds at least half of later ratings, and is narrower
+    assert 0.5 <= likely_coverage(q, pred[2000:], truth[2000:]) < 0.8
+    assert band(1.2, q)["low"] == 1 and band(9.9, q)["high"] == 10
 
 
 def test_calibrated_list_is_ordered_by_score_not_by_genre_fit():

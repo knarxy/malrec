@@ -137,6 +137,8 @@ def explain(mal_id: int, v: Approved, user: str | None = None, surface: str = "d
     out = model.breakdown(mal_id, on_list=on_list)
     if out is None:
         raise HTTPException(404, "No prediction for that title.")
+    from . import taste
+    out["evidence"] = taste.evidence_for(uid, mal_id)
     cand = one("SELECT predicted, relevance_z, novelty, novelty_scale, personal_share, bonus,"
                " pop_bonus, risk FROM rec_candidate"
                " WHERE user_id=%s AND mal_id=%s ORDER BY surface=%s DESC LIMIT 1",
@@ -245,8 +247,7 @@ def anime_detail(mal_id: int, v: Approved, user: str | None = None) -> dict:
         if not np.isnan(raw[0]):
             row["predicted_score"] = round(float(model.calibrate(raw)[0]), 2)
             from .uncertainty import band, user_quantiles
-            q, idx = user_quantiles(uid)
-            row["likely"] = band(row["predicted_score"], q, idx)
+            row["likely"] = band(row["predicted_score"], user_quantiles(uid))
     return row
 
 
@@ -282,6 +283,62 @@ def similar(mal_id: int, v: Approved, limit: int = Query(20, ge=1, le=50)) -> li
         """,
         (mal_id, mal_id, limit),
     )
+
+
+TAG_UNLISTED_SQL = """
+    SELECT a.mal_id, a.title, a.title_en, a.media_type, a.season_year, a.mal_mean,
+           a.picture_medium
+      FROM eligible_candidates(%(u)s, %(n)s, false) c
+      JOIN anime_tag t ON t.mal_id = c.mal_id AND t.tag = %(tag)s AND t.rank >= %(r)s
+      JOIN anime a ON a.mal_id = c.mal_id
+     WHERE c.format_class = 'main'
+"""
+TAG_LISTED_SQL = """
+    SELECT a.mal_id, a.title, a.title_en, a.media_type, a.season_year, a.mal_mean,
+           a.picture_medium, le.status AS list_status, le.score AS list_score
+      FROM list_entry le
+      JOIN anime_tag t ON t.mal_id = le.mal_id AND t.tag = %(tag)s AND t.rank >= %(r)s
+      JOIN anime a ON a.mal_id = le.mal_id
+     WHERE le.user_id = %(u)s
+     ORDER BY le.score DESC NULLS LAST, a.mal_num_list_users DESC NULLS LAST
+"""
+
+
+@app.get("/tag/{tag}", dependencies=[rate_limit("tag", 60, 60)])
+def tag_titles(tag: str, v: Approved, user: str | None = None,
+               limit: int = Query(40, ge=1, le=100)) -> dict:
+    """A tag's titles: the ones not on the list best predicted first, and the
+    list's own - "where can I find all the yandere shows?"."""
+    from .taste import TAG_RANK_MIN
+    from .uncertainty import band, user_quantiles
+    uid = target_user(v, user)
+    args = {"u": uid, "tag": tag, "r": TAG_RANK_MIN, "n": SPECS["hidden_gems"].min_scorers}
+    rows, yours = query(TAG_UNLISTED_SQL, args), query(TAG_LISTED_SQL, args)
+    if not rows and not yours:
+        raise HTTPException(404, "unknown tag")
+    try:
+        model, _ = cached_model(uid)
+    except ValueError:
+        model = None
+    if isinstance(model, HybridScorer) and rows:
+        pred = model.calibrate(model.predict_ids([r["mal_id"] for r in rows]))
+        q = user_quantiles(uid)
+        for r, p in zip(rows, pred, strict=True):
+            r["predicted_score"] = None if np.isnan(p) else round(float(p), 2)
+            r["likely"] = band(r["predicted_score"], q)
+        rows.sort(key=lambda r: -(r["predicted_score"] or 0.0))
+    else:
+        rows.sort(key=lambda r: -(r["mal_mean"] or 0.0))
+    return {"tag": tag, "unlisted": len(rows), "titles": rows[:limit], "yours": yours[:limit],
+            "yours_total": len(yours)}
+
+
+@app.get("/profile/taste")
+def profile_taste(v: Approved, user: str | None = None) -> dict:
+    """The profile page: headline sentences over what the list supports
+    (malrec.taste)."""
+    from . import taste
+    return taste.for_user(target_user(v, user))
 
 
 # ---------------------------------------------------------------- feedback --

@@ -28,7 +28,7 @@ from .recsys.service import (
     item_store,
     prospective_compare,
 )
-from .uncertainty import coverage, residual_quantiles
+from .uncertainty import coverage, likely_coverage, residual_quantiles
 
 RATED_SQL = """SELECT mal_id, score::float AS score,
                       coalesce(finished_at::timestamptz, updated_at, now()) AS at
@@ -74,6 +74,7 @@ def user_report(user_id: int) -> dict:
         q = residual_quantiles(np.concatenate([s for s, _ in old_err]),
                                np.concatenate([t for _, t in old_err]))
         out["range_coverage_80"] = round(coverage(q, new_shown, new_truth), 3)
+        out["likely_coverage"] = round(likely_coverage(q, new_shown, new_truth), 3)
     return out
 
 

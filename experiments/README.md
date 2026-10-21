@@ -40,7 +40,27 @@ labels and the Discover / Hidden Gems rankers (docs/RESEARCH.md);
 feature-set argument: `taste` = the rankers with the release year, the
 default = with the title's age);
 `results_series_2026-10-15.txt` the series and franchises without bridges
-(a benchmark against the baseline) and series-weighted evidence (three arms).
+(a benchmark against the baseline) and series-weighted evidence (three arms);
+`results_grouplevel_2026-10-16.txt` one title per series instead of per
+franchise, and "Not for me" by series (`exp_notforme.py --series`).
+
+`exp_profile.py` computes the profile page (malrec.taste) for a few thousand
+sampled lists of every size and the app's users and counts which headline
+each section gets, what the numbers behind them look like and which names
+they use; `results_profile_2026-10-20.txt` is the run that fixed its
+thresholds and exclusions.
+
+A user's report, measured overnight 2026-10-20 (docs/RESEARCH.md):
+`exp_evidence.py` checks the "Why this?" panel's personal lines against the
+user's own ratings of each attribute (`results_evidence_2026-10-20.txt`);
+`exp_growth.py` measures how fast a title collects its audience, the curve
+behind `recsys/popularity.py` (`results_growth_2026-10-20.txt`);
+`exp_range.py` how often a prediction's range holds the later rating
+(`results_range_2026-10-20.txt`); `results_gems_2026-10-20.txt` the Hidden
+Gems pool rules (`gems_popularity`, `gems_skip_safe_bets`) and
+`results_dmix_2026-10-21.txt` one Discover tab with every Nth slot a gem
+(bench `DMIX_EVERY`) instead of two tabs.; `results_gems_2026-10-21.txt` the rule
+shipped (young titles past #2,000).
 
 ## Protocol
 

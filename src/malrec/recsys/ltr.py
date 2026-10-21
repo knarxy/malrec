@@ -54,7 +54,6 @@ LONG_PRIOR = 3.0      # pseudo-titles pulling a thin record toward "no opinion"
 TRAIN_BUDGETS = (10, 25, 60, 150, 400)    # list sizes a training user is cut to
 SHORTLIST = 600                            # the key's top this many are reordered
 LIST_LIMIT = 60                            # a built tab's length (surfaces.build_all)
-GEMS_FROM = 1200                           # Hidden Gems: titles past this popularity rank
 SEED = 3
 LGBM: dict[str, Any] = {
     "objective": "lambdarank", "n_estimators": 600, "learning_rate": 0.03, "num_leaves": 15,
@@ -464,7 +463,7 @@ def stacker_lists(max_users: int = 2400) -> dict[int, list[dict]]:
 
 def surface_pool(store: ItemStore, derived: frozenset[int] | set[int], surface: str) -> list[int]:
     """What eligible_candidates allows for `surface`, from the item store
-    (Hidden Gems: past popularity #1,200 as well)."""
+    (Hidden Gems: in its pool as well, recsys/popularity.py)."""
     from ..surfaces import SPECS
     n = SPECS[surface].min_scorers
     out = [m for m, r in store.rows.items()
@@ -472,7 +471,10 @@ def surface_pool(store: ItemStore, derived: frozenset[int] | set[int], surface: 
            and r.get("format_class") == "main" and r.get("nsfw") in (None, "white")
            and r.get("status") != "not_yet_aired" and m not in derived]
     if surface == "hidden_gems":
-        out = [m for m in out if (store.rows[m].get("mal_popularity") or 99999) > GEMS_FROM]
+        from ..config import settings
+        from .popularity import gem_ids
+        gems = gem_ids(settings().gems_popularity)
+        out = [m for m in out if m in gems]
     return out
 
 

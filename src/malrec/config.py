@@ -204,6 +204,13 @@ class Settings(BaseSettings):
     # +.008/+.015 and hit@10 +.023/+.044 at 150/400; Safe Bets untouched.
     discover_ranker_weight: float = 0.0
     gems_ranker_weight: float = 0.0
+    # Hidden Gems' pool (recsys/popularity.py): 'grown' = past #1,200 by the
+    # member count a title of its age is on course for, past #2,000 while
+    # under a year old; 'rank' = MAL's raw rank past #1,200 (until 2026-10).
+    # gems_skip_safe_bets leaves out Safe Bets' top N (measured: costs the
+    # best hits, results_gems_2026-10-20.txt).
+    gems_popularity: str = "grown"
+    gems_skip_safe_bets: int = 0
     # Share of the risk term in Safe Bets' hand-built key; the learned order
     # reads the risk parts as features whatever this is. 0 (risk left to the
     # ranker alone) cost recall@50 -.008 at 400 entries (exp_blend.py,
