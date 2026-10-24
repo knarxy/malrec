@@ -121,6 +121,16 @@ class Settings(BaseSettings):
     # (experiments/exp_audit.py: +0.025 rho at 400 ratings; at 60-150 it
     # does not help, and on the 143-rating reference profile it costs 0.023).
     chosen_blend_min: int = 300
+    # How that choice is made (2026-10-21: a long list whose newest ratings
+    # are mostly this season's shows chose 0 - the population layer is the
+    # better predictor of new titles - and its picks then came from the
+    # population alone): a floor on the chosen share, and which ratings it is
+    # chosen on, "newest" 20 % or a "random" 20 %. Measured (exp_blend.py,
+    # 2026-10-22, results_blendchoice): a floor of 0.3 is the one variant with
+    # no measured loss (400 entries: rho +.002, recall@50 +.001); a fixed 0.5
+    # adds bad titles to the top 10, a random fifth costs Discover recall.
+    blend_lam_min: float = 0.3
+    blend_holdout: str = "newest"
     # Centre of the size-weighted handover from the population stack to the
     # personal model (50/50 at this many ratings, logistic with scale 15),
     # and a ceiling on the personal share. experiments/exp_handover.py
@@ -204,11 +214,21 @@ class Settings(BaseSettings):
     # +.008/+.015 and hit@10 +.023/+.044 at 150/400; Safe Bets untouched.
     discover_ranker_weight: float = 0.0
     gems_ranker_weight: float = 0.0
+    # Train the learned orders as they are served (recsys/ltr.py train,
+    # as_served): each query on the pool production shows (recsys/pool.py)
+    # and the list as it stood at the cutoff, Discover's against Safe Bets'
+    # learned list, each user with a random stream of their own. Measured on
+    # the production-pool benchmark (2026-10-24, 300 users a size,
+    # results_ranker_pool_2026-10-24.txt): Safe Bets and Hidden Gems within
+    # noise, Discover recall@50 -.005 / -.007 at 150 / 400 entries (hit@10
+    # -.015 at 400) - no gain anywhere, so off.
+    ranker_train_as_served: bool = False
     # Hidden Gems' pool (recsys/popularity.py): 'grown' = past #1,200 by the
     # member count a title of its age is on course for, past #2,000 while
     # under a year old; 'rank' = MAL's raw rank past #1,200 (until 2026-10).
-    # gems_skip_safe_bets leaves out Safe Bets' top N (measured: costs the
-    # best hits, results_gems_2026-10-20.txt).
+    # gems_skip_safe_bets: the benchmark's arm that leaves Safe Bets' top N
+    # out of Hidden Gems (measured: costs the best hits,
+    # results_gems_2026-10-20.txt); production does not read it.
     gems_popularity: str = "grown"
     gems_skip_safe_bets: int = 0
     # Share of the risk term in Safe Bets' hand-built key; the learned order
@@ -289,6 +309,14 @@ class Settings(BaseSettings):
     # (Safe Bets .29-.33 -> .15-.18 at 25/150/400 entries) while recall@50
     # rose (+.023/+.009/+.005); at 2, recall gives part of that back.
     age_calibration: float = 0.0
+    # The aim's weight on titles at most a year old (rank.age_aim): 1 = the
+    # user's own mix. A seasonal watcher's mix is mostly this year's shows,
+    # which This Season already lists; below 1 the discovery tabs aim at
+    # more of the back catalogue than the habit alone would. Measured
+    # (results_fresh_2026-10-22): at 0.5 the top 20 hold 5-7 points fewer such
+    # titles and 4 more of five years or older in every tab and size, with no
+    # recall lost and the age gap smaller; 0.25 starts to cost hit@10.
+    age_fresh_weight: float = 0.5
     # Calibrated lists are ordered by the ranking key within blocks of this
     # many titles (0 = the whole list, as measured in exp_calib.py). Without
     # blocks the calibrated set is right but its newest titles still sort to

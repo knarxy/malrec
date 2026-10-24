@@ -38,7 +38,7 @@ data has listed, like a new season. Reported additionally: recall@50 of
 liked future titles among those cold titles (pooled over users).
 
   python -m experiments.exp_twotower [--phase warm|cold|both] [--epochs 40]
-(needs torch on the path: PYTHONPATH=...:/work/.torchlib)
+(needs torch on the path: PYTHONPATH=...:/work/experiments/.torchlib)
 """
 from __future__ import annotations
 

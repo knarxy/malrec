@@ -6,6 +6,7 @@ so no OAuth flow, token store or refresh loop is needed.
 """
 from __future__ import annotations
 
+import datetime as dt
 import logging
 import threading
 import time
@@ -34,6 +35,29 @@ class MalApiError(Exception):
     def __init__(self, status: int, message: str):
         super().__init__(message)
         self.status = status
+
+
+# details_many gives up after this many failed ids in a row: MAL is down or
+# refusing the client, and every further id would cost another half minute
+# of retries while the only worker thread waits (audit 2026-10-23, ING-7)
+MAX_FAILURES_IN_A_ROW = 10
+RETRY_AFTER_MAX = 120.0
+
+
+def _retry_after(value: str | None) -> float | None:
+    """Retry-After in seconds - a number or an HTTP date - capped at
+    RETRY_AFTER_MAX; None when absent or unreadable."""
+    if not value:
+        return None
+    try:
+        secs = float(value)
+    except ValueError:
+        from email.utils import parsedate_to_datetime
+        try:
+            secs = (parsedate_to_datetime(value) - dt.datetime.now(dt.UTC)).total_seconds()
+        except (TypeError, ValueError):
+            return None
+    return min(max(secs, 0.0), RETRY_AFTER_MAX)
 
 
 class MalClient:
@@ -81,12 +105,19 @@ class MalClient:
             time.sleep(slot - now)
 
     def get(self, path: str, params: dict | None = None, tries: int = 5) -> dict:
+        """The JSON of a 200; {} for a 404 (genuinely gone). Any other 4xx
+        raises MalApiError: a refused token or client id (401/403), a private
+        list, a bad request are answers, not absences - read as {} they made
+        a list "empty", an anime "gone for good" (stamped, never fetched
+        again) and a catalogue sync "0 updated, ok" (audit 2026-10-23,
+        ING-2). 429, 5xx and MAL's 307 load shedding are retried, then
+        RuntimeError."""
         for attempt in range(tries):
             self._throttle()
             try:
                 r = self._http.get(path, params=params)
                 if r.status_code == 429:
-                    back = float(r.headers.get("Retry-After", 0)) or 5 * (attempt + 1)
+                    back = _retry_after(r.headers.get("Retry-After")) or 5 * (attempt + 1)
                     log.warning("MAL 429, backing off %.0fs", back)
                     time.sleep(back)
                     continue
@@ -105,13 +136,13 @@ class MalClient:
                                 path, r.status_code, back)
                     time.sleep(back)
                     continue
+                if 400 <= r.status_code < 500:
+                    # will not fix itself on a retry
+                    log.warning("MAL %s -> %s", path, r.status_code)
+                    raise MalApiError(r.status_code, f"MAL {path} -> {r.status_code}")
                 r.raise_for_status()
                 return r.json()
-            except httpx.HTTPStatusError as e:
-                # 4xx other than 404/429 will not fix themselves on retry
-                if 400 <= e.response.status_code < 500:
-                    log.warning("MAL %s -> %s, skipping", path, e.response.status_code)
-                    return {}
+            except httpx.HTTPStatusError:
                 time.sleep(2 * (attempt + 1))
             except (httpx.TimeoutException, httpx.TransportError) as e:
                 log.warning("MAL transport error (%s), retry %d", type(e).__name__, attempt + 1)
@@ -122,7 +153,11 @@ class MalClient:
 
     def user_animelist(self, username: str) -> list[dict]:
         """Full list in as few calls as possible: limit maxes out at 1000 and
-        `fields` accepts anime-node fields, so one page usually suffices."""
+        `fields` accepts anime-node fields, so one page usually suffices.
+        Every page must arrive: a page that fails raises (MalApiError, also
+        for a user MAL does not know - 404 -, or RuntimeError), since a part
+        of a list must never stand in for the whole (store.upsert_list
+        deletes what it does not contain)."""
         out: list[dict] = []
         offset = 0
         while True:
@@ -131,7 +166,9 @@ class MalClient:
                 {"limit": 1000, "offset": offset, "nsfw": "true",
                  "fields": f"list_status,{NODE_FIELDS}"},
             )
-            out.extend(d.get("data", []))
+            if "data" not in d:
+                raise MalApiError(404, f"MAL has no user {username!r} (renamed or deleted?)")
+            out.extend(d["data"])
             if "next" not in d.get("paging", {}):
                 break
             offset += 1000
@@ -161,14 +198,24 @@ class MalClient:
 
         Yields the payload on success, {} when the anime genuinely does not
         exist (404), and None when the request failed for a reason that may
-        resolve later. The caller must not mark a None as fetched.
+        resolve later. The caller must not mark a None as fetched. After
+        MAX_FAILURES_IN_A_ROW Nones in a row it raises RuntimeError instead
+        of trying the rest.
         """
+        failed = 0
         for i, aid in enumerate(mal_ids):
             try:
-                yield aid, self.details(aid)
-            except (RuntimeError, httpx.HTTPError) as e:
+                d = self.details(aid)
+            except (RuntimeError, MalApiError, httpx.HTTPError) as e:
                 log.error("giving up on %s for now: %s", aid, e)
+                failed += 1
+                if failed >= MAX_FAILURES_IN_A_ROW:
+                    raise RuntimeError(f"MAL failed {failed} anime in a row (last: {e});"
+                                       " stopping until a later run") from e
                 yield aid, None
+            else:
+                failed = 0
+                yield aid, d
             if i and i % 250 == 0:
                 log.info("mal details %d/%d", i, len(mal_ids))
 
@@ -258,7 +305,9 @@ def normalise_node(node: dict[str, Any]) -> dict[str, Any]:
 
 
 def _date(v: str | None):
-    """MAL returns partial dates like '2013' or '2013-04'; widen to a real date."""
+    """MAL returns partial dates like '2013' or '2013-04'; widen to a real date.
+    A date that does not exist (a list entry finished on 2020-02-30, year 0)
+    gives None: Postgres rejects it, and one such entry failed the whole sync."""
     if not v:
         return None
     parts = v.split("-")
@@ -266,6 +315,6 @@ def _date(v: str | None):
         y = int(parts[0])
         m = int(parts[1]) if len(parts) > 1 else 1
         d = int(parts[2]) if len(parts) > 2 else 1
-        return f"{y:04d}-{m:02d}-{d:02d}"
+        return dt.date(y, m, d).isoformat()
     except (ValueError, IndexError):
         return None

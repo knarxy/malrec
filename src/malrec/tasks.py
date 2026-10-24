@@ -51,6 +51,23 @@ def enqueue(kind: str, user_id: int) -> None:
             (kind, user_id, PRIORITY[kind]))
 
 
+def public_error(raw: str | None) -> str | None:
+    """What the user is told about a failed task: a code the app translates
+    (sync.err.*), never the exception text - that can name hosts, paths or
+    SQL (audit 2026-10-23, FE-5). The admin panel keeps the raw text."""
+    if not raw:
+        return None
+    if raw.startswith("MalApiError") and ("no user" in raw
+                                          or any(f"-> {c}" in raw for c in (401, 403))):
+        return "mal_refused"
+    if raw.startswith("ListShrank"):
+        return "list_shrank"
+    if raw.startswith(("RuntimeError: MAL", "MalApiError", "ConnectError", "ReadTimeout",
+                       "ConnectTimeout")):
+        return "mal_unavailable"
+    return "server"
+
+
 def pending(user_id: int, kind: str) -> bool:
     return bool(scalar("SELECT count(*) FROM task WHERE user_id=%s AND kind=%s"
                        " AND state IN ('queued', 'running')", (user_id, kind)))
@@ -72,7 +89,7 @@ def state(user_id: int) -> dict:
     elif st == "done":
         st = "idle"
     done = row["finished_at"].timestamp() if row["finished_at"] else None
-    return {"refresh": st, "refresh_error": row["error"] if st == "failed" else None,
+    return {"refresh": st, "refresh_error": public_error(row["error"]) if st == "failed" else None,
             "refreshed_at": done}
 
 
@@ -93,7 +110,7 @@ def run_task(kind: str, user_id: int) -> None:
     if kind in ("sync", "login_sync"):
         before = refresh.fingerprint(user_id)
         sync_user_list(name, enrich=True, token=refresh.token_for(user_id))
-        if kind == "login_sync" and refresh.fingerprint(user_id) == before:
+        if kind == "login_sync" and not refresh.stale(user_id, before):
             return
     invalidate_scorer(user_id)
     build_all(user_id, limit=60)

@@ -133,7 +133,13 @@ takes a few hours ☕ and can be stopped and resumed at any time.
 ```bash
 docker compose --profile lab run --rm lab malrec sync full
 docker compose --profile lab run --rm lab malrec population fit
+docker compose --profile lab run --rm lab malrec ranker train
 ```
+
+The last step trains the learned orders (about half an hour per list); until
+it has run, and after a population refit until it runs again, the lists use
+their hand-built order. `malrec ranker check` tells you whether they are
+current.
 
 ### 5️⃣ Sign in 🎉
 

@@ -37,6 +37,10 @@ where = ["src"]
 [tool.setuptools.package-data]
 malrec = ["assets/*.png"]
 
+[tool.pytest.ini_options]
+# the tree under test, also in a git worktree whose .venv is shared
+pythonpath = ["src"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

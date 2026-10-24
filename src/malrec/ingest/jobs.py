@@ -18,7 +18,7 @@ from ..clients.anilist import (
     extract_tags,
     normalise_media,
 )
-from ..clients.mal import MalClient, normalise_node
+from ..clients.mal import MalApiError, MalClient, normalise_node
 from ..config import settings
 from ..db import log_ingest, query, refresh_franchises, scalar
 from . import store
@@ -53,9 +53,16 @@ def sync_user_list(username: str | None = None, enrich: bool = True,
     scored = sum(1 for e in entries if (e["list_status"].get("score") or 0) > 0)
     detail = {"user": username, "entries": n, "scored": scored}
     if enrich:
-        # only entries new since the last sync cost a request
+        # only entries new since the last sync cost a request; the list is
+        # stored either way, and what failed is fetched on a later sync
+        # (MAL details and AniList data stay unstamped) - a MAL or AniList
+        # outage must not fail the sync and the rebuild after it (ING-4)
         from .ondemand import ensure_for_user
-        detail |= ensure_for_user(uid)
+        try:
+            detail |= ensure_for_user(uid)
+        except Exception as e:  # noqa: BLE001
+            log.warning("enriching %s's list failed, left for a later sync: %s", username, e)
+            detail["enrich_error"] = f"{type(e).__name__}: {e}"[:200]
     log_ingest("sync_user_list", "ok", detail)
     log.info("synced %s: %d entries, %d scored", username, n, scored)
     return detail
@@ -84,6 +91,9 @@ def sync_catalog() -> dict:
                     for e in mal.seasonal(year, season):
                         seen.setdefault(e["node"]["id"],
                                         normalise_node(e["node"]) | {"mal_fetched_at": _now()})
+                except MalApiError as e:
+                    if e.status not in (400, 404):      # a season MAL has no list for yet
+                        raise
                 except RuntimeError:
                     continue
 
@@ -262,8 +272,14 @@ def sync_anilist(limit: int | None = None, only_missing: bool = True) -> dict:
                 _store_anilist_batch(got)
                 media.update(got)
             # ids AniList does not know still count as attempted, otherwise
-            # every later run retries them forever
-            store.mark_anilist_attempted([c for c in chunk if c not in got])
+            # every later run retries them forever - but one it has answered
+            # for before is missing by accident (a GraphQL error), not gone:
+            # leave it due (as ondemand.ensure_anilist does)
+            absent = [c for c in chunk if c not in got and c not in al.unsure]
+            known = {r["mal_id"] for r in query(
+                "SELECT mal_id FROM anime WHERE mal_id = ANY(%s) AND anilist_id IS NOT NULL",
+                (absent,))} if absent else set()
+            store.mark_anilist_attempted([c for c in absent if c not in known])
             log.info("anilist: %d/%d stored", min(i + batch, len(ids)), len(ids))
 
     tags = [t for m in media.values() for t in extract_tags(m)]
@@ -293,7 +309,8 @@ def sync_anilist(limit: int | None = None, only_missing: bool = True) -> dict:
 
 
 def _store_anilist_batch(media: dict[int, dict]) -> None:
-    """Write one AniList batch: scores, tags, edges and relations."""
+    """Write one AniList batch: scores, tags, edges and relations; the batch
+    counts as fetched (al_fetched_at) once all of it is stored."""
     store.upsert_anilist([normalise_media(m) for m in media.values()])
     store.replace_tags([t for m in media.values() for t in extract_tags(m)])
     store.replace_staff([s for m in media.values() for s in extract_staff(m)])
@@ -320,6 +337,7 @@ def _store_anilist_batch(media: dict[int, dict]) -> None:
             "SELECT mal_id FROM anime WHERE mal_id = ANY(%s)", (sorted(wanted),))}
         store.upsert_rec_edges([e for e in edges if e[1] in known])
         store.upsert_relations([r for r in rels if r[1] in known])
+    store.mark_anilist_attempted(list(media))
 
 
 def bootstrap(username: str | None = None, with_catalog: bool = True) -> dict:

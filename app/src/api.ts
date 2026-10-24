@@ -319,15 +319,29 @@ class ApiError extends Error {
   }
 }
 
+// The ranges GET /recommendations accepts (api.py). A value outside them -
+// "95" on its way to "1995" - is left out instead of failing the list with 422.
+const FILTER_RANGE = { eps_min: [0, 10000], eps_max: [0, 10000],
+                       year_min: [1900, 2100], year_max: [1900, 2100] } as const
+
 function recQuery(user: string, limit: number, f?: Filters): string {
   const q = new URLSearchParams({ user, limit: String(limit) })
   if (f?.media_types?.length) q.set('types', f.media_types.join(','))
   if (f?.exclude_genres?.length) q.set('exclude_genres', f.exclude_genres.join(','))
   for (const k of ['eps_min', 'eps_max', 'year_min', 'year_max'] as const) {
-    if (f?.[k] !== undefined && f[k] !== null) q.set(k, String(f[k]))
+    const v = f?.[k]
+    if (v !== undefined && v !== null && v >= FILTER_RANGE[k][0] && v <= FILTER_RANGE[k][1]) {
+      q.set(k, String(v))
+    }
   }
   return q.toString()
 }
+
+// Fired when the API answers 401: the session ended (signed out elsewhere,
+// expired, the account blocked). The app returns to its sign-in page instead
+// of showing every later action's error on a page that looks signed in
+// (audit 2026-10-23, FE-3).
+export const SIGNED_OUT = 'malrec:signed-out'
 
 // Sent on every state-changing call. A cross-site form cannot set it and a
 // cross-origin fetch cannot send it without a CORS preflight the API refuses,
@@ -341,6 +355,9 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   })
   if (!res.ok) {
+    if (res.status === 401 && !path.startsWith('/auth/')) {
+      window.dispatchEvent(new Event(SIGNED_OUT))
+    }
     let msg = `${res.status} ${res.statusText}`
     let detail: Record<string, unknown> | undefined
     try {

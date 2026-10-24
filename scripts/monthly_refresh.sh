@@ -67,11 +67,12 @@ if [ -z "$DRY_RUN" ]; then
 fi
 if [ -n "$DRY_RUN" ]; then
     echo "dry run: users not rebuilt ($(docker exec malrec-db psql -U malrec -d malrec -Atc \
-         "SELECT count(*) FROM app_user") accounts would be)"
+         "SELECT count(*) FROM app_user WHERE status = 'approved'") accounts would be)"
 elif echo "$fit" | grep -q '"activated"'; then
-    # the API picks up the newly active model on its next request
+    # the API picks up the newly active model on its next request; approved
+    # accounts only, as the nightly sync
     for u in $(docker exec malrec-db psql -U malrec -d malrec -Atc \
-               "SELECT mal_username FROM app_user ORDER BY id"); do
+               "SELECT mal_username FROM app_user WHERE status = 'approved' ORDER BY id"); do
         # per user, so one broken account (e.g. no scores yet) cannot stop the rest
         if docker exec malrec-api malrec train --user "$u" >/dev/null \
            && docker exec malrec-api malrec build-all --user "$u" --limit 60 >/dev/null; then

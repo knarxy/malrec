@@ -120,9 +120,13 @@ def _user_mean(user_id: int) -> float:
 # `next_up` bypasses the normal candidate pool: eligible_candidates deliberately
 # excludes anything whose prerequisites are unmet, and a sequel to a finished
 # show has its prerequisites met by definition, so it lands here instead of
-# competing with genuine discoveries in `discover`.
+# competing with genuine discoveries in `discover`. One row per title: a sequel
+# of two finished titles (the season before it and a film) is anchored on the
+# main-format one, then on the one rated higher - it used to be whichever row
+# came last (audit 2026-10-23, P1-13).
 NEXT_UP_SQL = """
-    SELECT a.mal_id, a.title, coalesce(f.franchise_id, a.mal_id) AS franchise_id,
+    SELECT DISTINCT ON (a.mal_id)
+           a.mal_id, a.title, coalesce(f.franchise_id, a.mal_id) AS franchise_id,
            a.mal_mean, a.mal_popularity,
            prev.title AS after_title, prev_le.score AS after_score, prev.mal_id AS after_id
       FROM relation r            -- (src, dst, 'sequel'): dst is src's sequel; 'side_story' likewise
@@ -143,8 +147,8 @@ NEXT_UP_SQL = """
        -- Mysteries specials are an "ONA"); a sequel only in the asked formats
        AND (format_class(a.media_type) = ANY(%(formats)s) OR r.relation_type = 'side_story')
        AND prereqs_satisfied(%(uid)s, a.mal_id)
-     GROUP BY a.mal_id, a.title, f.franchise_id, a.mal_mean, a.mal_popularity,
-              prev.title, prev_le.score, prev.mal_id
+     ORDER BY a.mal_id, format_class(prev.media_type) = 'main' DESC, prev_le.score DESC,
+              prev.mal_id
 """
 
 
@@ -528,12 +532,19 @@ def build_surface(user_id: int, surface: str = "discover", limit: int = 50,
     return cands
 
 
+SAVE_LOCK = 4_271_102       # pg_advisory_xact_lock(SAVE_LOCK, user): one save per user at a time
+
+
 def save(user_id: int, surface: str, cands: list[Candidate], run_id: int | None,
          kept: list[Candidate] | None = None, nov_scale: float = 1.0,
          build_limit: int = BUILD_LIMIT) -> None:
     pool = kept
     kept = cands if kept is None else kept
     with conn() as c, c.cursor() as cur:
+        # a cron rebuild and the worker's may save the same user's tab at
+        # once: both deleted, then the second insert hit the primary key
+        # (audit 2026-10-23, ING-13); they now take turns
+        cur.execute("SELECT pg_advisory_xact_lock(%s, %s)", (SAVE_LOCK, user_id))
         cur.execute("DELETE FROM recommendation WHERE user_id=%s AND surface=%s",
                     (user_id, surface))
         cur.executemany(
@@ -568,12 +579,17 @@ def save(user_id: int, surface: str, cands: list[Candidate], run_id: int | None,
 
 
 def build_all(user_id: int, limit: int = BUILD_LIMIT) -> dict[str, int]:
+    """Every surface, then which list it was built from (refresh.stale)."""
+    from .db import execute
+    from .refresh import fingerprint
+    built_from = fingerprint(user_id)
     model, run_id = load_or_train(user_id)
     out = {}
     # next_up first (the discovery lists leave its titles to it), then
     # safe_bets before discover (which starts where safe_bets ends)
     for s in ("next_up",) + tuple(x for x in SURFACES if x != "next_up"):
         out[s] = len(build_surface(user_id, s, limit=limit, model=model, run_id=run_id))
+    execute("UPDATE app_user SET built_from = %s WHERE id = %s", (built_from, user_id))
     return out
 
 
@@ -693,6 +709,8 @@ def read_ranked(user_id: int, surface: str, limit: int = 30, offset: int = 0,
     else:
         rows = [r for r in rows if r["list_status"] == "plan_to_watch"]
     rows = [r for r in rows if filters.keep(r)]
+    if not rows:            # the filters (or the user's list) left nothing of the shortlist
+        return []
     spec = SPECS[surface]
     if surface in RERANKED:
         by_id = {r["mal_id"]: r for r in rows}

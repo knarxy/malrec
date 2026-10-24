@@ -2,7 +2,7 @@
 COMPOSE := $(shell docker info >/dev/null 2>&1 && echo "docker compose" || echo "podman-compose")
 PY := .venv/bin/python
 
-.PHONY: db-up db-down db-logs psql install lock typecheck init bootstrap train recommend serve worker publish test lint audit audit-install reset up down app-dev build logs
+.PHONY: db-up db-down db-logs psql install lock typecheck init bootstrap train recommend serve worker publish test lint check test-db test-db-down audit audit-install reset up down app-dev build logs
 
 db-up:        ; $(COMPOSE) up -d db
 db-down:      ; $(COMPOSE) down
@@ -18,6 +18,9 @@ worker:       ; $(PY) -m malrec.cli worker        # background tasks (or TASKS_I
 publish:      ; MSG="$(MSG)" scripts/publish.sh          # master -> public repo (see the script)
 test:         ; .venv/bin/pytest -q
 lint:         ; .venv/bin/ruff check src tests
+# Before a merge: lint, types, then the whole suite on a throwaway database
+# (make test-db), where a test that cannot reach it fails instead of skipping.
+check: lint typecheck ; DATABASE_URL=$(TEST_DB_URL) MALREC_REQUIRE_DB=1 .venv/bin/pytest -q
 typecheck:    ; npx -y pyright@1.1.390 --pythonpath .venv/bin/python     # pyrightconfig.json; must stay at 0
 # code-quality and security audit; findings, not a gate (scripts/audit.sh)
 audit-install: ; $(PY) -m pip install -q --require-hashes -r requirements-audit.lock
@@ -40,6 +43,23 @@ up:
 down:         ; $(COMPOSE) down
 logs:         ; $(COMPOSE) logs -f api app
 build:        ; $(COMPOSE) build
+
+# A throwaway Postgres for the tests: same image as the stack, no volume,
+# its own port, migrated. Tests create and remove their own rows, so they
+# never run against a database that matters (make test-db-down drops it).
+CONTAINER := $(shell docker info >/dev/null 2>&1 && echo docker || echo podman)
+DB_IMAGE := $(shell sed -n 's/^ *image: *\(.*pgvector.*\)$$/\1/p' docker-compose.yml)
+TEST_DB_URL := postgresql://malrec:malrec@127.0.0.1:5434/malrec
+test-db:
+	$(CONTAINER) rm -f malrec-testdb >/dev/null 2>&1 || true
+	$(CONTAINER) run -d --rm --name malrec-testdb -p 127.0.0.1:5434:5432 \
+		-e POSTGRES_USER=malrec -e POSTGRES_PASSWORD=malrec -e POSTGRES_DB=malrec \
+		-e POSTGRES_INITDB_ARGS="--locale=C --encoding=UTF8" \
+		--tmpfs /var/lib/postgresql/data $(DB_IMAGE) >/dev/null
+	@# over TCP: the entrypoint's first, socket-only server is not the real one
+	until $(CONTAINER) exec malrec-testdb pg_isready -q -h 127.0.0.1 -U malrec; do sleep 1; done
+	DATABASE_URL=$(TEST_DB_URL) PYTHONPATH=src $(PY) -m malrec.cli init
+test-db-down: ; $(CONTAINER) rm -f malrec-testdb
 
 # Frontend against a locally-run API (make serve in another shell).
 app-dev:      ; cd app && npm install && npm run dev
@@ -68,7 +88,8 @@ RSYNC_EXCLUDES := --exclude .venv/ --exclude app/node_modules/ --exclude app/dis
 dev-sync:
 	rsync -az --no-owner --no-group $(RSYNC_EXCLUDES) ./ $(DEV):$(DEV_DIR)/
 
-# migrations checked on a backup copy first; unhealthy deploys roll back
+# migrations checked on a backup copy first, a fresh dump before they run;
+# a deploy that does not start or get healthy rolls back (scripts/deploy.sh)
 dev-up: dev-sync
 	ssh $(DEV) '$(DEV_DIR)/scripts/deploy.sh'
 
@@ -76,11 +97,10 @@ dev-up: dev-sync
 dev-lab: dev-sync
 	ssh -t $(DEV) 'cd $(DEV_DIR) && docker compose --profile lab run --rm lab $(CMD)'
 
-# the test suite on the server, with the locked dev tools
+# the test suite on the server, with the locked dev tools, against a copy of
+# last night's backup - never the live database (scripts/test_on_copy.sh)
 dev-test: dev-sync
-	ssh $(DEV) 'cd $(DEV_DIR) && docker compose --profile lab run --rm -T lab sh -c \
-		"pip install -q --no-warn-script-location --require-hashes -r requirements-dev.lock; \
-		 python -m pytest -q -p no:cacheprovider tests"'
+	ssh $(DEV) '$(DEV_DIR)/scripts/test_on_copy.sh'
 
 # The ranking benchmark (experiments/bench.py): frozen data, production code,
 # compared with experiments/bench/baseline.json. Run before merging any

@@ -121,18 +121,49 @@ def execute(sql: str, params: Any = None) -> int:
         return cur.rowcount
 
 
+MIGRATION_LOCK = 4_271_101        # pg_advisory_xact_lock key: one migration at a time
+MIGRATION_LOCK_TIMEOUT = "15s"    # longest a migration waits for a table lock
+
+
 def migrate() -> list[str]:
-    """Apply every .sql file in db/migrations in name order. All statements are
-    idempotent (CREATE ... IF NOT EXISTS / CREATE OR REPLACE), so re-running is
-    safe and doubles as the schema-drift check."""
+    """Apply the .sql files in db/migrations in name order, each once.
+
+    A file is recorded in schema_migrations with a hash of its text and runs
+    again only when that text changes (statements stay idempotent - CREATE
+    ... IF NOT EXISTS / CREATE OR REPLACE - so a re-run is safe). Replaying
+    every file on every start, as before, brought superseded function
+    versions back for a moment and took ACCESS EXCLUSIVE locks that queued
+    every query behind any long reader (audit 2026-10-23, ING-9). Each file
+    runs under an advisory lock, so two starts cannot interleave, and gives
+    up after MIGRATION_LOCK_TIMEOUT waiting for a table lock instead of
+    stalling the database: the start fails and the deploy rolls back."""
+    import hashlib
     applied = []
     files = sorted(MIGRATIONS.glob("*.sql"))
     if not files:
         raise FileNotFoundError(f"no migrations found in {MIGRATIONS}")
     with conn() as c:
+        with c.cursor() as cur:
+            cur.execute("SELECT pg_advisory_xact_lock(%s)", (MIGRATION_LOCK,))
+            cur.execute("CREATE TABLE IF NOT EXISTS schema_migrations ("
+                        " name text PRIMARY KEY, sha256 text NOT NULL,"
+                        " applied_at timestamptz NOT NULL DEFAULT now())")
+        c.commit()
         for f in files:
+            text = f.read_text()
+            digest = hashlib.sha256(text.encode()).hexdigest()
             with c.cursor() as cur:
-                cur.execute(trusted_sql(f.read_text()))
+                cur.execute("SELECT pg_advisory_xact_lock(%s)", (MIGRATION_LOCK,))
+                cur.execute("SELECT sha256 FROM schema_migrations WHERE name = %s", (f.name,))
+                row = cur.fetchone()
+                if row is not None and row["sha256"] == digest:
+                    c.rollback()                    # nothing to do; releases the lock
+                    continue
+                cur.execute(trusted_sql(f"SET LOCAL lock_timeout = '{MIGRATION_LOCK_TIMEOUT}'"))
+                cur.execute(trusted_sql(text))
+                cur.execute("INSERT INTO schema_migrations (name, sha256) VALUES (%s, %s)"
+                            " ON CONFLICT (name) DO UPDATE SET sha256 = EXCLUDED.sha256,"
+                            " applied_at = now()", (f.name, digest))
             c.commit()
             applied.append(f.name)
             log.info("applied migration %s", f.name)

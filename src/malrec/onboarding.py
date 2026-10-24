@@ -12,6 +12,7 @@ import re
 
 from psycopg.types.json import Jsonb
 
+from .clients.mal import MalApiError
 from .db import execute, one, scalar
 from .ingest import jobs as ingest
 from .ingest.ondemand import ensure_for_user
@@ -77,6 +78,19 @@ def _finish(job_id: int, detail: dict) -> None:
     )
 
 
+SETUP_FAILED = "The setup failed on the server. The admin can see what went wrong."
+
+
+def public_error(raw: str | None) -> str | None:
+    """The failure as the user may see it: an OnboardError's own message
+    (written for them), anything else in general terms (audit 2026-10-23,
+    FE-5); the job row keeps the full text for the admin."""
+    if not raw:
+        return None
+    prefix = f"{OnboardError.__name__}: "
+    return raw[len(prefix):] if raw.startswith(prefix) else SETUP_FAILED
+
+
 def _fail(job_id: int, err: str) -> None:
     execute(
         "UPDATE job SET state='failed', error=%s, updated_at=now(), finished_at=now()"
@@ -97,7 +111,13 @@ def run(username: str, token: str | None = None) -> dict:
     detail: dict = {}
     try:
         _step(job_id, 0)
-        listed = ingest.sync_user_list(username, enrich=False, token=token)
+        try:
+            listed = ingest.sync_user_list(username, enrich=False, token=token)
+        except MalApiError as e:
+            if e.status not in (401, 403, 404):
+                raise
+            raise OnboardError(f"{username}'s list could not be read: it is private, or the"
+                               " account was renamed") from e
         detail["list"] = listed
         if listed["entries"] == 0:
             raise OnboardError(

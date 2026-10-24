@@ -30,6 +30,19 @@ def fingerprint(user_id: int) -> str | None:
                   " ORDER BY mal_id)) FROM list_entry WHERE user_id=%s", (user_id,))
 
 
+def stale(user_id: int, before: str | None) -> bool:
+    """Whether the lists need a rebuild after a sync: the list changed in it
+    (`before` is the fingerprint before), or it differs from the one the
+    last finished build used - a sync or rebuild that failed after the list
+    was stored would otherwise never be rebuilt (audit 2026-10-23, ING-4). An
+    account never built is left to its list changing, so one that cannot be
+    built (no scores) does not fail every night."""
+    from .db import scalar
+    now = fingerprint(user_id)
+    built = scalar("SELECT built_from FROM app_user WHERE id=%s", (user_id,))
+    return now != before or (built is not None and now != built)
+
+
 def token_for(user_id: int) -> str | None:
     """A live MAL access token for this user, if they have signed in within the
     session lifetime - so private lists sync too. Refreshed when expired."""
@@ -57,7 +70,9 @@ def sync_all_users() -> list[dict]:
     from .model import invalidate_scorer
     from .surfaces import build_all
     out = []
-    for u in query("SELECT id, mal_username FROM app_user ORDER BY id"):
+    # approved accounts only: nothing is fetched for one that waits, was
+    # rejected or is blocked (auth.callback, the sign-in page say so)
+    for u in query("SELECT id, mal_username FROM app_user WHERE status = 'approved' ORDER BY id"):
         uid, name = u["id"], u["mal_username"]
         before = fingerprint(uid)
         try:
@@ -66,7 +81,7 @@ def sync_all_users() -> list[dict]:
             log.warning("nightly sync of %s failed: %s", name, e)
             out.append({"user": name, "error": f"{type(e).__name__}: {e}"[:200]})
             continue
-        changed = fingerprint(uid) != before
+        changed = stale(uid, before)
         if changed:
             invalidate_scorer(uid)
             try:

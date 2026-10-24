@@ -130,7 +130,8 @@ def sync_upcoming_cmd(rebuild: bool = typer.Option(True, help="rebuild every use
         # this_season too: the AniList refresh moves the scores of exactly
         # the shows it ranks
         failed = {}
-        for r in query("SELECT id, mal_username FROM app_user ORDER BY id"):
+        for r in query("SELECT id, mal_username FROM app_user WHERE status = 'approved'"
+                       " ORDER BY id"):
             try:
                 model, run_id = load_or_train(r["id"])
                 for s in ("coming_soon", "this_season"):
@@ -262,6 +263,24 @@ def population_fit(gate_user: str = typer.Option(
     typer.echo(json.dumps(out, indent=2, default=str))
 
 
+@population_app.command("exclude-app-users")
+def population_exclude_app_users() -> None:
+    """Take every app user's own public list out of the sample (accounts
+    created from now on leave it when they are created). The active model
+    keeps what it was fitted on until the next `population fit`."""
+    from .db import conn
+    from .ingest.store import leave_sample
+    _setup()
+    out = {}
+    with conn() as c, c.cursor() as cur:
+        for r in query("SELECT mal_username FROM app_user ORDER BY id"):
+            n = leave_sample(cur, r["mal_username"])
+            if n:
+                out[r["mal_username"]] = n
+        c.commit()
+    typer.echo(f"{len(out)} accounts' lists left the sample ({sum(out.values())} ratings)")
+
+
 @population_app.command("activate")
 def population_activate(model_id: int = typer.Argument(..., help="stored population model id")) -> None:
     """Serve a stored population model (a refit kept inactive, or a fallback)."""
@@ -309,6 +328,21 @@ def ranker_train(users: int = typer.Option(2400, help="stacker users to learn fr
             typer.echo(f"{tab}: the active population model has a ranker; nothing to do")
             continue
         typer.echo(json.dumps(train_for_active(users, tab), indent=2, default=str))
+
+
+@ranker_app.command("check")
+def ranker_check() -> None:
+    """Exit 1 when a tab's learned order is switched on but the active
+    population model has no ranker for the current settings: the tab serves
+    its hand-built order until one is trained (scripts/deploy.sh runs this)."""
+    from .recsys.ltr import enabled_surfaces, fingerprint, has_ranker
+    _setup(verbose=False)
+    missing = [t for t in enabled_surfaces() if not has_ranker(t)]
+    if missing:
+        typer.echo(f"no ranker for the current settings ({fingerprint()}): {', '.join(missing)}"
+                   " - hand-built order until `malrec ranker train --if-missing`")
+        raise typer.Exit(1)
+    typer.echo("every learned order that is switched on has a current ranker")
 
 
 @app.command()

@@ -85,7 +85,13 @@ def _raw_get(mal: MalClient, path: str, params: dict, tries: int = 6) -> tuple[i
             time.sleep(3 * (attempt + 1))
             continue
         if r.status_code == 200:
-            return 200, r.json()
+            try:
+                return 200, r.json()
+            except ValueError:
+                # a proxy's error page with a 200: as transient as a 5xx (ING-8)
+                log.warning("MAL sent a 200 that is not JSON on %s (try %d)", path, attempt + 1)
+                time.sleep(min(60, 3 * 2 ** attempt))
+                continue
         if r.status_code in (403, 404):
             return r.status_code, {}
         # 307 to error.json, 429 and 5xx are all transient load shedding;
@@ -265,7 +271,11 @@ def cf_lists(mal: MalClient, workers: int = WORKERS) -> dict:
     log.info("lists: %d pending", len(pending))
 
     done = private = 0
-    with ThreadPoolExecutor(max_workers=workers) as pool:
+    # An error or an interrupt drops the lists not yet started: leaving the
+    # pool by `with` waited for the whole queue - hours of requests whose
+    # results were then thrown away (audit 2026-10-23, ING-8)
+    pool = ThreadPoolExecutor(max_workers=workers)
+    try:
         futures = {pool.submit(_fetch_list, mal, u["name"]): u for u in pending}
         for i, fut in enumerate(as_completed(futures)):
             u = futures[fut]
@@ -280,6 +290,8 @@ def cf_lists(mal: MalClient, workers: int = WORKERS) -> dict:
             if (i + 1) % 250 == 0:
                 log.info("lists: %d/%d processed (%d stored, %d private)",
                          i + 1, len(pending), done, private)
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
     return {"stored": done, "private": private}
 
 
@@ -510,8 +522,13 @@ def expand_discover(mal: MalClient, want: int) -> int:
             params = {"board_id": b["board_id"], "limit": 100, "offset": b["offset"]}
             if b.get("subboard_id"):
                 params["subboard_id"] = b["subboard_id"]
-            status, d = _raw_get(mal, "/forum/topics", params)
-            topics = d.get("data", []) if status == 200 else []
+            listing, d = _raw_get(mal, "/forum/topics", params)
+            if listing not in (200, 403, 404):
+                # MAL busy or unreachable: the board keeps its place for the next run
+                log.warning("expand: topic listing returned %s, stopping this run", listing)
+                _save("cf_expand", {"boards": boards})
+                return added
+            topics = d.get("data", []) if listing == 200 else []
             names = {n for t in topics for k in ("created_by", "last_post_created_by")
                      if (n := (t.get(k) or {}).get("name"))}
             added += _add_names(names, excluded, "mal_expand")
@@ -528,7 +545,9 @@ def expand_discover(mal: MalClient, want: int) -> int:
                     if len(posts) < 100:
                         break
             b["offset"] += 100
-            if status != 200 or len(topics) < 100:
+            # the listing alone says whether the board has more pages; a failed
+            # reply fetch used to end the board for good
+            if listing != 200 or len(topics) < 100:
                 b["done"] = True
             _save("cf_expand", {"boards": boards})
         log.info("expand: %d new usernames so far", added)

@@ -145,13 +145,19 @@ class AniListClient:
 
     def media_by_mal_ids(self, mal_ids: Iterable[int]) -> dict[int, dict]:
         """Batch-fetch by MAL id. Returns {mal_id: media}; ids AniList does not
-        know about are simply absent."""
+        know about are simply absent. An id missing from an answer that came
+        with GraphQL errors is not known to be absent: it goes in `unsure`
+        (reset per call), and callers must not stamp it as attempted (audit
+        2026-10-23, ING-10)."""
         ids = list(dict.fromkeys(int(i) for i in mal_ids))
         size = settings().anilist_batch
         out: dict[int, dict] = {}
+        self.unsure: set[int] = set()
         for i in range(0, len(ids), size):
             chunk = ids[i:i + size]
             body = self.gql(PAGE_QUERY, {"ids": chunk, "page": 1, "perPage": size})
+            if body.get("errors"):
+                self.unsure.update(chunk)
             page = ((body.get("data") or {}).get("Page") or {})
             for m in page.get("media") or []:
                 if m.get("idMal"):

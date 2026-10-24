@@ -19,9 +19,11 @@ code, so a difference between two runs can only come from a code change:
             genre balance) - the Safe Bets build minus the database, with
             the long-memory model (safe_bets_memory_mix) and each tab's
             learned order when configured, as served. Pool: what
-            eligible_candidates allows (not listed, main format, not NSFW,
-            >= 2000 scorers, aired), side stories and recaps left out; the
-            prerequisite rule is not modelled.
+            eligible_candidates allows (not on the list at the cutoff, main
+            format, not NSFW, >= 2000 scorers, aired, prerequisites
+            completed), side stories, recaps and Up Next's continuations left
+            out (recsys/pool.py). Entries added after the cutoff stay in it:
+            a title dropped later is a miss the top 10 can show (bad10).
 
 Groups: held-out users given 25 / 150 / 400 of their older list entries
 (newest 20 % of their ratings are the future), and the reference profile
@@ -41,14 +43,18 @@ Metrics, per user (paired between runs):
   disc_* / gems_*
                the same four for the Discover and Hidden Gems lists (Discover
                without the Safe Bets list, as production builds it; Hidden Gems
-               from titles past popularity rank 1200 with >= 300 scorers)
+               from its pool rule, recsys/popularity.py gems_popularity)
 and per group: overlap (mean Jaccard of two users' top 20 - lower is more
 personal) and pop# (median MAL popularity rank of the top 20).
 
-A metric is "better"/"WORSE" when the mean paired change exceeds twice its
-standard error in that direction; otherwise "noise" (or "same" when nothing
-moved). Any WORSE on a sampled group, or a reference profile that loses on
-more splits than it wins, fails the run (exit 1).
+The gate (audit 2026-10-23, P1-9): only the PRIMARY metrics of the sampled
+groups decide, as one family of paired tests with Holm's correction at
+ALPHA - a run that compared forty metrics at two standard errors each failed
+by chance about once in two. "better"/"WORSE" is a change that survives the
+correction; "better?"/"worse?" one beyond two standard errors that does not,
+or any change of a metric that is only described; otherwise "noise" (or
+"same" when nothing moved). A WORSE, or a reference profile whose rho loses
+on more splits than it wins, fails the run (exit 1).
 
   python -m experiments.bench --snapshot        freeze the data (once)
   python -m experiments.bench                   run, compare with baseline.json
@@ -74,6 +80,7 @@ from malrec import rank
 from malrec.config import settings
 from malrec.eval import spearman
 from malrec.recsys import ltr, popularity
+from malrec.recsys import pool as discovery_pool
 from malrec.recsys.cf import CFParams, PopulationModel
 from malrec.recsys.hybrid import fit_stacker, fit_user, split_user
 from malrec.recsys.scorer import HybridScorer
@@ -92,6 +99,10 @@ BUDGETS = (25, 150, 400)
 REF_SPLITS = (25, 30, 35, 40, 45, 50, 55, 60)
 LIMIT = 60
 STATUS = ("watching", "completed", "on_hold", "dropped", "plan_to_watch")
+# what the gate decides on (per sampled group): the shown score's order, and
+# each tab's recall and top-10 hits, plus Safe Bets' misses
+PRIMARY = ("rho", "r50", "hit10", "bad10", "disc_r50", "disc_hit10", "gems_r50", "gems_hit10")
+ALPHA = 0.05
 HIGHER = {"rho": True, "rmse": False, "r50": True, "ips50": True, "hit10": True,
           "bad10": False, "agegap": False, "disc_r50": True, "disc_ips50": True,
           "disc_hit10": True, "disc_bad10": False, "disc_agegap": False, "gems_r50": True,
@@ -305,14 +316,18 @@ PROP: np.ndarray = np.zeros(0)
 
 
 def order_ranker(entries, store, pop, stacker, B, pool, surface: str = "safe_bets",
-                 taken_pool: list[int] | None = None) -> tuple[ltr.OrderRanker, str]:
+                 taken_pool: list[int] | None = None, relations=None,
+                 taken_ranker: ltr.OrderRanker | None = None) -> tuple[ltr.OrderRanker, str]:
     """A tab's learned order for the benchmark's population model, on its
     stacker users - as `malrec ranker train` does for the live one. Cached
-    with the population model's hash, recsys/ltr.py's, rank.py's, the tab
-    and the ranking settings' (ltr.fingerprint); the newest six are kept."""
+    with the population model's hash, recsys/ltr.py's, rank.py's,
+    recsys/pool.py's, the tab and the ranking settings' (ltr.fingerprint);
+    the newest six are kept."""
     pool_key = (f"{CFG.gems_popularity}:{len(pool)}".encode()   # the shipped rule keeps old keys
                 if surface == "hidden_gems" and CFG.gems_popularity != "rank" else b"")
     h = hashlib.sha256((SRC / "recsys/ltr.py").read_bytes() + (SRC / "rank.py").read_bytes()
+                       + (SRC / "recsys/pool.py").read_bytes()
+                       + str(CFG.ranker_train_as_served).encode()
                        + ltr.fingerprint().encode() + surface.encode()
                        + ",".join(ltr.FEATURES).encode() + pool_key).hexdigest()[:8]
     path = DATA / f"ltr-{code_hash()}-{h}.pkl"
@@ -320,7 +335,7 @@ def order_ranker(entries, store, pop, stacker, B, pool, surface: str = "safe_bet
         path.touch()
         return ltr.OrderRanker.loads(path.read_bytes()), "cached"
     r = ltr.train(pop, stacker, store, pool, {u: entries[u] for u in B}, surface=surface,
-                  taken_pool=taken_pool)
+                  taken_pool=taken_pool, relations=relations, taken_ranker=taken_ranker)
     path.write_bytes(r.dumps())
     for old in sorted(DATA.glob("ltr-*.pkl"), key=lambda f: f.stat().st_mtime)[:-6]:
         old.unlink()
@@ -406,7 +421,8 @@ def ips50(top: list[int], liked: set[int]) -> float:
 def age_metrics(top: list[int], ages, prefix: str = "") -> dict:
     """How far the top 20's release-age mix is from the user's own (rank.age_mix
     of their history; total variation distance, 0 = the same mix, 1 = no
-    overlap) and the share of it at most a year old. Recall rewards recent
+    overlap), the share of it at most a year old and five or more years old
+    (old20, the back catalogue). Recall rewards recent
     titles by construction - what people rate next is mostly what just
     aired - so this is what catches a list drifting to the new season."""
     if ages is None or len(top) < 20:
@@ -417,7 +433,8 @@ def age_metrics(top: list[int], ages, prefix: str = "") -> dict:
         return {}
     q = np.bincount(b, minlength=len(ages.share)) / len(b)
     return {f"{prefix}agegap": float(0.5 * np.abs(q - ages.share).sum()),
-            f"{prefix}new20": float(np.mean([x == 0 for x in b]))}
+            f"{prefix}new20": float(np.mean([x == 0 for x in b])),
+            f"{prefix}old20": float(np.mean([x >= 2 for x in b]))}
 
 
 def repeats(top: list[int], store, prefix: str = "") -> dict:
@@ -515,6 +532,10 @@ def run(max_eval: int) -> dict:
     (pop, stacker), how = population(entries, store, A, B)
     pool_all = eligible(store, derived)
     gems_all = eligible(store, derived, SPECS["hidden_gems"].min_scorers)
+    # like the series and franchises, from the live relation table
+    rel = discovery_pool.relations(
+        {m for m, r in store.rows.items() if r.get("format_class") == "main"},
+        set(pool_all) | set(gems_all))
     global PROP
     _, ma, _ = entries.columns(A)
     PROP = (np.bincount(ma.astype(np.int64)) + 1.0) / (len(A) + 2.0)
@@ -523,8 +544,13 @@ def run(max_eval: int) -> dict:
              "hidden_gems": ([m for m in gems_all if gem(store.rows[m])], None)}
     for tab, setting in ltr.SURFACES.items():
         if getattr(CFG, setting) > 0:
+            # as served (config.ranker_train_as_served): on the production pool,
+            # Discover's queries without Safe Bets' learned list
+            served = CFG.ranker_train_as_served
             RANKERS[tab], rhow = order_ranker(entries, store, pop, stacker, B, pools[tab][0],
-                                              tab, pools[tab][1])
+                                              tab, pools[tab][1], rel if served else None,
+                                              RANKERS.get("safe_bets")
+                                              if tab == "discover" and served else None)
             how += f", {tab} order {rhow} (weight {getattr(CFG, setting):g})"
     print(f"snapshot {static['created'][:10]}: {len(users)} users ({len(A)} fit / {len(B)} stack /"
           f" {len(C)} eval), pool {len(pool_all)}, population model {how} [{time.time() - t0:.0f}s]",
@@ -552,13 +578,15 @@ def run(max_eval: int) -> dict:
         if CFG.safe_bets_memory_mix > 0:       # as surfaces.long_memory_model
             sc2, im2, li2 = ltr.history_examples(hist, cutoff, float("inf"))
             long_model = make_scorer(pop, stacker, store, sc2, im2, li2, cal)
-        rows = [row_of(store, m) for m in pool_all if m not in listed]
+        # what production keeps out for the whole list before the cutoff
+        skip = listed | rel.exclusions(full_hist)
+        rows = [row_of(store, m) for m in pool_all if m not in skip]
         _, sb = ranked(scorer, rows, li, fam, store, history=hist, long_model=long_model,
                        cutoff=cutoff)
         top = [c.mal_id for c in sb]
         _, disc = ranked(scorer, rows, li, fam, store, "discover", taken=set(top), history=hist,
                          cutoff=cutoff)
-        gems_rows = [row_of(store, m) for m in gems_all if m not in listed]
+        gems_rows = [row_of(store, m) for m in gems_all if m not in skip]
         _, gems = ranked(scorer, gems_rows, li, fam, store, "hidden_gems", history=hist,
                          cutoff=cutoff, taken=set(top[:CFG.gems_skip_safe_bets]))
         # measured against the whole history before the cutoff, not the
@@ -608,7 +636,8 @@ def run(max_eval: int) -> dict:
             if len(history) < budget:
                 continue
             seen = [history[i] for i in urng.permutation(len(history))[:budget]]
-            listed = {e["mal_id"] for e in es} - test_ids
+            # the list at the cutoff: what was added later is still a candidate
+            listed = {e["mal_id"] for e in history}
             liked = {m for m, s, _ in test_s if s >= max(mean, 7.0)}
             disliked = {m for m, s, _ in test_s if s < mean - 1}
             disliked |= {e["mal_id"] for e in es if e["status"] == "dropped" and e["at"] >= cutoff}
@@ -639,7 +668,7 @@ def run(max_eval: int) -> dict:
         cutoff = test[0]["at"]
         test_ids = {r["mal_id"] for r in test}
         hist = [r for r in le if r["mal_id"] not in test_ids and r["at"] < cutoff]
-        m, top = evaluate(hist, cutoff, {r["mal_id"] for r in le} - test_ids,
+        m, top = evaluate(hist, cutoff, {r["mal_id"] for r in hist},
                           [r["mal_id"] for r in test],
                           np.array([float(r["score"]) for r in test]),
                           {r["mal_id"] for r in test if r["score"] >= max(mean, 7.0)},
@@ -657,8 +686,41 @@ def run(max_eval: int) -> dict:
 
 # ---------------------------------------------------------------- compare --
 
+def holm(pvalues: dict, alpha: float = ALPHA) -> set:
+    """The keys whose null hypothesis Holm's step-down procedure rejects at
+    family-wise error `alpha`."""
+    out = set()
+    for i, (k, pv) in enumerate(sorted(pvalues.items(), key=lambda kv: kv[1])):
+        if pv > alpha / (len(pvalues) - i):
+            break
+        out.add(k)
+    return out
+
+
+def paired(gn: dict, go: dict, m: str) -> tuple[np.ndarray, float]:
+    """The per-user changes of metric `m` between two runs' group, and the
+    base run's mean on the same users."""
+    common = [k for k, v in gn["users"].items() if m in v and m in go["users"].get(k, {})]
+    d = np.array([gn["users"][k][m] - go["users"][k][m] for k in common])
+    base = float(np.mean([go["users"][k][m] for k in common])) if common else float("nan")
+    return d, base
+
+
 def compare(new: dict, old: dict | None) -> bool:
+    import math
     ok = True
+    # the gate's family: every primary metric of every sampled group
+    pvalues = {}
+    for g, gn in new["groups"].items():
+        go = (old or {}).get("groups", {}).get(g)
+        if go is None or g == "reference":
+            continue
+        for m in PRIMARY:
+            d, _ = paired(gn, go, m)
+            if len(d) > 1 and d.std(ddof=1) > 0:
+                z = abs(float(d.mean())) / float(d.std(ddof=1) / np.sqrt(len(d)))
+                pvalues[(g, m)] = math.erfc(z / math.sqrt(2))
+    decided = holm(pvalues)
     print()
     for g, gn in new["groups"].items():
         go = (old or {}).get("groups", {}).get(g)
@@ -673,9 +735,7 @@ def compare(new: dict, old: dict | None) -> bool:
             if go is None:
                 print(line)
                 continue
-            common = [k for k, v in gn["users"].items() if m in v and m in go["users"].get(k, {})]
-            d = np.array([gn["users"][k][m] - go["users"][k][m] for k in common])
-            base = np.mean([go["users"][k][m] for k in common]) if common else float("nan")
+            d, base = paired(gn, go, m)
             se = float(d.std(ddof=1) / np.sqrt(len(d))) if len(d) > 1 else float("inf")
             mean_d = float(d.mean()) if len(d) else 0.0
             good = mean_d > 0 if higher else mean_d < 0
@@ -688,16 +748,23 @@ def compare(new: dict, old: dict | None) -> bool:
                 if m == "rho" and lose > win:
                     verdict += "  FAIL"
                     ok = False
-            elif abs(mean_d) > 2 * se:
+            elif (g, m) in decided:
                 verdict = "better" if good else "WORSE"
                 ok = ok and good
+            elif abs(mean_d) > 2 * se:
+                verdict = "better?" if good else "worse?"
             else:
                 verdict = "noise"
+            if m not in PRIMARY and g != "reference":
+                verdict += "  (described)"
             print(f"{line}{base:9.4f}{mean_d:+9.4f}{2 * se:8.4f}  {verdict}")
         for k, label in (("overlap", "overlap"), ("pop", "pop#")):
             if gn.get(k) is not None:
                 b = f"{go[k]:9.3f}" if go and go.get(k) is not None else ""
                 print(f"   {label:<8}{gn[k]:9.3f}{b}")
+    if pvalues:
+        print(f"\ngate: {len(pvalues)} primary comparisons, Holm at {ALPHA}: "
+              f"{len(decided)} decided")
     if old and old.get("pop") != new.get("pop"):
         print("\nnote: the population code changed since the baseline (model refitted)")
     if old and old.get("snapshot") != new.get("snapshot"):
@@ -715,11 +782,16 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--snapshot", action="store_true", help="freeze the data (once)")
     ap.add_argument("--save-baseline", action="store_true")
-    ap.add_argument("--max-eval", type=int, default=100)
+    ap.add_argument("--max-eval", type=int, default=300)
+    ap.add_argument("--compare", nargs=2, metavar=("NEW", "BASE"),
+                    help="compare two saved runs (latest.json, baseline.json) without running")
     a = ap.parse_args()
     if a.snapshot:
         snapshot()
         return 0
+    if a.compare:
+        return 0 if compare(json.loads(Path(a.compare[0]).read_text()),
+                            json.loads(Path(a.compare[1]).read_text())) else 1
     if not (DATA / "entries.npz").exists():
         print("no snapshot yet: python -m experiments.bench --snapshot")
         return 2

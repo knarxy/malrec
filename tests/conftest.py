@@ -1,4 +1,18 @@
+import os
+
 import pytest
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """With MALREC_REQUIRE_DB set (make check), a test skipped because the
+    database is unreachable fails: a suite that skips half its tests must
+    not pass for a green one."""
+    outcome = yield
+    rep = outcome.get_result()
+    if (os.environ.get("MALREC_REQUIRE_DB") and rep.skipped
+            and "database not reachable" in str(rep.longrepr)):
+        rep.outcome = "failed"
 
 
 @pytest.fixture(autouse=True)

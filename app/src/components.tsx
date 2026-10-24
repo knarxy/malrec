@@ -421,7 +421,7 @@ function WhyPanel({ user, mal_id, surface, rank }: {
         </p>
       </div>
 
-      {r && adjustments.length > 0 && (
+      {onList && r && adjustments.length > 0 && (
         <>
           <h3 className="section-h">
             {t('why2.place', { n: rank, s: t(`tab.${surface}`) })}

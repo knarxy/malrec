@@ -17,7 +17,7 @@ import logging
 import math
 from collections import Counter
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -95,6 +95,16 @@ def age_mix(entries: list[dict], year_of: Callable[[int], int | None],
     if counts.sum() < AGE_MIN_ENTRIES:
         return None
     return AgeMix(counts / counts.sum(), ref_year, year_of)
+
+
+def age_aim(mix: AgeMix, fresh_weight: float) -> AgeMix:
+    """The mix a list is held to: the user's, with the share of titles at
+    most a year old scaled by `fresh_weight` (config.age_fresh_weight)."""
+    if fresh_weight == 1.0:
+        return mix
+    share = mix.share.copy()
+    share[0] *= fresh_weight
+    return replace(mix, share=share / share.sum()) if share.sum() > 0 else mix
 
 
 # --------------------------------------------------------------- retrieval --
@@ -404,7 +414,8 @@ def rerank(cands: list[Candidate], novelty_weight: float | None = None,
     if profile and lam > 0 and picked:
         for c in picked:                # the plain key, without the overlap penalty
             c.final = c.predicted + c.relevance + c.bonus + nw * c.novelty
-        return calibrated(picked, profile, lam, limit, ages, settings().age_calibration)
+        aim = age_aim(ages, settings().age_fresh_weight) if ages is not None else None
+        return calibrated(picked, profile, lam, limit, aim, settings().age_calibration)
     picked.sort(key=lambda c: -c.final)
     return picked[:limit]
 

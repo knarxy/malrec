@@ -361,6 +361,15 @@ const de: Record<string, string> = {
   'sync.title': 'Liste neu von MyAnimeList laden und Empfehlungen aktualisieren',
   'sync.wait': 'Wieder möglich in {s} s',
   'sync.failed': 'Synchronisierung fehlgeschlagen: {e}',
+  'sync.err.mal_refused': 'MyAnimeList hat die Liste nicht herausgegeben. Bitte neu anmelden.',
+  'sync.err.mal_unavailable': 'MyAnimeList ist gerade nicht erreichbar. Später erneut versuchen.',
+  'sync.err.list_shrank': 'MyAnimeList hat eine viel kürzere Liste geschickt als bisher; nichts wurde geändert.',
+  'sync.err.server': 'ein Fehler auf dem Server (der Admin sieht die Einzelheiten).',
+  'The setup failed on the server. The admin can see what went wrong.':
+    'Die Einrichtung ist auf dem Server fehlgeschlagen. Der Admin sieht, was passiert ist.',
+  'offline.title': 'Server nicht erreichbar',
+  'offline.text': 'malrec antwortet gerade nicht – vielleicht wird es neu gestartet. Deine Anmeldung bleibt bestehen.',
+  'offline.retry': 'Erneut versuchen',
   'sync.timeout': 'Die Synchronisierung dauert zu lange. Bitte später erneut versuchen.',
   'Updating your recommendations…': 'Empfehlungen werden aktualisiert …',
   // surfaces
@@ -863,6 +872,13 @@ const en: Record<string, string> = {
   'sync.title': 'Re-read your list from MyAnimeList and rebuild your recommendations',
   'sync.wait': 'Available again in {s}s',
   'sync.failed': 'Sync failed: {e}',
+  'sync.err.mal_refused': 'MyAnimeList would not hand out the list. Please sign in again.',
+  'sync.err.mal_unavailable': 'MyAnimeList cannot be reached right now. Try again later.',
+  'sync.err.list_shrank': 'MyAnimeList sent a much shorter list than before; nothing was changed.',
+  'sync.err.server': 'an error on the server (the admin can see the details).',
+  'offline.title': 'Server not reachable',
+  'offline.text': 'malrec is not answering right now - it may be restarting. You are still signed in.',
+  'offline.retry': 'Try again',
   'sync.timeout': 'The sync is taking unusually long. Try again later.',
   'surface.discover': 'discover',
   'surface.hidden_gems': 'hidden gems',
@@ -1089,7 +1105,8 @@ export function makeT(lang: Lang): T {
   const dict = lang === 'de' ? de : en
   return (key, vars) => {
     let s = dict[key] ?? en[key] ?? key
-    if (vars) for (const [k, v] of Object.entries(vars)) s = s.replaceAll(`{${k}}`, String(v))
+    // a function, so a value's "$&" or "$1" is inserted as typed (FE-12)
+    if (vars) for (const [k, v] of Object.entries(vars)) s = s.replaceAll(`{${k}}`, () => String(v))
     return s
   }
 }

@@ -76,14 +76,22 @@ def upsert_anime(rows: Sequence[dict]) -> int:
 
 
 def upsert_anilist(rows: Sequence[dict]) -> int:
-    """AniList columns only; requires the anime row to already exist."""
+    """AniList columns only; requires the anime row to already exist.
+
+    An AniList id moves to the MAL id it now names: when AniList corrects an
+    idMal, the row that held it gives it up first - anilist_id is unique, and
+    the clash used to fail the whole batch and, as it comes up in the same
+    place every run, stop the monthly refresh there (audit 2026-10-23,
+    ING-10). al_fetched_at is left to the caller, set once the batch's tags
+    and staff are stored too (mark_anilist_attempted), so an interrupted
+    batch is fetched again rather than kept without them."""
     if not rows:
         return 0
     sql = """
         UPDATE anime SET anilist_id=%s, al_average_score=%s, al_mean_score=%s,
                al_popularity=%s, al_favourites=%s, al_genres=%s,
                al_status_dist=%s, al_score_dist=%s, al_drop_rate=%s,
-               raw_al=%s, al_fetched_at=now()
+               raw_al=%s
          WHERE mal_id=%s
     """
     data = [(r["anilist_id"], r["al_average_score"], r["al_mean_score"], r["al_popularity"],
@@ -94,6 +102,10 @@ def upsert_anilist(rows: Sequence[dict]) -> int:
              Jsonb(r["raw"]) if r.get("raw") is not None else None,
              r["mal_id"]) for r in rows]
     with conn() as c, c.cursor() as cur:
+        cur.execute("UPDATE anime a SET anilist_id = NULL"
+                    "  FROM unnest(%s::int[], %s::int[]) AS n(al, mal)"
+                    " WHERE a.anilist_id = n.al AND a.mal_id <> n.mal",
+                    ([d[0] for d in data], [d[-1] for d in data]))
         cur.executemany(trusted_sql(sql), data)
         c.commit()
     return len(data)
@@ -164,8 +176,28 @@ def upsert_relations(rels: Iterable[tuple[int, int, str, str]]) -> int:
     return len(both)
 
 
+# A stored list of at least SHRINK_GUARD_MIN entries is not replaced by one
+# with fewer than SHRINK_GUARD_SHARE of them: that is a broken or truncated
+# answer far more often than a user clearing their list (audit 2026-10-23,
+# ING-2), and the replacement deletes everything it does not contain.
+SHRINK_GUARD_MIN = 20
+SHRINK_GUARD_SHARE = 0.1
+
+
+class ListShrank(RuntimeError):
+    """MAL's list for a user is far shorter than the stored one (upsert_list)."""
+
+
 def upsert_list(user_id: int, entries: Sequence[dict]) -> int:
+    """Replace the user's stored list with `entries` (MAL's list nodes)."""
+    from ..db import scalar
+    have = scalar("SELECT count(*) FROM list_entry WHERE user_id = %s", (user_id,)) or 0
+    if have >= SHRINK_GUARD_MIN and len(entries) < SHRINK_GUARD_SHARE * have:
+        raise ListShrank(f"MAL returned {len(entries)} entries for a stored list of {have};"
+                         " not applied")
     if not entries:
+        with conn() as c:
+            c.execute("DELETE FROM list_entry WHERE user_id = %s", (user_id,))
         return 0
     sql = """
         INSERT INTO list_entry (user_id, mal_id, status, score, episodes_watched,
@@ -194,6 +226,8 @@ def upsert_list(user_id: int, entries: Sequence[dict]) -> int:
 
 
 def get_or_create_user(username: str) -> int:
+    """The account for this MAL name, created on first use. Its public list
+    leaves the population sample in the same transaction (leave_sample)."""
     with conn() as c, c.cursor() as cur:
         cur.execute(
             "INSERT INTO app_user (mal_username) VALUES (%s) "
@@ -202,8 +236,30 @@ def get_or_create_user(username: str) -> int:
             (username,),
         )
         uid = returned(cur)["id"]
+        leave_sample(cur, username)
         c.commit()
     return uid
+
+
+def leave_sample(cur, username: str) -> int:
+    """Take this MAL name's list out of the population sample (cf_user /
+    cf_rating), if it was fetched for it; returns the ratings removed.
+
+    An app user's own ratings must not train the model they are evaluated
+    on - holdouts, display calibration, the blend weight and the prospective
+    check all assume it has never seen them. The bulk fetch keeps app users
+    out only when it reaches their name, so someone who signed up after their
+    list was sampled stayed in it (audit 2026-10-23, P1-3: most accounts, their
+    holdout rank correlation +0.017 too good). As for a deleted account, only
+    the hash of the name stays, marked excluded. Idempotent."""
+    from .fullfetch import name_hash
+    h = name_hash(username)
+    cur.execute("DELETE FROM cf_rating WHERE user_id IN"
+                " (SELECT id FROM cf_user WHERE name_hash = %s)", (h,))
+    removed = cur.rowcount
+    cur.execute("UPDATE cf_user SET state = 'excluded', name = NULL, n_entries = NULL,"
+                " n_scored = NULL WHERE name_hash = %s AND state <> 'excluded'", (h,))
+    return removed
 
 
 def mark_graph_fetched(mal_ids: Sequence[int]) -> int:
@@ -236,12 +292,18 @@ def mark_synced(user_id: int) -> None:
         c.commit()
 
 
-def store_tag_vectors(dim: int = 256) -> int:
+def store_tag_vectors(dim: int = 256, ids: Sequence[int] | None = None) -> int:
     """Project each anime's weighted tags into a fixed-width vector via hashing,
     then L2-normalise so `<=>` is a true cosine distance. Hashing avoids having
-    to pin a tag vocabulary in the schema as AniList adds tags over time."""
+    to pin a tag vocabulary in the schema as AniList adds tags over time.
+    With `ids`, only those anime: a few new titles used to rewrite the whole
+    catalogue's vectors (audit 2026-10-23, ING-12)."""
     with conn() as c, c.cursor() as cur:
-        cur.execute("SELECT mal_id, tag, rank FROM anime_tag ORDER BY mal_id")
+        if ids is None:
+            cur.execute("SELECT mal_id, tag, rank FROM anime_tag ORDER BY mal_id")
+        else:
+            cur.execute("SELECT mal_id, tag, rank FROM anime_tag WHERE mal_id = ANY(%s)"
+                        " ORDER BY mal_id", (list(ids),))
         rows = cur.fetchall()
         by_anime: dict[int, list[tuple[str, int]]] = {}
         for r in rows:

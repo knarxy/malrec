@@ -61,3 +61,18 @@ def test_mal_side_actions_are_outcomes(uid):
         assert (rows[m]["positive"], rows[m]["negative"]) == (pos, neg), m
     assert (rows[1006]["positive"], rows[1006]["negative"]) == (False, True)
     assert 1007 not in rows
+
+
+def test_the_real_use_check_pairs_each_user_with_themselves():
+    """P1-7: a change of who was active across the cut must not read as a
+    change of the list."""
+    from malrec.learn import paired_change
+
+    def r(u, after, pos, complete=True):
+        return {"user_id": u, "after": after, "positive": pos, "complete": complete}
+    rows = ([r(1, False, 1), r(1, False, 0), r(1, True, 1), r(1, True, 1)]      # +0.5
+            + [r(2, False, 0), r(2, True, 0), r(2, True, 1, complete=False)]    # 0
+            + [r(3, True, 0)] * 10)                                             # after only
+    out = paired_change(rows, "positive")
+    assert out is not None and out["users"] == 2 and out["change"] == 0.25
+    assert paired_change([r(1, True, 1)], "positive") is None

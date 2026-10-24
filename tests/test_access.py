@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import datetime as dt
 import secrets
+from typing import ClassVar
 
 import pytest
 from fastapi.testclient import TestClient
@@ -40,12 +41,105 @@ def accounts(monkeypatch):
                 " refresh_token, expires_at) VALUES (%s,%s,1,'a','r',%s)",
                 (auth._hash(tok), uid, dt.datetime.now(dt.UTC) + dt.timedelta(days=1)))
         c = TestClient(app)
-        c.cookies.set(auth.COOKIE, tok)
+        c.cookies.set(auth.cookie_name(), tok)
         ids[role], clients[role] = uid, c
     yield ids, clients
     for n in NAMES.values():
         execute("DELETE FROM app_user WHERE mal_username=%s", (n,))
     execute("DELETE FROM admin_log WHERE admin=%s", (NAMES["admin"],))
+
+
+def _callback(client: TestClient | None = None, nonce: str | None = None):
+    """MAL's redirect back, for a sign-in this client started: its state in
+    the database, the matching nonce in its cookie."""
+    client = client or TestClient(app)
+    st, own = secrets.token_urlsafe(16), secrets.token_urlsafe(16)
+    execute("INSERT INTO oauth_state (state, code_verifier, return_to, browser)"
+            " VALUES (%s,'v','/',%s)", (st, auth._hash(own)))
+    client.cookies.set(auth.cookie_name(auth.OAUTH_COOKIE), own if nonce is None else nonce)
+    return client.get(f"/auth/callback?code=c&state={st}", follow_redirects=False)
+
+
+class _Me:
+    """MalClient's @me as `who` says."""
+    who: ClassVar[dict] = {}
+
+    def __init__(self, *a, **k): pass
+    def __enter__(self): return self
+    def __exit__(self, *e): pass
+    def me(self): return dict(self.who)
+
+
+@pytest.fixture()
+def mal_signin(accounts, monkeypatch):
+    monkeypatch.setattr(auth, "_token_request",
+                        lambda data: {"access_token": "a", "refresh_token": "r", "expires_in": 3600})
+    monkeypatch.setattr(auth, "MalClient", _Me)
+    monkeypatch.setattr(auth.tasks, "enqueue", lambda kind, uid: None)
+    yield _Me.who
+    execute("DELETE FROM app_user WHERE mal_username LIKE 'malrec_t_%%'")
+
+
+def test_a_callback_only_signs_in_the_browser_that_started_it(mal_signin):
+    """Login CSRF (audit SEC-3): a state alone, sent to someone else's
+    browser, must not sign them into the account it was issued for."""
+    mal_signin.update(name=NAMES["new"], id=4242)
+    for nonce in ("", "someone-elses"):
+        r = _callback(nonce=nonce)
+        assert "auth_error=expired" in r.headers["location"]
+        assert auth.cookie_name() not in r.cookies
+    r = _callback()
+    assert r.status_code == 302 and auth.cookie_name() in r.cookies
+
+
+def test_the_account_follows_the_mal_user_not_the_name(mal_signin):
+    """SEC-2: renamed on MAL, the same account; a freed name taken by someone
+    else, a new account - and never the admin's."""
+    mal_signin.update(name=NAMES["new"], id=4242)
+    _callback()
+    uid = scalar("SELECT id FROM app_user WHERE mal_user_id = 4242")
+    mal_signin.update(name="malrec_t_renamed")
+    _callback()
+    assert one("SELECT id, mal_username FROM app_user WHERE mal_user_id = 4242") == {
+        "id": uid, "mal_username": "malrec_t_renamed"}
+    # someone else now holds the old account's current name
+    mal_signin.update(id=4343)
+    _callback()
+    assert one("SELECT mal_username FROM app_user WHERE id = %s", (uid,))["mal_username"] \
+        == "malrec_t_renamed#4242"
+    assert scalar("SELECT id FROM app_user WHERE mal_user_id = 4343") not in (None, uid)
+    # the admin's name in another MAL user's hands: refused
+    execute("UPDATE app_user SET mal_user_id = 4444 WHERE mal_username = %s", (NAMES["admin"],))
+    mal_signin.update(name=NAMES["admin"], id=4545)
+    assert "auth_error=blocked" in _callback().headers["location"]
+    assert scalar("SELECT mal_user_id FROM app_user WHERE mal_username = %s",
+                  (NAMES["admin"],)) == 4444
+
+
+def test_a_session_from_before_the_host_prefix_is_moved_over(accounts, monkeypatch):
+    """Over https the session cookie is __Host-malrec_session; an older
+    session's plain cookie still works once and is replaced, a newer one's is
+    refused (only another site of the domain could have set it)."""
+    ids, _ = accounts
+    monkeypatch.setattr(settings(), "session_cookie_secure", True)
+    old, new = secrets.token_urlsafe(16), secrets.token_urlsafe(16)
+    for tok, made in ((old, auth.PLAIN_COOKIE_BEFORE - dt.timedelta(days=1)),
+                      (new, auth.PLAIN_COOKIE_BEFORE + dt.timedelta(minutes=1))):
+        execute("INSERT INTO mal_session (token_hash, app_user_id, mal_user_id, access_token,"
+                " refresh_token, expires_at, created_at) VALUES (%s,%s,1,'a','r',%s,%s)",
+                (auth._hash(tok), ids["user"], dt.datetime.now(dt.UTC) + dt.timedelta(days=1),
+                 made))
+    monkeypatch.setattr(auth, "PLAIN_COOKIE_BEFORE", dt.datetime.now(dt.UTC) + dt.timedelta(days=30))
+    c = TestClient(app, base_url="https://testserver")
+    c.cookies.set(auth.COOKIE, old)
+    r = c.get("/auth/me")
+    assert r.json()["signed_in"] is True
+    assert "__Host-malrec_session=" in r.headers.get("set-cookie", "")
+    monkeypatch.setattr(auth, "PLAIN_COOKIE_BEFORE",
+                        dt.datetime.now(dt.UTC) - dt.timedelta(days=2))
+    c = TestClient(app, base_url="https://testserver")
+    c.cookies.set(auth.COOKIE, new)
+    assert c.get("/auth/me").json() == {"signed_in": False}
 
 
 def test_signed_out_sees_nothing(accounts):
@@ -117,19 +211,16 @@ def test_sign_in_creates_a_pending_account_and_fetches_nothing(accounts, monkeyp
     monkeypatch.setattr(auth.tasks, "enqueue", lambda kind, uid: started.append((kind, uid)))
 
     def callback():
-        st = secrets.token_urlsafe(16)
-        execute("INSERT INTO oauth_state (state, code_verifier, return_to) VALUES (%s,'v','/')",
-                (st,))
-        return TestClient(app).get(f"/auth/callback?code=c&state={st}", follow_redirects=False)
+        return _callback()
 
     r = callback()
-    assert r.status_code == 302 and auth.COOKIE in r.cookies
+    assert r.status_code == 302 and auth.cookie_name() in r.cookies
     assert one("SELECT status FROM app_user WHERE mal_username=%s", (NAMES["new"],))["status"] \
         == "pending"
     assert started == []
     execute("UPDATE app_user SET status='blocked' WHERE mal_username=%s", (NAMES["new"],))
     r = callback()
-    assert "auth_error=blocked" in r.headers["location"] and auth.COOKIE not in r.cookies
+    assert "auth_error=blocked" in r.headers["location"] and auth.cookie_name() not in r.cookies
 
     # the configured admin approves themselves on a fresh install, but a
     # blocked account stays blocked even if listed
@@ -145,6 +236,7 @@ def test_sign_in_creates_a_pending_account_and_fetches_nothing(accounts, monkeyp
 
 def test_login_is_rate_limited(accounts, monkeypatch):
     monkeypatch.setattr(auth, "_preflight", lambda url: None)
+    monkeypatch.setattr(settings(), "mal_client_id", settings().mal_client_id or "test-client")
     c = TestClient(app)
     codes = [c.get("/auth/login", follow_redirects=False).status_code for _ in range(21)]
     assert codes[:20] == [302] * 20 and codes[20] == 429
@@ -174,7 +266,7 @@ def test_made_up_cookies_do_not_reset_the_rate_limit(accounts, monkeypatch):
     codes = []
     for _ in range(21):
         c = TestClient(app)
-        c.cookies.set(auth.COOKIE, secrets.token_urlsafe(16))
+        c.cookies.set(auth.cookie_name(), secrets.token_urlsafe(16))
         codes.append(c.get("/auth/login", follow_redirects=False).status_code)
     assert codes[20] == 429
 
@@ -189,15 +281,34 @@ def test_callback_passes_on_only_known_error_codes():
         assert r.headers["location"].endswith(f"/?auth_error={shown}")
 
 
-def test_rate_limit_table_is_swept(monkeypatch):
-    monkeypatch.setattr(access, "_SWEEP_AT", 5)
-    access._hits.clear()
-    for i in range(8):
-        access._hits[("b", f"10.0.0.{i}")] = access.deque()       # quiet clients
+def _request(client: str, xff: str | None = None):
     from starlette.requests import Request
+    headers = [(b"x-forwarded-for", xff.encode())] if xff else []
+    return Request({"type": "http", "headers": headers, "client": (client, 1)})
+
+
+def test_rate_limit_table_keeps_the_recently_seen_within_its_size(monkeypatch):
+    monkeypatch.setattr(access, "_MAX_KEYS", 3)
+    access._hits.clear()
     dep = access.rate_limit("b", 10, 60).dependency
-    dep(Request({"type": "http", "headers": [], "client": ("10.9.9.9", 1)}))
-    assert set(access._hits) == {("b", "10.9.9.9")}
+    for ip in ("10.0.0.1", "10.0.0.2", "10.0.0.3", "10.0.0.1", "10.0.0.4"):
+        dep(_request(ip))
+    # the least recently seen (.2) made room; .1 came back and stays
+    assert list(access._hits) == [("b", "10.0.0.3"), ("b", "10.0.0.1"), ("b", "10.0.0.4")]
+    assert len(access._hits[("b", "10.0.0.1")]) == 2
+
+
+def test_client_key_is_the_address_the_app_nginx_trusts():
+    # the app's nginx sends exactly one address; the API on its own port none
+    assert access.client_key(_request("172.26.0.5", "203.0.113.9")) == "203.0.113.9"
+    assert access.client_key(_request("127.0.0.1")) == "127.0.0.1"
+    # one IPv6 subscriber is one client, however many addresses they rotate
+    assert (access.client_key(_request("::1", "2001:db8:1:2:aaaa::1"))
+            == access.client_key(_request("::1", "2001:db8:1:2:bbbb::9"))
+            == "2001:db8:1:2::/64")
+    assert access.client_key(_request("::1", "::ffff:198.51.100.7")) == "198.51.100.7"
+    # whatever is not an address does not make a key of its own
+    assert access.client_key(_request("::1", "x" * 8000)) == "?"
 
 
 def test_only_the_admin_sees_who_is_waiting(accounts):
@@ -249,7 +360,7 @@ def test_nobody_can_delete_someone_elses_account(accounts):
     assert TestClient(app).request("DELETE", "/me", headers=CSRF,
                                    json={"confirm": other}).status_code == 401
     fake = TestClient(app)
-    fake.cookies.set(auth.COOKIE, secrets.token_urlsafe(16))
+    fake.cookies.set(auth.cookie_name(), secrets.token_urlsafe(16))
     assert fake.request("DELETE", "/me", headers=CSRF, json={"confirm": other}).status_code == 401
     # signed in as someone else: naming the other account is refused
     r = cl["user"].request("DELETE", "/me", headers=CSRF, json={"confirm": other})
@@ -265,13 +376,13 @@ def test_auto_approval_fills_the_free_slots_then_stops(accounts, monkeypatch):
     queued, mails = [], []
     monkeypatch.setattr(auth, "_token_request",
                         lambda data: {"access_token": "a", "refresh_token": "r", "expires_in": 3600})
-    who = {"name": names[0]}
+    who = {"name": names[0], "id": 77}
 
     class Me:
         def __init__(self, *a, **k): pass
         def __enter__(self): return self
         def __exit__(self, *e): pass
-        def me(self): return {"name": who["name"], "id": 77}
+        def me(self): return {"name": who["name"], "id": who["id"]}
     monkeypatch.setattr(auth, "MalClient", Me)
     monkeypatch.setattr(auth.tasks, "enqueue", lambda kind, uid: queued.append((kind, uid)))
     from malrec import notify
@@ -281,10 +392,7 @@ def test_auto_approval_fills_the_free_slots_then_stops(accounts, monkeypatch):
     monkeypatch.setattr(settings(), "auto_approve_limit", approved + 1)      # one free slot
 
     def callback():
-        st = secrets.token_urlsafe(16)
-        execute("INSERT INTO oauth_state (state, code_verifier, return_to) VALUES (%s,'v','/')",
-                (st,))
-        return TestClient(app).get(f"/auth/callback?code=c&state={st}", follow_redirects=False)
+        return _callback()
     try:
         callback()
         import time
@@ -292,7 +400,7 @@ def test_auto_approval_fills_the_free_slots_then_stops(accounts, monkeypatch):
         assert one("SELECT status FROM app_user WHERE mal_username=%s", (names[0],))["status"] \
             == "approved"
         assert [k for k, _ in queued] == ["onboard"] and mails == [("auto", 0)]
-        who["name"] = names[1]                           # the slots are gone now
+        who.update(name=names[1], id=78)                 # the slots are gone now
         callback()
         time.sleep(0.3)
         assert one("SELECT status FROM app_user WHERE mal_username=%s", (names[1],))["status"] \

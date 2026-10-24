@@ -246,9 +246,12 @@ def fit_user(pop: PopulationModel, stacker: Ridge, store: ItemStore,
              size_n0: float = 80.0, size_scale: float = 15.0,
              implicit_in_foldin: bool = False,
              listed: dict[int, float] | None = None,
-             size_n: int | None = None, lam_max: float = 1.0) -> UserModel:
+             size_n: int | None = None, lam_max: float = 1.0, lam_min: float = 0.0,
+             holdout: str = "newest") -> UserModel:
     """Fit one user's model. `alpha=None` picks ridge penalties by weighted CV.
-    `lam_max` caps the personal model's share in the "sized" and "blend" modes."""
+    `lam_max` caps the personal model's share in the "sized" and "blend" modes;
+    in "blend" `lam_min` floors the chosen share and `holdout` says which
+    ratings it is chosen on (_choose_lambda)."""
     if mode not in MODES:
         raise ValueError(f"mode must be one of {MODES}")
     implicit = implicit or []
@@ -281,8 +284,9 @@ def fit_user(pop: PopulationModel, stacker: Ridge, store: ItemStore,
         model.inner = fit_user(pop, stacker, store, scored, implicit, mode=blend_of,
                                alpha=alpha, implicit_in_foldin=implicit_in_foldin,
                                listed=listed)
-        model.lam = min(_choose_lambda(pop, stacker, store, scored, implicit, blend_of, alpha,
-                                       blend_k, blend_min_n, implicit_in_foldin), lam_max)
+        chosen = _choose_lambda(pop, stacker, store, scored, implicit, blend_of, alpha,
+                                blend_k, blend_min_n, implicit_in_foldin, holdout)
+        model.lam = min(max(chosen, lam_min), lam_max)
         return model
 
     from ..features import extra_columns
@@ -331,22 +335,30 @@ def settings_level_trend() -> str:
 
 
 def _choose_lambda(pop, stacker, store, scored, implicit, blend_of, alpha,
-                   k, min_n, implicit_in_foldin) -> float:
+                   k, min_n, implicit_in_foldin, holdout: str = "newest") -> float:
     """How much to trust the personal-side model over the population stack.
 
     With enough history this is decided on the user's own newest ratings: fit
     on the older ones, see which mix predicts the newer ones best. That is
     what guarantees a long-standing account is not dragged toward the
     population average when its own model is better. Thin lists use n/(n+k).
+    holdout="random" tests on a stable random fifth instead: the newest can
+    be a different kind of list (one season's shows) from the rest.
     """
     n = len(scored)
     if n < min_n:
         return n / (n + k)
-    ordered = sorted(scored, key=lambda e: (e.at is None, e.at))
     cut = int(n * 0.8)
-    tr, va = ordered[:cut], ordered[cut:]
-    first_val = va[0].at
-    imp = [e for e in implicit if e.at is None or first_val is None or e.at < first_val]
+    if holdout == "random":
+        ordered = sorted(scored, key=lambda e: unit_hash("blend", e.mal_id))
+        tr, va = ordered[:cut], ordered[cut:]
+        held = {e.mal_id for e in va}
+        imp = [e for e in implicit if e.mal_id not in held]
+    else:
+        ordered = sorted(scored, key=lambda e: (e.at is None, e.at))
+        tr, va = ordered[:cut], ordered[cut:]
+        first_val = va[0].at
+        imp = [e for e in implicit if e.at is None or first_val is None or e.at < first_val]
     inner = fit_user(pop, stacker, store, tr, imp, mode=blend_of, alpha=alpha,
                      implicit_in_foldin=implicit_in_foldin)
     stk = fit_user(pop, stacker, store, tr, imp, mode="stack",

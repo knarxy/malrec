@@ -72,12 +72,12 @@ def ensure_anilist(mal_ids: list[int], max_age: dt.timedelta | None = None,
             # An id AniList has answered for before is missing from this
             # response by accident (a GraphQL error), not gone: leave it due
             # rather than stamp it fresh with the old data.
-            absent = [c for c in chunk if c not in got]
+            absent = [c for c in chunk if c not in got and c not in al.unsure]
             known = {r["mal_id"] for r in query(
                 "SELECT mal_id FROM anime WHERE mal_id = ANY(%s) AND anilist_id IS NOT NULL",
                 (absent,))} if absent else set()
             store.mark_anilist_attempted([c for c in absent if c not in known])
-    store.store_tag_vectors()
+    store.store_tag_vectors(ids=todo)
     # New relation edges only affect franchise collapse once components are
     # recomputed, and enriching a shortlist is exactly when new ones arrive.
     if fetched:

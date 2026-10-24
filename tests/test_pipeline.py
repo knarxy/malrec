@@ -92,6 +92,139 @@ def test_prerequisites_walk_the_whole_chain(db):
     assert row["s1"] in got, "the recursive CTE stopped at depth 1"
 
 
+@pytest.fixture()
+def tiny_franchise(db):
+    """Season 1, its OVA, a film and season 2 (scratch ids); MAL and AniList
+    disagree about season 1 and the OVA - each is the other's prequel. A
+    scratch user finished season 1 (9) and the film (7)."""
+    from malrec.db import execute
+    from malrec.ingest.store import get_or_create_user, upsert_relations
+    s1, ova, film, s2 = 999_999_101, 999_999_102, 999_999_103, 999_999_104
+    ids = [s1, ova, film, s2]
+    upsert_anime([{"mal_id": m, "title": f"t{m}", "media_type": mt, "status": "finished_airing"}
+                  for m, mt in zip(ids, ("tv", "ova", "movie", "tv"))])
+    upsert_relations([(s2, s1, "prequel", "mal"), (s2, film, "prequel", "mal"),
+                      (s1, ova, "prequel", "anilist"), (ova, s1, "prequel", "mal")])
+    uid = get_or_create_user("malrec_franchise_test")
+    execute("INSERT INTO list_entry (user_id, mal_id, status, score) VALUES"
+            " (%s, %s, 'completed', 9), (%s, %s, 'completed', 7)", (uid, s1, uid, film))
+    yield uid, s1, ova, film, s2
+    execute("DELETE FROM app_user WHERE id = %s", (uid,))
+    execute("DELETE FROM relation WHERE src = ANY(%s) OR dst = ANY(%s)", (ids, ids))
+    execute("DELETE FROM anime WHERE mal_id = ANY(%s)", (ids,))
+
+
+def test_a_prequel_cycle_does_not_make_a_title_its_own_prerequisite(tiny_franchise):
+    """It used to hide the title for good (audit ING-16)."""
+    uid, s1, ova, _, _ = tiny_franchise
+    assert {r["mal_id"] for r in query("SELECT mal_id FROM prerequisites(%s)", (s1,))} == {ova}
+    # the OVA is a side format: nobody has to have seen it first
+    assert scalar("SELECT prereqs_satisfied(%s, %s)", (uid, s1)) is True
+
+
+def test_up_next_anchors_a_sequel_on_one_prequel(tiny_franchise):
+    """Two finished prequels gave two rows and an arbitrary anchor (audit P1-13)."""
+    from malrec.surfaces import NEXT_UP_SQL
+    uid, s1, _, _, s2 = tiny_franchise
+    rows = query(NEXT_UP_SQL, {"uid": uid, "min_score": 6, "formats": ["main"],
+                               "rels": ["sequel"]})
+    assert [(r["mal_id"], r["after_id"], r["after_score"]) for r in rows] == [(s2, s1, 9)]
+
+
+def test_a_new_account_takes_its_list_out_of_the_sample(db):
+    """Its own ratings must not train the model it is judged on (audit P1-3)."""
+    from malrec.db import execute
+    from malrec.ingest.fullfetch import name_hash
+    from malrec.ingest.store import get_or_create_user
+    name = "malrec_sampled_test"
+    execute("DELETE FROM cf_user WHERE name_hash = %s", (name_hash(name),))
+    cid = scalar("INSERT INTO cf_user (name_hash, state, n_entries, n_scored)"
+                 " VALUES (%s, 'done', 2, 2) RETURNING id", (name_hash(name),))
+    execute("INSERT INTO cf_rating (user_id, mal_id, score, status) VALUES"
+            " (%s, 1, 8, 'completed'), (%s, 5, 7, 'completed')", (cid, cid))
+    try:
+        uid = get_or_create_user(name.upper())          # MAL names ignore case
+        assert scalar("SELECT count(*) FROM cf_rating WHERE user_id = %s", (cid,)) == 0
+        row = one("SELECT state, n_scored FROM cf_user WHERE id = %s", (cid,))
+        assert (row["state"], row["n_scored"]) == ("excluded", None)
+        assert get_or_create_user(name.upper()) == uid  # idempotent
+    finally:
+        execute("DELETE FROM app_user WHERE mal_username = %s", (name.upper(),))
+        execute("DELETE FROM cf_user WHERE id = %s", (cid,))
+
+
+def test_a_list_that_nearly_vanishes_is_not_applied(db):
+    """A truncated or broken answer must not wipe the stored list (ING-2);
+    a short list may still be emptied for real."""
+    from malrec.db import execute
+    from malrec.ingest.store import ListShrank, get_or_create_user, upsert_list
+    uid = get_or_create_user("malrec_shrink_test")
+
+    def entries(n):
+        return [{"node": {"id": 999_999_200 + i}, "list_status": {"status": "completed",
+                                                                 "score": 7}} for i in range(n)]
+    try:
+        assert upsert_list(uid, entries(30)) == 30
+        with pytest.raises(ListShrank):
+            upsert_list(uid, entries(2))
+        assert scalar("SELECT count(*) FROM list_entry WHERE user_id = %s", (uid,)) == 30
+        assert upsert_list(uid, entries(5)) == 5            # a sixth: applied
+        assert upsert_list(uid, []) == 0                    # below the guard: emptied
+        assert scalar("SELECT count(*) FROM list_entry WHERE user_id = %s", (uid,)) == 0
+    finally:
+        execute("DELETE FROM app_user WHERE id = %s", (uid,))
+
+
+def test_an_anilist_id_moves_to_the_mal_id_it_now_names(db):
+    """ING-10: a corrected idMal used to fail the whole batch on the unique
+    anilist_id."""
+    from malrec.db import execute
+    from malrec.ingest.store import upsert_anilist
+    a, b = 999_999_301, 999_999_302
+    upsert_anime([{"mal_id": m, "title": f"t{m}"} for m in (a, b)])
+    row = {"anilist_id": 999_999_399, "al_average_score": 70, "al_mean_score": 71,
+           "al_popularity": 5, "al_favourites": 1, "al_genres": []}
+    try:
+        upsert_anilist([{**row, "mal_id": a}])
+        upsert_anilist([{**row, "mal_id": b}])
+        got = {r["mal_id"]: r["anilist_id"] for r in query(
+            "SELECT mal_id, anilist_id FROM anime WHERE mal_id = ANY(%s)", ([a, b],))}
+        assert got == {a: None, b: 999_999_399}
+    finally:
+        execute("DELETE FROM anime WHERE mal_id = ANY(%s)", ([a, b],))
+
+
+def test_every_change_on_a_list_is_recorded_with_its_time(db):
+    """P1-7: the real-use check reads outcomes from here, not from the list
+    as it is today; deleting the account deletes the record too."""
+    import datetime as dt
+
+    from malrec.account import erase
+    from malrec.db import execute
+    from malrec.ingest.store import get_or_create_user
+    from malrec.learn import list_outcomes
+    name = "malrec_events_test"
+    uid = get_or_create_user(name)
+    try:
+        execute("INSERT INTO list_entry (user_id, mal_id, status, score)"
+                " VALUES (%s, 1, 'plan_to_watch', 0)", (uid,))
+        execute("UPDATE list_entry SET status = 'plan_to_watch' WHERE user_id = %s", (uid,))
+        execute("UPDATE list_entry SET status = 'completed', score = 9 WHERE user_id = %s", (uid,))
+        execute("DELETE FROM list_entry WHERE user_id = %s", (uid,))
+        got = [(r["status"], r["score"]) for r in query(
+            "SELECT status, score FROM list_event WHERE user_id = %s ORDER BY id", (uid,))]
+        assert got == [("plan_to_watch", 0), ("completed", 9), (None, 0)]   # no-op not recorded
+        execute("INSERT INTO list_entry (user_id, mal_id, status, score)"
+                " VALUES (%s, 2, 'completed', 8)", (uid,))
+        assert isinstance(list_outcomes(dt.datetime.now(dt.UTC)), dict)  # the query runs
+        erase(uid, name)
+        assert scalar("SELECT count(*) FROM list_event WHERE user_id = %s", (uid,)) == 0
+    finally:
+        from malrec.ingest.fullfetch import name_hash
+        execute("DELETE FROM app_user WHERE id = %s", (uid,))
+        execute("DELETE FROM cf_user WHERE name_hash = %s", (name_hash(name),))
+
+
 def test_eligible_candidates_excludes_listed_and_suppressed(db, user_id):
     listed = {r["mal_id"] for r in query(
         "SELECT mal_id FROM list_entry WHERE user_id=%s", (user_id,))}

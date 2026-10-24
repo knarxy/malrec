@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
-  api, ApiError, type AuthState, type Filters, type OnboardStatus,
+  api, ApiError, SIGNED_OUT, type AuthState, type Filters, type OnboardStatus,
   type Prefs, type Profile, type Recommendation, type Surface,
 } from './api'
 import {
@@ -258,7 +258,7 @@ function Onboarding({
         <div className="panel">
           <h1>{t('That did not work')}</h1>
           <p className="sub">{t('Setting up {user} failed.', { user })}</p>
-          <div className="error">{status.error ?? t('Unknown error')}</div>
+          <div className="error">{status.error ? t(status.error) : t('Unknown error')}</div>
           <p className="sub" style={{ marginTop: 16, fontSize: 13 }}>{t('onboard.fail_hint')}</p>
           <button style={{ marginTop: 8 }} onClick={onReset}>{t('Sign out')}</button>
         </div>
@@ -337,6 +337,8 @@ function Main({ lang, setLangState }: { lang: Lang; setLangState: (l: Lang) => v
   const [together, setTogether] = useState(linkToken !== null)
   const [error, setError] = useState<string | null>(null)
   const [auth, setAuth] = useState<AuthState | null>(null)
+  const [offline, setOffline] = useState(false)       // the first /auth/me failed
+  const [authTry, setAuthTry] = useState(0)
   const [authError] = useState<string | null>(takeAuthError)
   const [prefs, setPrefs] = useState<Prefs>(storedPrefs)
   const [reloadKey, setReloadKey] = useState(0)
@@ -402,8 +404,10 @@ function Main({ lang, setLangState }: { lang: Lang; setLangState: (l: Lang) => v
           } catch { /* prefs are a convenience */ }
         }
       })
-      .catch(() => setAuth({ signed_in: false }))
-  }, [setLangState])
+      // only an answer says "signed out": a 502 during a deploy or no network
+      // used to show the sign-in page to someone who was signed in (FE-4)
+      .catch(() => setOffline(true))
+  }, [setLangState, authTry])
 
   const savePrefs = useCallback((patch: Prefs) => {
     setPrefs((cur) => { const m = { ...cur, ...patch }; storePrefs(m); return m })
@@ -441,7 +445,8 @@ function Main({ lang, setLangState }: { lang: Lang; setLangState: (l: Lang) => v
         } else if (st.refresh === 'failed' || st.refresh === 'timeout') {
           window.clearInterval(pollRef.current)
           setRefresh(st.refresh === 'failed'
-            ? t('sync.failed', { e: st.refresh_error ?? '' }) : t('sync.timeout'))
+            ? t('sync.failed', { e: t(`sync.err.${st.refresh_error ?? 'server'}`) })
+            : t('sync.timeout'))
           window.setTimeout(() => setRefresh(null), 8000)
         }
       } catch { /* keep polling */ }
@@ -465,13 +470,25 @@ function Main({ lang, setLangState }: { lang: Lang; setLangState: (l: Lang) => v
     watchRefresh(t('Updating your recommendations…'))
   }, [watchRefresh, t])
 
+  const signedOut = useCallback(() => {
+    window.clearInterval(pollRef.current)
+    setRefresh(null)
+    setAuth({ signed_in: false }); setUser(null); setReady(false); setStatus(null)
+    setItems(null); setProfile(null)
+  }, [])
+
   const logout = useCallback(async () => {
     try { await api.logout() } finally {
       window.history.replaceState(null, '', window.location.pathname)
-      setAuth({ signed_in: false }); setUser(null); setReady(false); setStatus(null)
-      setItems(null); setProfile(null)
+      signedOut()
     }
-  }, [])
+  }, [signedOut])
+
+  // any 401 from the API: the session is gone (api.ts SIGNED_OUT)
+  useEffect(() => {
+    window.addEventListener(SIGNED_OUT, signedOut)
+    return () => window.removeEventListener(SIGNED_OUT, signedOut)
+  }, [signedOut])
 
   // Poll while a profile is being built. The first recommendations appear
   // as soon as they exist; polling continues until the full build is done,
@@ -518,6 +535,19 @@ function Main({ lang, setLangState }: { lang: Lang; setLangState: (l: Lang) => v
     return () => { alive = false }
   }, [user, ready, active, filterKey, reloadKey, t])
 
+  if (auth === null && offline) {
+    return (
+      <div className="center">
+        <div className="panel">
+          <h1>{t('offline.title')}</h1>
+          <p className="sub">{t('offline.text')}</p>
+          <button onClick={() => { setOffline(false); setAuthTry((n) => n + 1) }}>
+            {t('offline.retry')}
+          </button>
+        </div>
+      </div>
+    )
+  }
   if (auth === null) {
     return (
       <div className="center">

@@ -53,9 +53,16 @@ Once signed in, on your own profile:
 Design choices:
 
 - tokens stay server-side; the browser holds only an opaque HttpOnly cookie,
-  and the database stores only its hash;
-- `state` is single-use and expires after ten minutes (CSRF on the callback);
-  state-changing calls also require an `X-Requested-With` header;
+  and the database stores only its hash; over https the cookie is
+  `__Host-malrec_session`, which no other subdomain can set or shadow;
+- `state` is single-use, expires after ten minutes and belongs to the browser
+  that started the sign-in (the hash of a nonce in a short-lived cookie): a
+  state alone, sent to someone else, used to sign them into the account it
+  was issued for (login CSRF, audit 2026-10-23); state-changing calls also
+  require an `X-Requested-With` header;
+- an account is a MAL *user*, found by MAL's numeric id at every sign-in: a
+  rename on MAL renames the account, and a name that changes hands gives the
+  newcomer a new account (an admin name in another user's hands is refused);
 - un-queueing removes an entry **only while it is still Plan to watch** — a
   show you have since started or finished is never deleted from your list;
 - signing in also reads **private** lists, which username lookup cannot.
@@ -117,7 +124,12 @@ retired. About 850 requests, a quarter of an hour at 1 req/s.
 Sampled users are stored pseudonymously: the username is kept only until the
 list is fetched, then only its hash remains. App users are excluded from the
 sample, so their own ratings can never leak into the data used to evaluate
-them.
+them - also when the account is created after its list was sampled: the
+list then leaves the sample with the account's creation
+(`store.leave_sample`). Until 2026-10-24 only lists fetched after sign-up
+were kept out, and most accounts' own lists were in the sample their model,
+holdouts and calibration were fitted on (audit 2026-10-23: holdout rank
+correlation +.017 too good on average, up to +.061).
 
 **Series and franchises** (`recsys/series.py`, rebuilt by
 `malrec sync franchises` after every catalogue sync). A *series* is one
@@ -147,8 +159,9 @@ title; Fate, Gintama, Attack on Titan and Sword Art Online stay whole.
 - *EASE* — a closed-form item-item model over the same lists (Steck 2019),
   the second half of the relevance signal.
 
-Fitted on every sampled list with 15+ ratings (model 15, 2026-10-10: 18,699
-lists, 7.8M ratings, 19,946 titles).
+Fitted on every sampled list with 5+ ratings (model 16, 2026-10-24: 18,690
+lists - the sample without the app users' own -, 7.8M ratings, 19,946
+titles).
 
 A new user is placed by **fold-in** from their own ratings — no retraining —
 so this works from the first handful of ratings. A small *stacker*, fitted on
@@ -160,7 +173,8 @@ this project started with — MAL categorical features, AniList weighted tags,
 consensus scores — with recency-weighted samples (taste drifts) and implicit
 pseudo-ratings from dropped / on-hold / finished-unrated entries.
 
-**The blend** (mode `sized`, the default): `lam(n) * personal + (1 - lam(n)) *
+**The blend** (mode `sized`, as deployed - `MODEL_MODE` in compose; the code's
+own default is `personal`): `lam(n) * personal + (1 - lam(n)) *
 population`, with `lam` logistic in the number of scored ratings (50/50 at
 150, `blend_size_n0`) and never above 0.5 (`blend_lam_max`). The population
 layer is the better predictor for almost everyone; the personal model is a
@@ -188,9 +202,9 @@ the same list of 1970s boxing and ballet dramas (38% of top-20s shared between
 unrelated users). The **relevance bonus** — co-occurrence with the user's own
 list — asks whether a title is in their world at all. It applies in proportion
 to the population share: strongly for thin lists, and through a separate,
-bounded dial (`relevance_weight_personal`, default 0) for long histories, so
-an established profile's lists do not drift toward the mainstream unless its
-owner opts in.
+bounded dial (`relevance_weight_personal`) for long histories. Its code
+default 0 keeps an established profile's lists from drifting toward the
+mainstream; the compose file - every deployment, not only dev - sets 0.5.
 
 The **novelty bonus** is the product's "balanced" setting. It is damped only
 when a model's predictions are nearly flat, so it can break ties but never
@@ -207,7 +221,10 @@ Then:
   never appears unless you completed the seasons before it. Only main formats
   (tv, movie, ona) are required: MAL lists side OVAs as prequels (One Punch
   Man's is "Road to Hero"), which hid 192 main series — One Punch Man, GTO,
-  Assassination Classroom, Nichijou among them — until 2026-09-26
+  Assassination Classroom, Nichijou among them — until 2026-09-26. The walk
+  stops at the title it starts from: contradicting MAL and AniList edges made
+  61 titles their own prerequisite - Danganronpa and Ao Haru Ride among them,
+  never recommended - until 2026-10-24
 - **franchise collapse** — one entry per franchise (Data, Series and franchises)
 - **genre balance** — calibrated re-ranking toward the user's genre mix
   (below, Rating round, ranges, genre balance)
@@ -235,17 +252,41 @@ how they rate those against their mean, and how often they drop them. No
 hard length rule: the ranker learns per user whether long series land.
 Without a ranker for the active model, Safe Bets uses the hand key alone.
 
+The ranker is trained with the identity calibration, and since 2026-10-24
+served on that scale too: a user's own calibration line no longer moves its
+inputs. Training it *as served* (`ranker_train_as_served`) - each query on
+the pool production shows (`recsys/pool.py`: no sequels with unmet
+prerequisites, no Up Next continuations, which are a fifth and an eighth of
+the titles people went on to like) and the list at the cutoff, Discover's
+against Safe Bets' learned list - was measured on the production-pool
+benchmark (2026-10-24, `results_ranker_pool_2026-10-24.txt`): Safe Bets
+and Hidden Gems within noise, Discover recall@50 -.005 / -.007 at 150 /
+400 entries. No gain anywhere, so it is off, and the rankers keep learning
+from the whole eligible pool.
+
+What the learned orders win **on the pool production shows** (audit
+2026-10-23, `results_audit_2026-10-23.txt`; the benchmark had counted those
+easy sequels as hits until then): Safe Bets' top-10 hit rate +.056 / +.053
+/ +.068 at 25 / 150 / 400 entries over the hand key, recall@50 about half
+of what the old benchmark said (+.022 to +.031); Hidden Gems' gain holds;
+Discover's is smaller (within noise below 400 entries), and the reference
+profile's Discover recall is lower with its learned order (-.043, 6 of 8
+splits).
+
 **Discover and Hidden Gems** have learned orders of their own
 (`discover_ranker_weight`, `gems_ranker_weight` 0.5; since 2026-10-11), from
 the same pipeline and inputs, each trained on its tab's own pool: Discover's
-without the titles Safe Bets' top 60 shows for that list, Hidden Gems' its
-pool (below). Each is stored per population model and tab
+without the titles Safe Bets' top 60 shows for that list (ordered with Safe
+Bets' learned order, as served), Hidden Gems' its pool (below). Each is
+stored per population model and tab
 (`malrec ranker train --surface discover`, ~35 minutes each; without
 `--surface` every enabled tab is trained) and falls back to the hand key
 when missing. A ranker records the settings that shape the key it learned
 from (`ltr.FINGERPRINT_SETTINGS`: the model, blend and risk dials); after a
 change to any of them it no longer counts as current, and the tab falls back
-to the hand key until `malrec ranker train` has run again.
+to the hand key until `malrec ranker train` has run again. The fallback is
+logged, and `malrec ranker check` (run by every deploy, which mails the
+admin) names a tab that is switched on without a current ranker.
 
 Every card explains itself: "because you rated X" comes from the kNN term
 (people who rated X above their usual rated this above theirs too), the rest
@@ -263,7 +304,7 @@ out from the other candidates.
 | `side_stories` | OVAs, specials and shorts from franchises you know |
 | `this_season` | currently airing, ranked by fit |
 | `plan_to_watch` | your own Plan to Watch, ordered by predicted fit alone |
-| `coming_soon` | announced seasons and films of franchises you rated at least your own mean (min. 7), soonest first; no score shown, since an unaired title has nothing to predict from |
+| `coming_soon` | announced seasons and films of franchises you rated at least your own mean, rounded (min. 7), soonest first; no score shown, since an unaired title has nothing to predict from |
 
 Formats are split into `main` (tv, movie, ona) and `side` (ova, special,
 tv_special) by `format_class()` in the schema. MAL labels a four-minute joke
@@ -346,8 +387,13 @@ scores given afterwards - the one test the model cannot have seen.
 ranking change at list level: of a tab's top 10 shown before and after the
 date, how many were added, started or rated at least the user's mean
 (positive) or dismissed, dropped or rated more than a point under it
-(negative) within N days of first being shown - overall and as the mean
-over users. Item
+(negative) within N days of first being shown - overall, as the mean
+over users, and paired: after minus before for each user with titles on both
+sides of the date, so a change of who was active is not read as a change of
+the list. What happened is read from `list_event`, which records every
+change of status or score with its time (since 2026-10-24); titles shown
+before that are judged by the list as it is now, timed by its last edit,
+which a later change overwrites. Item
 consensus features (MAL/AniList means) are today's values, not as of each
 cutoff; MAL publishes no history, and it flatters every consensus-based
 method equally.
@@ -521,7 +567,10 @@ off.
 size on held-out population users (`global_model.meta.size_calibration`):
 at 5 ratings slope 0.69 (RMSE 1.64 -> 1.56), at 10 slope 0.77 (1.55 -> 1.50),
 converging to identity by 150. It is used whenever an account has no usable
-holdout of its own.
+holdout of its own. Since 2026-10-24 each size's line is fitted on the blend
+an account of that size is served; before, it was fitted with the old
+handover at 80 and no cap (lines at 60 and 400 ratings moved, the lists did
+not measurably).
 
 **Top-of-list calibration** (`exp_topcal.py`). The worry was that list tops
 overstate (the winner's curse). Measured on held-out users, the opposite: the
@@ -761,9 +810,9 @@ environment variable. The values that matter:
 
 | setting | default | note |
 |---|---|---|
-| `model_mode` | `sized` in deployment | `personal` = the original per-user model only |
+| `model_mode` | `personal` (`sized` in compose) | `personal` = the original per-user model only |
 | `relevance_weight` | 0.5 | relevance pull for thin lists (population share) |
-| `relevance_weight_personal` | 0.0 (0.5 on dev) | the dial for long histories; >0 trades list character for recall |
+| `relevance_weight_personal` | 0.0 (0.5 in compose) | the dial for long histories; >0 trades list character for recall |
 | `content_staff` / `content_audience` / `content_staff_aff` / `stack_extras` | off | tested, not shipped (see Evaluation) |
 | `novelty_weight` | 1.0 | "balanced"; damped only for near-flat models (`novelty_ref_sd` 0.30) |
 | `recency_half_life_years` | 0.5 | tuned; see `malrec tune-recency` |
@@ -771,7 +820,7 @@ environment variable. The values that matter:
 | `mal_rps` | 1.0 | MAL publishes no limit; see Data |
 | `anilist_rpm` | 30 | starting guess; the live header wins |
 | `mal_redirect_uri` | `http://localhost:3000/api/auth/callback` | must match MAL's app config |
-| `min_scoring_users` | 2000 | floor for the default candidate pool |
+| `min_scoring_users` | 2000 | floor of the candidate pool where a surface sets none of its own; Safe Bets and Discover fix 2,000 in `surfaces.SPECS` |
 | `blend_size_n0` / `blend_lam_max` | 150 / 0.5 | where the personal model takes over, and how far (`exp_handover.py`) |
 | `ranking_share_n0` | 80 | list size the ranking dials follow; 0 = the blend weight |
 | `disagreement_penalty` / `unfamiliar_genre_penalty` / `long_series_penalty` | 0.25 / 0.3 / 0.3 | risk term in the order key (`exp_toplist.py`) |
@@ -781,6 +830,8 @@ environment variable. The values that matter:
 | `order_ranker_weight` | 0.0 (0.5 in compose) | Safe Bets' learned order; needs `malrec ranker train` |
 | `discover_ranker_weight` / `gems_ranker_weight` | 0.0 (0.5 in compose) | Discover's and Hidden Gems' own learned orders |
 | `age_calibration` / `calibration_block` | 0 / 0 (1 / 20 in compose) | the three tabs held to the user's age mix, ordered within blocks of 20 (2026-10-13) |
+| `age_fresh_weight` | 0.5 | the aim's weight on titles at most a year old: a seasonal watcher's tabs lean toward the back catalogue, This Season lists the new (`results_fresh_2026-10-22.txt`); acts only with `age_calibration` > 0 |
+| `chosen_blend_min` / `blend_lam_min` / `blend_holdout` | 300 / 0.3 / newest | from this many ratings the personal share is chosen on the user's newest fifth, never below 0.3 (`results_blendchoice_2026-10-22.txt`; on model 16, without the app users' own lists, three long lists still choose 0-0.2) |
 | `safe_bets_key_risk` | 1.0 | share of the risk term in Safe Bets' hand key (0 = left to the ranker; measured worse) |
 | `order_ranker_ips` | 0.0 | popularity correction of the rankers' training labels (tested, not shipped) |
 | `series_weight_power` | 0.0 | each rating counts 1 / n^power as taste evidence, n = the user's entries in its series; 0.5 and 1 cost Discover and Hidden Gems accuracy on long lists (`results_series_2026-10-15.txt`) |
@@ -822,15 +873,30 @@ took ~5 s once a quadratic lookup in the risk term was fixed (10.7 s before).
 
 `docker-compose.yml` defines everything; the `app` binds to `BIND_ADDR`
 (loopback by default), the API and the database to loopback only - the API
-is reached through the app's nginx, and a client that could talk to it
-directly would choose its own `X-Forwarded-For` and with it its own
-rate-limit budget. Services are CPU/memory capped so they never compete with
-anything else on the host; the API and worker run without any Linux
-capabilities and none of the services can gain privileges. The database
-image is pinned by digest. The `lab` container mounts the working tree, but
-`scripts/` and the compose and Docker files read-only, since the host runs
-those as root. Put a TLS-terminating reverse proxy in front of the `app`
-container for public use.
+is reached through the app's nginx, which decides the client address the
+rate limits key on: the one a reverse proxy on a Docker network
+(172.16.0.0/12) names, or the peer's own for a direct connection. It sends
+the API that single address, replacing whatever X-Forwarded-For a client
+sent (audit 2026-10-23: a VPN peer on the published port could pick a fresh
+budget per request). IPv6 clients count by their /64. Services are
+CPU/memory capped so they never compete with anything else on the host; the
+API, worker and lab run without any Linux capabilities and none of the
+services can gain privileges. The database image is pinned by digest. The
+`lab` container mounts the working tree read-only except `experiments/`,
+since the host runs scripts, compose files and `.env` from it as root. Put a
+TLS-terminating reverse proxy in front of the `app` container for public use.
+
+Tests: `make test-db` starts a throwaway Postgres (the stack's image, no
+volume, port 5434) and migrates it; `make check` lints and runs the suite
+against it, where a test that cannot reach the database fails instead of
+skipping. `make dev-test` runs the suite on the server against a copy of
+last night's backup, never the live database.
+
+Migrations (`db/migrations`, applied by `malrec init` at every API start)
+run once each: `schema_migrations` records each file with a hash of its
+text, and a file runs again only when it changes - under an advisory lock
+and a 15-second lock timeout, so a start that would wait on a busy table
+fails (and the deploy rolls back) instead of stalling the database.
 
 `make audit` (after `make audit-install`) runs the code-quality and security
 checks - ruff's bug and security rules, bandit, vulture, pip-audit, npm
@@ -841,23 +907,34 @@ writes the findings to `audit/`, which is not tracked.
 
 | when | job | cost |
 |---|---|---|
-| nightly 03:15 | `malrec sync users`: re-read every app user's list (with their MAL token when signed in, so private lists work), rebuild only those that changed - scores and status changes made on MAL itself reach the model within a day | 1-2 MAL requests per user, plus new titles' details |
-| nightly 04:15 | `scripts/backup.sh`: `pg_dump -Fc` to a root-only backup directory, 7 kept, skipped below 20 GB free | ~130 MB, 25 s each |
+| nightly 03:15 | `malrec sync users`: re-read every approved account's list (with their MAL token when signed in, so private lists work), rebuild those that changed or whose last rebuild did not finish - scores and status changes made on MAL itself reach the model within a day | 1-2 MAL requests per user, plus new titles' details |
+| nightly 04:15 | `scripts/backup.sh`: `pg_dump -Fc` to a root-only backup directory, read back before older ones rotate out, 7 kept, skipped below 20 GB free | ~340 MB each |
 | Mondays 03:45 | `malrec sync upcoming`: rankings + season lists, relations for new announcements (>=1,000 members), AniList for what is airing, announced or started/finished in the last 120 days (>=1,000 members or on a stored list), rebuild `coming_soon` and `this_season` | ~30-60 MAL requests, one AniList request per 50 titles due |
 | 1st of month 03:30 | `scripts/monthly_refresh.sh`: sample rotation, AniList for the whole catalogue (`malrec sync anilist-refresh`, before the fit so it trains on current scores, tags and recommendations), gated refit (exam + `MALREC_USER`'s holdout), the learned orders (Safe Bets, Discover, Hidden Gems) for a new model, rebuilds, `learn-weights` report | ~850 MAL requests, ~600 AniList (~20 min) |
 
 The MAL jobs share a lock, so they never run at once. AniList data is otherwise
-fetched once per anime, on demand; these two passes are what keep it current. Restore a dump with:
+fetched once per anime, on demand; these two passes are what keep it current.
+
+The dumps are not encrypted and stay on the same host; only the MAL tokens
+inside are sealed, with `TOKEN_KEY` from `.env`, which the dumps do not
+contain - keep a copy of it elsewhere, or a restore on a new host signs
+everyone out. Restore a dump with:
 
 ```bash
+docker compose stop api worker
 docker exec -i malrec-db pg_restore -U malrec -d malrec --clean --if-exists \
     < backups/malrec-YYYY-MM-DD.dump
+docker compose start api worker
 ```
 
 `scripts/deploy.sh` (run by `make dev-up` on a remote host set in `DEV`)
-replays migrations against a copy of the last backup first, keeps the running
-images as a rollback point, and restores them if the new ones are not healthy
-within two minutes. Experiments and long jobs run in the `lab` service:
+runs the migrations against a copy of the last backup first, takes a fresh
+dump of the live database (`backups/predeploy-*`, the newest three kept),
+keeps the running images as a rollback point, and restores them if the new
+containers fail to start or are not all healthy within three minutes. The
+cron jobs run in the `lab` container on the synced tree, so after a rollback
+they run the new code until the old one is synced again. Experiments and
+long jobs run in the `lab` service:
 
 ```bash
 make dev-lab CMD="python -u -m experiments.exp_toplist --round 7"

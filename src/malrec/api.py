@@ -48,6 +48,19 @@ if _docs:
     app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173"],
                        allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
+@app.middleware("http")
+async def move_session_cookie(request, call_next):
+    """A session opened before the __Host- cookie name gets the new cookie
+    on its next response, and the plain one is cleared (auth.current_session
+    marks it)."""
+    response = await call_next(request)
+    token = getattr(request.state, "move_session_cookie", None)
+    if token:
+        auth.set_session_cookie(response, token)
+        auth.clear_cookie(response, auth.COOKIE)
+    return response
+
+
 app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(together.router)
@@ -74,7 +87,8 @@ def onboard_status(username: str, v: Approved) -> dict:
     if not job:
         return {"state": "absent", "ready": has_recs, "username": name}
     return {"state": job["state"], "step": job["step"], "step_index": job["step_index"],
-            "step_total": job["step_total"], "error": job["error"], "ready": has_recs,
+            "step_total": job["step_total"], "error": onboarding.public_error(job["error"]),
+            "ready": has_recs,
             "username": name}
 
 
@@ -139,10 +153,12 @@ def explain(mal_id: int, v: Approved, user: str | None = None, surface: str = "d
         raise HTTPException(404, "No prediction for that title.")
     from . import taste
     out["evidence"] = taste.evidence_for(uid, mal_id)
+    # the placement only for a title on this tab's list: opened from search or
+    # the tag panel it used to show another tab's terms (audit 2026-10-23, FE-2)
     cand = one("SELECT predicted, relevance_z, novelty, novelty_scale, personal_share, bonus,"
                " pop_bonus, risk FROM rec_candidate"
-               " WHERE user_id=%s AND mal_id=%s ORDER BY surface=%s DESC LIMIT 1",
-               (uid, mal_id, surface))
+               " WHERE user_id=%s AND mal_id=%s AND surface=%s",
+               (uid, mal_id, surface)) if on_list else None
     if cand is not None and surface in SPECS:
         rel = float(relevance_bonus(_Share(cand["personal_share"]),
                                     np.array([cand["relevance_z"]]))[0])

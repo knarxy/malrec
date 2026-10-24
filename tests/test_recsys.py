@@ -201,6 +201,37 @@ def test_size_calibration_interpolates_in_log_n():
     assert a == pytest.approx(0.7, abs=1e-6) and b == pytest.approx(2.0, abs=1e-6)
 
 
+def test_size_calibration_is_fitted_on_the_blend_accounts_get(monkeypatch):
+    """Not on fit_user's defaults (handover 80, no cap): audit P1-4."""
+    import datetime as dt
+    from types import SimpleNamespace
+
+    from malrec.config import settings
+    from malrec.recsys import service
+    cfg = settings()
+    monkeypatch.setattr(cfg, "model_mode", "sized")
+    calls: list[tuple[int, dict]] = []
+
+    class UM:
+        def predict(self, items):
+            return np.full(len(items), 7.0)
+
+    def fit_user(pop, stacker, store, ex, implicit, **kw):
+        calls.append((len(ex), kw))
+        return UM()
+    monkeypatch.setattr(service, "fit_user", fit_user)
+    at = dt.datetime(2024, 1, 1, tzinfo=dt.UTC)
+    users = {u: [(m, float(5 + m % 5), at + dt.timedelta(days=m)) for m in range(600)]
+             for u in range(3)}
+    service.fit_size_calibration(None, None, SimpleNamespace(rows={}), users, sizes=(25, 400))
+    modes = {n: kw["mode"] for n, kw in calls}
+    assert modes == {25: "sized", 400: "blend"}           # chosen_blend_min 300
+    for _, kw in calls:
+        assert kw["blend_of"] == "personal"
+        assert (kw["size_n0"], kw["lam_max"], kw["lam_min"]) == (
+            cfg.blend_size_n0, cfg.blend_lam_max, cfg.blend_lam_min)
+
+
 def test_learn_weights_needs_enough_feedback_and_recovers_the_rate(monkeypatch):
     from malrec import learn
     rng = np.random.default_rng(0)
@@ -344,7 +375,8 @@ def test_blend_options_follow_config(monkeypatch):
     from malrec.recsys.service import blend_opts
     monkeypatch.setattr(settings(), "blend_size_n0", 150.0)
     monkeypatch.setattr(settings(), "blend_lam_max", 0.5)
-    assert blend_opts() == {"size_n0": 150.0, "lam_max": 0.5}
+    monkeypatch.setattr(settings(), "blend_lam_min", 0.3)
+    assert blend_opts() == {"size_n0": 150.0, "lam_max": 0.5, "lam_min": 0.3, "holdout": "newest"}
 
 
 def test_ranking_share_can_follow_list_size_instead_of_the_blend(monkeypatch):
@@ -916,6 +948,38 @@ def test_ranker_sees_age_and_the_users_age_taste_not_the_year():
     assert t.ref_year == 2026
 
 
+def test_ranker_features_do_not_move_with_the_users_calibration():
+    """Trained under the identity calibration, the ranker must see the same
+    numbers for an account with its own line (audit P1-1)."""
+    from types import SimpleNamespace
+
+    from malrec.rank import OrderTerms
+    from malrec.recsys import ltr
+    raw = np.array([8.0, 7.0, 6.5, 5.0])
+    rel = np.array([0.2, 0.0, -0.1, 0.3])
+    popz = np.array([1.0, -0.5, 0.0, -0.5])
+
+    def features_for(a, b):
+        shown = np.clip(a * raw + b, 1, 10)
+        pop = 0.3 * float((shown + rel).std()) * popz      # as rank.order_terms forms it
+        terms = OrderTerms(raw=raw, ok=np.ones(4, dtype=bool), shown=shown, z=rel, rel=rel,
+                           pop=pop, mix=np.zeros(4), risk=np.zeros(4), key=shown + rel + pop,
+                           lam=0.5)
+
+        class M:
+            calibration = (a, b)
+            um = SimpleNamespace(inner=None, predict=lambda ids: raw[:len(ids)])
+
+            def risk_parts(self, ids, familiar):
+                n = len(ids)                               # scorer.risk_parts: x slope
+                return {"long": np.zeros(n), "disagree": a * np.full(n, 0.4),
+                        "unfamiliar": np.zeros(n), "acclaim": a * np.full(n, 0.2)}
+        return ltr.features(M(), terms, [0, 1, 2, 3], [1, 2, 3, 4], set(), {}, 50,
+                            SimpleNamespace(rows={}))
+    assert np.allclose(features_for(0.64, 2.9), features_for(1.0, 0.0))
+    assert not np.allclose(features_for(0.64, 2.9)[:, 0], np.clip(0.64 * raw + 2.9, 1, 10))
+
+
 # ------------------------------------------------------- series, franchises --
 
 def _relations():
@@ -996,3 +1060,14 @@ def test_a_new_setting_at_its_neutral_value_keeps_stored_rankers_current(monkeyp
     monkeypatch.undo()
     monkeypatch.setattr(settings(), "series_weight_power", 0.5)
     assert ltr.fingerprint() != before                 # switched on: rankers must be retrained
+
+
+def test_age_aim_scales_this_years_share():
+    from malrec.rank import AgeMix, age_aim
+    mix = AgeMix(np.array([0.6, 0.2, 0.1, 0.1, 0.0]), 2026, lambda m: None)
+    assert age_aim(mix, 1.0) is mix
+    aim = age_aim(mix, 0.5)
+    assert aim.share.sum() == pytest.approx(1.0)
+    assert aim.share[0] == pytest.approx(0.3 / 0.7)
+    assert aim.share[1] / aim.share[2] == pytest.approx(2.0)
+    assert age_aim(AgeMix(np.array([1.0, 0, 0, 0, 0]), 2026, lambda m: None), 0.0).share[0] == 1.0

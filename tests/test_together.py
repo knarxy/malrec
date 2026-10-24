@@ -32,7 +32,7 @@ def people():
                 " refresh_token, expires_at) VALUES (%s,%s,1,'a','r',%s)",
                 (auth._hash(tok), uid, dt.datetime.now(dt.UTC) + dt.timedelta(days=1)))
         c = TestClient(app)
-        c.cookies.set(auth.COOKIE, tok)
+        c.cookies.set(auth.cookie_name(), tok)
         ids[k], cl[k] = uid, c
     yield ids, cl
     for name in N.values():

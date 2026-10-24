@@ -110,8 +110,11 @@ def learn_weights(min_events: int = 200, min_each: int = 30, boot: int = 200) ->
 
 # The top of one tab, before and after a change: each (user, title) counts
 # once per period it reached the top `top` in, from its first showing there,
-# with what happened in the `days` after that (the outcomes of OUTCOMES_SQL,
-# inside the window) - a title on top both before and after counts in both.
+# with what happened in the `days` after that - a title on top both before
+# and after counts in both. What happened is read from list_event (030) for
+# titles first shown once it was recording, so a later change cannot stand
+# in for the outcome inside the window; before that, from the list as it is
+# now and list_entry.updated_at (the old reading, audit 2026-10-23 P1-7).
 LIST_OUTCOMES_SQL = """
     WITH shown AS (
         SELECT DISTINCT ON (l.user_id, l.mal_id, l.shown_at >= %(cut)s)
@@ -119,26 +122,56 @@ LIST_OUTCOMES_SQL = """
           FROM rec_log l
          WHERE l.surface = %(surface)s AND l.rank <= %(top)s
          ORDER BY l.user_id, l.mal_id, l.shown_at >= %(cut)s, l.shown_at),
-    mu AS (SELECT user_id, avg(score) m FROM list_entry WHERE score > 0 GROUP BY user_id)
-    SELECT s.user_id, s.shown_at >= %(cut)s AS after,
-           s.shown_at + make_interval(days => %(days)s) <= now() AS complete,
-           EXISTS (SELECT 1 FROM feedback f WHERE f.user_id = s.user_id AND f.mal_id = s.mal_id
-                     AND f.action = 'queued' AND f.created_at >= s.shown_at
-                     AND f.created_at < s.shown_at + make_interval(days => %(days)s))
-           OR coalesce(le.status IN ('plan_to_watch', 'watching')
-                       OR (le.status = 'completed' AND le.score = 0)
-                       OR (le.score > 0 AND le.score >= mu.m), false) AS positive,
-           EXISTS (SELECT 1 FROM feedback f WHERE f.user_id = s.user_id AND f.mal_id = s.mal_id
-                     AND f.action = 'not_interested' AND f.created_at >= s.shown_at
-                     AND f.created_at < s.shown_at + make_interval(days => %(days)s))
-           OR coalesce(le.status = 'dropped'
-                       OR (le.score > 0 AND le.score < mu.m - 1), false) AS negative
-      FROM shown s
-      LEFT JOIN list_entry le ON le.user_id = s.user_id AND le.mal_id = s.mal_id
-                             AND le.updated_at >= s.shown_at
-                             AND le.updated_at < s.shown_at + make_interval(days => %(days)s)
-      LEFT JOIN mu ON mu.user_id = s.user_id
+    mu AS (SELECT user_id, avg(score) m FROM list_entry WHERE score > 0 GROUP BY user_id),
+    since AS (SELECT min(at) AS t FROM list_event),
+    w AS (SELECT s.*, s.shown_at + make_interval(days => %(days)s) AS until,
+                 s.shown_at >= coalesce((SELECT t FROM since), 'infinity') AS tracked
+            FROM shown s)
+    SELECT w.user_id, w.shown_at >= %(cut)s AS after, w.until <= now() AS complete, w.tracked,
+           EXISTS (SELECT 1 FROM feedback f WHERE f.user_id = w.user_id AND f.mal_id = w.mal_id
+                     AND f.action = 'queued' AND f.created_at >= w.shown_at
+                     AND f.created_at < w.until)
+           OR CASE WHEN w.tracked THEN EXISTS (
+                  SELECT 1 FROM list_event e WHERE e.user_id = w.user_id
+                     AND e.mal_id = w.mal_id AND e.at >= w.shown_at AND e.at < w.until
+                     AND (e.status IN ('plan_to_watch', 'watching')
+                          OR (e.status = 'completed' AND e.score = 0)
+                          OR (e.score > 0 AND e.score >= mu.m)))
+              ELSE coalesce(le.status IN ('plan_to_watch', 'watching')
+                            OR (le.status = 'completed' AND le.score = 0)
+                            OR (le.score > 0 AND le.score >= mu.m), false) END AS positive,
+           EXISTS (SELECT 1 FROM feedback f WHERE f.user_id = w.user_id AND f.mal_id = w.mal_id
+                     AND f.action = 'not_interested' AND f.created_at >= w.shown_at
+                     AND f.created_at < w.until)
+           OR CASE WHEN w.tracked THEN EXISTS (
+                  SELECT 1 FROM list_event e WHERE e.user_id = w.user_id
+                     AND e.mal_id = w.mal_id AND e.at >= w.shown_at AND e.at < w.until
+                     AND (e.status = 'dropped' OR (e.score > 0 AND e.score < mu.m - 1)))
+              ELSE coalesce(le.status = 'dropped'
+                            OR (le.score > 0 AND le.score < mu.m - 1), false) END AS negative
+      FROM w
+      LEFT JOIN list_entry le ON le.user_id = w.user_id AND le.mal_id = w.mal_id
+                             AND le.updated_at >= w.shown_at AND le.updated_at < w.until
+      LEFT JOIN mu ON mu.user_id = w.user_id
 """
+
+
+def paired_change(rows: list[dict], key: str) -> dict | None:
+    """After minus before, per user who has closed windows in both periods:
+    the mean of those differences and its standard error. Pooling every
+    title compares different users when the user mix changed (5 before, 9
+    after in October 2026); this does not."""
+    by: dict[int, dict[bool, list]] = {}
+    for r in rows:
+        if r["complete"]:
+            by.setdefault(r["user_id"], {}).setdefault(r["after"], []).append(r[key])
+    d = [float(np.mean(v[True]) - np.mean(v[False])) for v in by.values()
+         if v.get(True) and v.get(False)]
+    if not d:
+        return None
+    se = float(np.std(d, ddof=1) / np.sqrt(len(d))) if len(d) > 1 else None
+    return {"users": len(d), "change": round(float(np.mean(d)), 3),
+            "se": round(se, 3) if se is not None else None}
 
 
 def list_outcomes(cut, surface: str = "safe_bets", top: int = 10, days: int = 28) -> dict:
@@ -146,7 +179,8 @@ def list_outcomes(cut, surface: str = "safe_bets", top: int = 10, days: int = 28
     from `cut` on (a ranking change's real-world test): per period
     the titles whose `days`-day window has closed, the share acted on
     positively and negatively, and both as the mean over users, so one busy
-    account does not decide. Windows still open are counted as pending."""
+    account does not decide; `paired` compares the same users across the
+    cut (paired_change). Windows still open are counted as pending."""
     rows = query(LIST_OUTCOMES_SQL, {"surface": surface, "top": top, "cut": cut, "days": days})
     out: dict[str, Any] = {"surface": surface, "top": top, "days": days, "cut": str(cut)}
     for name, after in (("before", False), ("after", True)):
@@ -165,6 +199,9 @@ def list_outcomes(cut, surface: str = "safe_bets", top: int = 10, days: int = 28
             "negative_user_mean": round(float(np.mean(
                 [np.mean([r["negative"] for r in v]) for v in per_user.values()])), 3)
             if per_user else None}
+    out["paired"] = {"positive": paired_change(rows, "positive"),
+                     "negative": paired_change(rows, "negative")}
+    out["tracked_titles"] = sum(1 for r in rows if r["complete"] and r["tracked"])
     if not out["after"]["titles"]:
         out["note"] = (f"no {days}-day window after the cut has closed yet; "
                        "run again once one has")

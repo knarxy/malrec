@@ -178,14 +178,17 @@ services:
       OPENBLAS_NUM_THREADS: ${LAB_THREADS:-4}
       MKL_NUM_THREADS: ${LAB_THREADS:-4}
     volumes:
-      - .:/work
-      # what the host runs as root (cron, deploy) stays out of the lab's reach,
-      # even when an experiment runs with --user root
-      - ./scripts:/work/scripts:ro
-      - ./docker-compose.yml:/work/docker-compose.yml:ro
-      - ./Dockerfile:/work/Dockerfile:ro
+      # The tree is read-only and only experiments/ (results, the benchmark's
+      # data) can be written: the host runs scripts, compose files, .env and
+      # the build context as root (cron, deploy), and a writable tree let a
+      # job - the benchmark runs with --user root - plant a compose override
+      # or a script there (audit 2026-10-23, OPS-2).
+      - .:/work:ro
+      - ./experiments:/work/experiments
     working_dir: /work
     entrypoint: ["nice", "-n", "10"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     healthcheck:
       disable: true            # the image's check probes the API, not a job
     cpus: ${LAB_CPUS:-4}

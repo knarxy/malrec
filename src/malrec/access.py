@@ -14,9 +14,10 @@ value per request would otherwise get a fresh budget (security audit
 """
 from __future__ import annotations
 
+import ipaddress
 import threading
 import time
-from collections import defaultdict, deque
+from collections import OrderedDict, deque
 from dataclasses import dataclass
 from typing import Annotated
 
@@ -95,33 +96,46 @@ def target_user(v: Viewer, username: str | None) -> int:
 # ------------------------------------------------------------ rate limits --
 
 _lock = threading.Lock()
-_hits: dict[tuple[str, str], deque] = defaultdict(deque)
-# Buckets of clients that went quiet are dropped once the table grows past
-# this, so a stream of distinct addresses cannot grow it without bound.
-_SWEEP_AT = 10_000
-_MAX_WINDOW = 3600.0
+# Least recently used first; past _MAX_KEYS the oldest bucket goes, so a
+# stream of distinct addresses costs O(1) per request and bounded memory
+# (it used to sweep the whole table under the lock on every request once it
+# held 10,000 keys - audit 2026-10-23, SEC-4).
+_hits: OrderedDict[tuple[str, str], deque] = OrderedDict()
+_MAX_KEYS = 50_000
 
 
 def client_key(request: Request) -> str:
-    """The real client address behind two proxies (a reverse proxy, then the app's nginx):
-    each appends to X-Forwarded-For, so the client is second from the right.
-    Anything further left is client-supplied and not trusted."""
+    """The client's address. The app's nginx sets X-Forwarded-For to the one
+    address it trusts (app/nginx.conf: the reverse proxy's client, or whoever
+    connected directly), so the last entry is the client; with no header the
+    peer is (the API on its loopback port). An IPv6 address counts by its /64,
+    which one subscriber holds whole; anything that is not an address is "?"."""
     xff = [p.strip() for p in (request.headers.get("x-forwarded-for") or "").split(",") if p.strip()]
-    if len(xff) >= 2:
-        return xff[-2]
-    return xff[-1] if xff else (request.client.host if request.client else "?")
+    raw = xff[-1] if xff else (request.client.host if request.client else "")
+    try:
+        ip = ipaddress.ip_address(raw)
+    except ValueError:
+        return "?"
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped is not None:
+            return str(ip.ipv4_mapped)
+        return f"{ipaddress.ip_network(f'{ip}/64', strict=False).network_address}/64"
+    return str(ip)
 
 
 def rate_limit(bucket: str, limit: int, window: float):
     """Dependency: at most `limit` requests per `window` seconds per client."""
     def dep(request: Request) -> None:
-        who = client_key(request)
+        key = (bucket, client_key(request))
         now = time.monotonic()
         with _lock:
-            if len(_hits) > _SWEEP_AT:
-                for k in [k for k, d in _hits.items() if not d or now - d[-1] > _MAX_WINDOW]:
-                    del _hits[k]
-            q = _hits[(bucket, who)]
+            q = _hits.get(key)
+            if q is None:
+                q = _hits[key] = deque()
+                if len(_hits) > _MAX_KEYS:
+                    _hits.popitem(last=False)
+            else:
+                _hits.move_to_end(key)
             while q and now - q[0] > window:
                 q.popleft()
             if len(q) >= limit:

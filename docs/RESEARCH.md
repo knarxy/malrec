@@ -637,6 +637,46 @@ is little known; Discover is unchanged. Shipped as the default, with the
 panel's personal side from the user's own ratings, the likely set on the
 cards and clickable tags.
 
+## A second report: whose taste, and how new (2026-10-22)
+
+A user with a long list, most of it from years ago, found the picks driven
+by other people's taste ("outside your usual taste" under every reason) and
+too new. Both were right for a reason of their own:
+
+- **The personal share was 0.** From 300 ratings the share is chosen on
+  the user's newest fifth. Those were mostly this season's shows, where
+  the population layer is the better predictor, so the choice was 0 and
+  every pick came from the population alone. Three of the seven app users
+  past 300 ratings had 0, one 0.2; at 299 the share is a fixed 0.5.
+- **The lists followed the habit.** The age aim counts a title's age when
+  it was watched; this user watched most titles within a year of release,
+  years ago, so the aim asked for this year's shows. The top 20 were
+  slightly *older* than the habit, but more than half was from the last
+  five years where the list's own median year is a decade back.
+
+Benchmark (`exp_blend.py`, rankers retrained per arm; at 25 / 150 entries
+the share is not chosen, so differences there are ranker noise).
+
+`results_blendchoice_2026-10-22.txt`, at 400 entries against the choice as
+it was: a fixed 0.5 rho +.002, recall@50 +.001, bad@10 +.005-; a floor of
+0.3 rho +.002, recall@50 +.001, hit@10 +.004, nothing worse; a random fifth
+instead of the newest rho +.002, Discover recall@50 -.004-. **Shipped: the
+floor** (`blend_lam_min` 0.3).
+
+`results_fresh_2026-10-22.txt`, with the floor, the share of titles at most
+a year old in the age aim scaled by `age_fresh_weight`:
+
+| weight | top 20 at most a year old (all tabs) | five years or older | Safe Bets hit@10 | age gap |
+|---|---|---|---|---|
+| 0.5 | -5 to -7 points+ | +3 to +4+ | -.004 / -.007 / -.008 | -.002 / -.020+ / -.030+ |
+| 0.25 | -9 to -12+ | +6 to +7+ | -.004 / -.012- / -.008 | +.018- / -.015+ / -.033+ |
+| 0 | -18 to -21+ | +11 to +13+ | -.015 / -.034- / -.024- | +.076- / +.037- / +.012 |
+
+Recall@50 moved by at most .001 at 0.5. **Shipped: 0.5** - the back
+catalogue gains a few places in every tab at no measured cost, and the age
+gap even shrinks (the habit is measured over the whole history, the aim's
+newest bucket over-weights it); This Season keeps the new.
+
 **Ranges** (`exp_range.py`, `results_range_2026-10-20.txt`, 300 users per
 regime, strictly after everything a range was derived from). Share of
 later ratings inside the range:

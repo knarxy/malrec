@@ -26,12 +26,13 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from ..config import settings
-from .hybrid import Example, fit_user, recency_weight, split_user, unit_hash
+from .hybrid import Example, fit_user, recency_weight, split_user, unit_hash, user_rng
 from .series import weights as series_weights
 
 if TYPE_CHECKING:
     from .cf import PopulationModel
     from .items import ItemStore
+    from .pool import Relations
 
 log = logging.getLogger(__name__)
 
@@ -85,11 +86,12 @@ FINGERPRINT_SETTINGS = (
     "model_mode", "implicit_weight", "implicit_offsets", "not_interested_offset",
     "not_interested_weight", "not_interested_foldin", "relevance_weight",
     "relevance_weight_personal", "safe_bets_key_risk", "order_ranker_ips",
-    "series_weight_power")
+    "series_weight_power", "blend_lam_min", "blend_holdout")
 # Settings added after rankers were stored, with the value that leaves the
 # key as it was: at that value they stay out of the fingerprint, so adding one
 # does not retire every stored ranker.
-FINGERPRINT_NEUTRAL = {"series_weight_power": 0.0}
+FINGERPRINT_NEUTRAL = {"series_weight_power": 0.0, "blend_lam_min": 0.0,
+                       "blend_holdout": "newest"}
 
 
 def fingerprint() -> str:
@@ -208,10 +210,23 @@ def features(model, terms, order: list[int], ids: list[int], ctx_familiar, profi
              n_scored: int, store: ItemStore, taste: dict[str, float] | None = None,
              names: tuple[str, ...] = FEATURES, ages: AgeTaste | None = None) -> np.ndarray:
     """The `names` features for the rows at `order` of a pool; `terms` is the
-    pool's rank.OrderTerms (before any learned shift)."""
+    pool's rank.OrderTerms (before any learned shift).
+
+    The ranker learns from users scored with the identity calibration (1, 0).
+    A served account has its own line, which would move the calibrated score,
+    the risk parts scaled by its slope and the popularity prior (in standard
+    deviations of the key) off the scale the ranker was trained on (audit
+    2026-10-23, P1-1); they are put back on that scale here, so training and
+    serving see the same numbers for the same predictions."""
     from ..rank import novelty
     sid = [ids[k] for k in order]
     parts = model.risk_parts(sid, ctx_familiar)
+    a = float(model.calibration[0]) if getattr(model, "calibration", None) else 1.0
+    a = a if a > 1e-6 else 1.0
+    shown = np.clip(terms.raw, 1.0, 10.0)
+    ok = terms.ok
+    sd = float(np.std((terms.shown + terms.rel)[ok])) if ok.any() else 0.0
+    pop_scale = float(np.std((shown + terms.rel)[ok])) / sd if sd > 1e-9 else 1.0
     st, pe = model.um.predict_parts(sid) if model.um.inner is not None else (
         model.um.predict(sid), np.full(len(sid), np.nan))
     taste = taste or {}
@@ -222,9 +237,9 @@ def features(model, terms, order: list[int], ids: list[int], ctx_familiar, profi
         gs = r.get("mal_genres") or []
         has_pe = not math.isnan(pe[j])
         col = {
-            "shown": terms.shown[k], "rel_z": terms.z[k], "pop_prior": terms.pop[k],
-            "risk_long": parts["long"][j], "risk_disagree": parts["disagree"][j],
-            "risk_unfamiliar": parts["unfamiliar"][j], "risk_acclaim": parts["acclaim"][j],
+            "shown": shown[k], "rel_z": terms.z[k], "pop_prior": terms.pop[k] * pop_scale,
+            "risk_long": parts["long"][j], "risk_disagree": parts["disagree"][j] / a,
+            "risk_unfamiliar": parts["unfamiliar"][j], "risk_acclaim": parts["acclaim"][j] / a,
             "pred_pop": st[j], "pred_personal": pe[j] if has_pe else st[j],
             "pred_gap": (pe[j] - st[j]) if has_pe else 0.0, "personal_share": terms.lam,
             "log_n": math.log1p(n_scored),
@@ -336,13 +351,25 @@ def inverse_propensity(pop: PopulationModel, pool: list[int], power: float) -> d
 def train(pop: PopulationModel, stacker, store: ItemStore, pool: list[int],
           users: dict[int, list[dict]], seed: int = SEED,
           names: tuple[str, ...] | None = None, surface: str = "safe_bets",
-          taken_pool: list[int] | None = None) -> OrderRanker:
+          taken_pool: list[int] | None = None, relations: Relations | None = None,
+          taken_ranker: OrderRanker | None = None) -> OrderRanker:
     """Fit the ranker. `users` are lists the population model never saw
     (entries with mal_id, score, status, at); `pool` is the tab's eligible
     pool. Each user is split in time; their older entries, cut to two of
-    TRAIN_BUDGETS, make the query, the newer ratings the labels. Discover
-    starts where Safe Bets ends: with `taken_pool` (Safe Bets' pool) the
-    hand-built Safe Bets top LIST_LIMIT leaves each Discover query."""
+    TRAIN_BUDGETS, make the query, the newer ratings the labels.
+
+    A query is the pool less the user's whole list but the test titles.
+    Discover starts where Safe Bets ends: with `taken_pool` (Safe Bets'
+    pool) the hand-built Safe Bets top LIST_LIMIT leaves each Discover query.
+
+    With `relations` (config.ranker_train_as_served) the query is what
+    production offers at the cutoff instead: the pool less the list as it
+    stood then - entries added later stay in, a later drop is a negative like
+    any unrated title - and less what that list keeps out of the tab
+    (recsys/pool.py: prerequisites, Up Next's continuations); Discover's
+    Safe Bets top is ordered as served, with `taken_ranker` mixed in at
+    order_ranker_weight; and each user draws from a random stream of their
+    own. Measured no better (2026-10-24), so not the default."""
     import lightgbm as lgb
 
     from .. import rank
@@ -354,17 +381,23 @@ def train(pop: PopulationModel, stacker, store: ItemStore, pool: list[int],
     key = surface_key(surface)
     ipw = inverse_propensity(pop, pool, cfg.order_ranker_ips) if cfg.order_ranker_ips > 0 else None
     Xs, ys, groups, qusers = [], [], [], []
-    trng = np.random.default_rng(seed + 11)
+    shared_rng = np.random.default_rng(seed + 11)
     for u in sorted(users):
         es = users[u]
         scored_all = [(e["mal_id"], float(e["score"]), e["at"]) for e in es if e["score"] > 0]
         if len(scored_all) < 20:
             continue
+        # as served: a stream of the user's own, so their split and budgets
+        # do not move when other users join or leave the training set
+        trng = user_rng("ltr", seed, u) if relations is not None else shared_rng
         _, test_s, cutoff = split_user(scored_all, trng)
         mean = float(np.mean([s for _, s, _ in scored_all]))
         test_ids = {m for m, _, _ in test_s}
         history = [e for e in es if e["mal_id"] not in test_ids and e["at"] < cutoff]
-        listed = {e["mal_id"] for e in es} - test_ids
+        if relations is not None:
+            listed = {e["mal_id"] for e in history} | relations.exclusions(history)
+        else:
+            listed = {e["mal_id"] for e in es} - test_ids
         rows = [_row(store, m) for m in pool if m not in listed]
         for budget in trng.choice(TRAIN_BUDGETS, 2, replace=False):
             if len(history) < budget:
@@ -380,16 +413,22 @@ def train(pop: PopulationModel, stacker, store: ItemStore, pool: list[int],
             fam = {g for e in seen for g in ((store.rows.get(e["mal_id"]) or {})
                                              .get("mal_genres") or [])}
             q_rows = rows
+            taste, ages = user_taste(seen, store), age_taste(seen, store, cutoff.year)
             if taken_pool is not None:
                 sb_rows = [_row(store, m) for m in taken_pool if m not in listed]
-                sb = rank.order_terms(scorer, sb_rows, familiar=fam, **surface_key("safe_bets"))
+                sb_ctx = (RankContext(taken_ranker, fam, genre_mix(li, store), len(sc),
+                                      cfg.order_ranker_weight, taste, ages)
+                          if relations is not None and taken_ranker is not None
+                          and cfg.order_ranker_weight > 0 else None)
+                sb = rank.order_terms(scorer, sb_rows, familiar=fam, learned=sb_ctx,
+                                      **surface_key("safe_bets"))
                 gone = {sb_rows[k]["mal_id"] for k in np.argsort(-sb.key)[:LIST_LIMIT]}
                 q_rows = [r for r in rows if r["mal_id"] not in gone]
             terms = rank.order_terms(scorer, q_rows, familiar=fam, **key)
             ids = [r["mal_id"] for r in q_rows]
             order = shortlist(terms)
             X = features(scorer, terms, order, ids, fam, genre_mix(li, store), len(sc), store,
-                         user_taste(seen, store), names, age_taste(seen, store, cutoff.year))
+                         taste, names, ages)
             y = _labels([ids[k] for k in order], {m: s for m, s, _ in test_s}, mean, ipw)
             if y.sum() == 0:
                 continue                    # a query with no positive teaches nothing
@@ -421,7 +460,8 @@ def train(pop: PopulationModel, stacker, store: ItemStore, pool: list[int],
             "positives": int((y > 0).sum()), "trees": int(ranker.best_iteration_ or 0),
             "gain": {n: round(float(v) / tot, 4) for n, v in zip(names, gain)},
             "features": list(names), "settings": fingerprint(), "surface": surface,
-            "ips": cfg.order_ranker_ips, "seconds": round(time.time() - t0, 1)}
+            "ips": cfg.order_ranker_ips, "pool": "production" if relations else "eligible",
+            "seconds": round(time.time() - t0, 1)}
     return OrderRanker(ranker.booster_.model_to_string(num_iteration=ranker.best_iteration_),
                        meta)
 
@@ -441,6 +481,7 @@ def safe_bets_pool(store: ItemStore, derived: frozenset[int] | set[int]) -> list
 # ------------------------------------------------------------ database --
 
 _cache: dict[str, tuple[int, OrderRanker]] = {}      # surface -> (id, ranker)
+_missing_warned: set[str] = set()                    # tabs context_for has warned about
 
 
 def stacker_lists(max_users: int = 2400) -> dict[int, list[dict]]:
@@ -484,6 +525,7 @@ def train_for_active(max_users: int = 2400, surface: str = "safe_bets") -> dict:
 
     from ..db import conn, one, returned
     from ..surfaces import derived_ids
+    from .pool import relations
     from .service import active_global, item_store
     row = one("SELECT id FROM global_model WHERE active")
     gm = active_global()
@@ -492,9 +534,15 @@ def train_for_active(max_users: int = 2400, surface: str = "safe_bets") -> dict:
     store = item_store()
     users = stacker_lists(max_users)
     derived = derived_ids()
-    ranker = train(gm.pop, gm.stacker, store, surface_pool(store, derived, surface), users,
-                   surface=surface, taken_pool=safe_bets_pool(store, derived)
-                   if surface == "discover" else None)
+    tab_pool = surface_pool(store, derived, surface)
+    taken = safe_bets_pool(store, derived) if surface == "discover" else None
+    rel = (relations({m for m, r in store.rows.items() if r.get("format_class") == "main"},
+                     set(tab_pool) | set(taken or ()))
+           if settings().ranker_train_as_served else None)
+    ranker = train(gm.pop, gm.stacker, store, tab_pool, users, surface=surface,
+                   taken_pool=taken, relations=rel,
+                   taken_ranker=active_ranker("safe_bets")
+                   if taken is not None and rel is not None else None)
     with conn() as c, c.cursor() as cur:
         cur.execute("INSERT INTO order_ranker (global_model_id, surface, meta, artifact)"
                     " VALUES (%s,%s,%s,%s) RETURNING id",
@@ -555,6 +603,14 @@ def context_for(user_id: int, model, surface: str = "safe_bets") -> RankContext 
         return None
     ranker = active_ranker(surface)
     if ranker is None:
+        if surface not in _missing_warned:
+            # switched on but nothing to serve: the tab silently falls back to
+            # its hand-built order until `malrec ranker train` has run (e.g.
+            # after a setting in FINGERPRINT_SETTINGS changed)
+            _missing_warned.add(surface)
+            log.warning("%s: learned order switched on, but the active population model has"
+                        " no ranker for the current settings (%s); hand-built order until"
+                        " `malrec ranker train`", surface, fingerprint())
         return None
     import datetime as dt
 

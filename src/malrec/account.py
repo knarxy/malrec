@@ -28,5 +28,7 @@ def erase(user_id: int, username: str, scrub_audit: bool = True) -> None:
             c.execute("UPDATE admin_log SET target = '(deleted account)'"
                       " WHERE lower(target) = lower(%s)", (username,))
         c.execute("DELETE FROM app_user WHERE id = %s", (user_id,))
+        # list_event goes with it (ON DELETE CASCADE); its trigger records
+        # nothing for an account that is gone (030_list_event.sql)
     from .model import invalidate_scorer
     invalidate_scorer(user_id)

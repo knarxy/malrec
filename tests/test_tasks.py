@@ -61,9 +61,10 @@ def test_state_follows_the_latest_task(users):
     tasks.enqueue("sync", a)
     assert tasks.state(a)["refresh"] == "syncing"
     tid = one("SELECT id FROM task WHERE user_id=%s", (a,))["id"]
-    tasks.finish(tid, "MalApiError: 503")
+    tasks.finish(tid, "MalApiError: MAL /users/@me/animelist -> 403")
     st = tasks.state(a)
-    assert st["refresh"] == "failed" and "503" in st["refresh_error"]
+    # the user gets a code to translate, never the exception text (FE-5)
+    assert st["refresh"] == "failed" and st["refresh_error"] == "mal_refused"
     tasks.enqueue("rebuild", a)
     execute("UPDATE task SET created_at = now() - interval '1 hour' WHERE user_id=%s"
             " AND state='queued'", (a,))

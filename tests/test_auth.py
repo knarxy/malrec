@@ -72,7 +72,7 @@ def signed_in(monkeypatch):
         " refresh_token, expires_at) VALUES (%s,%s,%s,'a','r',%s)",
         (auth._hash(token), uid, 1, dt.datetime.now(dt.UTC) + dt.timedelta(days=1)))
     client = TestClient(app)
-    client.cookies.set(auth.COOKIE, token)
+    client.cookies.set(auth.cookie_name(), token)
     yield client, uid
     execute("DELETE FROM app_user WHERE mal_username=%s", (SCRATCH,))
 
@@ -157,6 +157,8 @@ def test_login_explains_a_redirect_url_mismatch_instead_of_sending_you_to_it(mon
         status_code = 401
         text = '{"error":"invalid_client","message":"Client authentication failed"}'
     monkeypatch.setattr(httpx, "get", lambda *a, **k: Resp())
+    from malrec.config import settings
+    monkeypatch.setattr(settings(), "mal_client_id", settings().mal_client_id or "test-client")
     r = TestClient(app).get("/auth/login", follow_redirects=False)
     assert r.status_code == 302
     assert "auth_error=redirect_mismatch" in r.headers["location"]
@@ -231,8 +233,17 @@ def test_prefs_round_trip_and_validation(signed_in):
 
 # ----------------------------------------------------------- rating round --
 
+def _needs_catalogue():
+    """The rating round asks from the sampled lists and trains a model: both
+    need the catalogue and the sample, which a fresh test database lacks."""
+    if not scalar("SELECT count(*) FROM cf_rating") or not scalar(
+            "SELECT 1 FROM anime WHERE mal_id = 5114"):
+        pytest.skip("needs the catalogue and the CF sample")
+
+
 def test_quiz_offers_unlisted_titles_and_never_repeats(signed_in):
     client, uid = signed_in
+    _needs_catalogue()
     execute("INSERT INTO list_entry (user_id, mal_id, status, score) VALUES (%s, 5114, 'completed', 9)",
             (uid,))
     cards = client.get("/me/quiz?n=5").json()["cards"]
@@ -247,6 +258,7 @@ def test_quiz_offers_unlisted_titles_and_never_repeats(signed_in):
 
 def test_quiz_rating_is_tagged(signed_in):
     client, uid = signed_in
+    _needs_catalogue()
     r = client.post("/me/rate/5114?source=quiz", headers=CSRF, json={"score": 8})
     assert r.status_code == 200
     assert one("SELECT surface FROM feedback WHERE user_id=%s AND action='rated'",

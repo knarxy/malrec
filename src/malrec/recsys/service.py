@@ -257,6 +257,10 @@ def fit_size_calibration(pop: PopulationModel, stacker, store: ItemStore,
     (experiments/exp_topcal.py) the general line *understates* those by
     0.16-0.44 points; the top line removes that bias. Being flatter it is
     worse for arbitrary titles, so it is used for list displays only.
+
+    Each model is fitted as served (blend_mode, blend_opts): fit_user's own
+    defaults - handover at 80 ratings, no cap - fitted the lines on a blend
+    no account gets (audit 2026-10-23, P1-4).
     """
     from ..config import settings
     mode = settings().model_mode
@@ -285,7 +289,9 @@ def fit_size_calibration(pop: PopulationModel, stacker, store: ItemStore,
             share = series_weights(m for m, _, _ in tr)
             ex = [Example(m, sc, recency_weight(a, cutoff) * share.get(m, 1.0), a)
                   for m, sc, a in tr]
-            um = fit_user(pop, stacker, store, ex, [], mode=mode if mode != "personal" else "sized")
+            um = fit_user(pop, stacker, store, ex, [],
+                          mode=blend_mode(len(ex)) if mode != "personal" else "sized",
+                          blend_of="personal", **blend_opts())
             items = [m for m, _, _ in test]
             p = um.predict(items)
             ok = ~np.isnan(p)
@@ -406,7 +412,8 @@ def blend_opts() -> dict:
     """How the personal and population models are mixed, from config - one
     place, so serving, evaluation and the gate always mix them the same way."""
     cfg = settings()
-    return {"size_n0": cfg.blend_size_n0, "lam_max": cfg.blend_lam_max}
+    return {"size_n0": cfg.blend_size_n0, "lam_max": cfg.blend_lam_max,
+            "lam_min": cfg.blend_lam_min, "holdout": cfg.blend_holdout}
 
 
 def blend_mode(n_scored: int) -> str:

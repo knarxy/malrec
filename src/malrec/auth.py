@@ -10,8 +10,15 @@ Flow:
 Security choices worth knowing about:
   * tokens stay server-side; the browser gets an opaque HttpOnly cookie and
     the database stores only a hash of it;
-  * `state` is single-use and expires after ten minutes, which is what stops a
-    forged callback from signing someone into the attacker's account;
+  * `state` is single-use, expires after ten minutes and belongs to the
+    browser that asked for it (the hash of a nonce in a short-lived cookie):
+    a state alone let an attacker sign a victim into the attacker's account
+    by sending them to a callback URL the attacker had obtained (login CSRF,
+    audit 2026-10-23, SEC-3);
+  * over https the cookies carry the __Host- prefix, so no other site of the
+    same domain can set or shadow them;
+  * an account is the MAL user, found by MAL's numeric id: a name can change
+    hands (account_for);
   * state-changing endpoints additionally require an X-Requested-With header,
     which a cross-site form cannot set and a cross-origin fetch cannot send
     without a CORS preflight we do not allow;
@@ -30,6 +37,7 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import hmac
 import logging
 import secrets
 from typing import Annotated
@@ -46,7 +54,7 @@ from .access import rate_limit
 from .clients.mal import MalApiError, MalClient
 from .config import settings
 from .db import conn, execute, one, query, require_one, returned, scalar
-from .ingest.store import get_or_create_user, set_picture
+from .ingest.store import get_or_create_user, leave_sample, set_picture
 from .tokenbox import open_, seal
 
 log = logging.getLogger(__name__)
@@ -54,6 +62,12 @@ log = logging.getLogger(__name__)
 AUTHORIZE_URL = "https://myanimelist.net/v1/oauth2/authorize"
 TOKEN_URL = "https://myanimelist.net/v1/oauth2/token"
 COOKIE = "malrec_session"
+OAUTH_COOKIE = "malrec_oauth"           # the sign-in's nonce, for STATE_TTL
+# Sessions opened before the __Host- names came in hold the plain cookie; the
+# API moves it over on their next request (api.py). Only those: a plain
+# cookie on a later session can only have been planted by another site of
+# the domain, the shadowing the prefix exists to stop.
+PLAIN_COOKIE_BEFORE = dt.datetime(2026, 10, 24, 0, 30, tzinfo=dt.UTC)   # the deploy, 02:30 CEST
 STATE_TTL = dt.timedelta(minutes=10)
 CSRF_HEADER_VALUE = "malrec"
 # One manual "sync with MyAnimeList" per account per this long. A list read is
@@ -70,6 +84,30 @@ def _hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+def cookie_name(name: str = COOKIE) -> str:
+    """`name` with the __Host- prefix when cookies are Secure (https): such a
+    cookie cannot be set by another subdomain or for a wider path. Over plain
+    http, where it could not be stored at all, the bare name."""
+    return f"__Host-{name}" if settings().session_cookie_secure else name
+
+
+def set_session_cookie(resp, token: str) -> None:
+    cfg = settings()
+    resp.set_cookie(cookie_name(), token, httponly=True, samesite="lax",
+                    secure=cfg.session_cookie_secure, max_age=cfg.session_days * 86400, path="/")
+
+
+def clear_cookie(resp, name: str) -> None:
+    """Delete a cookie set by set_session_cookie or login; a __Host- one is
+    only replaced by a Set-Cookie that is Secure too."""
+    resp.delete_cookie(name, path="/", secure=settings().session_cookie_secure)
+
+
+def clear_session_cookies(resp) -> None:
+    for name in {cookie_name(), COOKIE}:
+        clear_cookie(resp, name)
+
+
 def _safe_return_to(value: str | None) -> str:
     """Only same-site paths. '//evil.example' is a protocol-relative URL and
     '/\\evil.example' is treated as one by some browsers, so both are refused,
@@ -82,6 +120,14 @@ def _safe_return_to(value: str | None) -> str:
     return value
 
 
+class TokenRefused(HTTPException):
+    """The token endpoint answered something other than 200 (`status`)."""
+
+    def __init__(self, status: int):
+        super().__init__(502, "MyAnimeList refused the sign-in")
+        self.status = status
+
+
 def _token_request(data: dict) -> dict:
     cfg = settings()
     payload = {"client_id": cfg.mal_client_id, **data}
@@ -91,7 +137,7 @@ def _token_request(data: dict) -> dict:
     if r.status_code != 200:
         # never log the body verbatim: on some errors it echoes the request
         log.warning("MAL token endpoint returned %s", r.status_code)
-        raise HTTPException(502, "MyAnimeList refused the sign-in")
+        raise TokenRefused(r.status_code)
     return r.json()
 
 
@@ -100,11 +146,21 @@ def _expiry(expires_in: int | None) -> dt.datetime:
 
 
 def _refresh(row: dict) -> dict | None:
+    """The session with a fresh access token, or None. Only a refused grant
+    (400 / 401) ends the session: a busy or failing MAL (429, 5xx, no
+    answer) leaves it for the next attempt - the nightly sync refreshes every
+    session at once, and one bad minute at MAL used to sign everyone out."""
     try:
         tok = _token_request({"grant_type": "refresh_token",
                               "refresh_token": row["refresh_token"]})
-    except HTTPException:
-        execute("DELETE FROM mal_session WHERE token_hash=%s", (row["token_hash"],))
+    except TokenRefused as e:
+        if e.status in (400, 401):
+            execute("DELETE FROM mal_session WHERE token_hash=%s", (row["token_hash"],))
+        return None
+    except httpx.HTTPError as e:
+        log.warning("MAL token endpoint unreachable: %s", type(e).__name__)
+        return None
+    if "access_token" not in tok:
         return None
     execute(
         "UPDATE mal_session SET access_token=%s, refresh_token=%s, expires_at=%s"
@@ -118,7 +174,10 @@ def _refresh(row: dict) -> dict | None:
 
 
 def current_session(request: Request) -> dict | None:
-    token = request.cookies.get(COOKIE)
+    token = request.cookies.get(cookie_name())
+    plain = False
+    if not token and cookie_name() != COOKIE:
+        token, plain = request.cookies.get(COOKIE), True
     if not token:
         return None
     row = one(
@@ -126,6 +185,10 @@ def current_session(request: Request) -> dict | None:
         " WHERE s.token_hash = %s", (_hash(token),))
     if not row:
         return None
+    if plain:
+        if row["created_at"] >= PLAIN_COOKIE_BEFORE:
+            return None
+        request.state.move_session_cookie = token
     row["access_token"] = open_(row["access_token"])
     row["refresh_token"] = open_(row["refresh_token"])
     now = dt.datetime.now(dt.UTC)
@@ -188,8 +251,9 @@ def login(return_to: str = "/") -> RedirectResponse:
     # inside the 43-128 range the spec allows.
     verifier = secrets.token_urlsafe(72)[:96]
     state = secrets.token_urlsafe(24)
-    execute("INSERT INTO oauth_state (state, code_verifier, return_to) VALUES (%s,%s,%s)",
-            (state, verifier, _safe_return_to(return_to)))
+    nonce = secrets.token_urlsafe(16)
+    execute("INSERT INTO oauth_state (state, code_verifier, return_to, browser)"
+            " VALUES (%s,%s,%s,%s)", (state, verifier, _safe_return_to(return_to), _hash(nonce)))
     params = {
         "response_type": "code",
         "client_id": cfg.mal_client_id,
@@ -210,7 +274,10 @@ def login(return_to: str = "/") -> RedirectResponse:
         execute("DELETE FROM oauth_state WHERE state=%s", (state,))
         base = cfg.app_base_url.rstrip("/")
         return RedirectResponse(f"{base}/?auth_error={problem}", status_code=302)
-    return RedirectResponse(url, status_code=302)
+    resp = RedirectResponse(url, status_code=302)
+    resp.set_cookie(cookie_name(OAUTH_COOKIE), nonce, max_age=int(STATE_TTL.total_seconds()),
+                    httponly=True, samesite="lax", secure=cfg.session_cookie_secure, path="/")
+    return resp
 
 
 def _preflight(url: str) -> str | None:
@@ -229,7 +296,7 @@ def _preflight(url: str) -> str | None:
 
 
 @router.get("/auth/callback")
-def callback(code: str | None = None, state: str | None = None,
+def callback(request: Request, code: str | None = None, state: str | None = None,
              error: str | None = None) -> RedirectResponse:
     cfg = settings()
     base = cfg.app_base_url.rstrip("/")
@@ -239,13 +306,17 @@ def callback(code: str | None = None, state: str | None = None,
         known = error if error in ("access_denied",) else "cancelled"
         return RedirectResponse(f"{base}/?auth_error={known}", status_code=302)
 
-    # single use: the row is consumed whether or not the rest succeeds
+    # single use: the row is consumed whether or not the rest succeeds; and
+    # only the browser that started this sign-in may finish it
     st = one(
         "DELETE FROM oauth_state WHERE state=%s AND created_at > now() - %s::interval"
-        " RETURNING code_verifier, return_to",
+        " RETURNING code_verifier, return_to, browser",
         (state, f"{int(STATE_TTL.total_seconds())} seconds"))
-    if not st:
-        return RedirectResponse(f"{base}/?auth_error=expired", status_code=302)
+    nonce = request.cookies.get(cookie_name(OAUTH_COOKIE)) or ""
+    if not st or not st["browser"] or not hmac.compare_digest(st["browser"], _hash(nonce)):
+        resp = RedirectResponse(f"{base}/?auth_error=expired", status_code=302)
+        clear_cookie(resp, cookie_name(OAUTH_COOKIE))
+        return resp
 
     exchange = {"grant_type": "authorization_code", "code": code,
                 "code_verifier": st["code_verifier"]}
@@ -261,7 +332,9 @@ def callback(code: str | None = None, state: str | None = None,
         return RedirectResponse(f"{base}/?auth_error=profile", status_code=302)
 
     username = me["name"]
-    uid = get_or_create_user(username)
+    uid = account_for(me.get("id"), username)
+    if uid is None:
+        return RedirectResponse(f"{base}/?auth_error=blocked", status_code=302)
     # fresh: this sign-in is the account's first request for approval
     acct = one("UPDATE app_user SET last_login_at = now(),"
                " requested_at = coalesce(requested_at, now()) WHERE id=%s"
@@ -310,10 +383,60 @@ def callback(code: str | None = None, state: str | None = None,
         tasks.enqueue("login_sync" if has_recs else "onboard", uid)
 
     resp = RedirectResponse(f"{base}{st['return_to']}", status_code=302)
-    resp.set_cookie(COOKIE, session_token, httponly=True, samesite="lax",
-                    secure=cfg.session_cookie_secure,
-                    max_age=cfg.session_days * 86400, path="/")
+    set_session_cookie(resp, session_token)
+    clear_cookie(resp, cookie_name(OAUTH_COOKIE))
     return resp
+
+
+def account_for(mal_user_id: int | None, username: str) -> int | None:
+    """The account of the MAL user with this numeric id, which MAL never
+    changes, under the name they have now (audit 2026-10-23, SEC-2: a name
+    used to be the account, so whoever took over a freed name took over its
+    account - an admin's too).
+
+      - known id: that account; renamed on MAL, it is renamed here
+      - unknown id, an account by this name that has no id yet (created
+        before ids were kept, or by name from the CLI): it takes the id
+      - unknown id, the name held by an account with another id: the name
+        has changed hands on MAL. The old account keeps its data under
+        "name#id" and the newcomer gets a fresh one - unless the name is an
+        admin's (config admin_users), which a newcomer must not become:
+        None, the sign-in is refused
+    The list leaves the population sample as for any new account."""
+    if mal_user_id is None:
+        return get_or_create_user(username)
+    from .access import is_admin_name
+    with conn() as c, c.cursor() as cur:
+        # one sign-in at a time decides who holds which name
+        cur.execute("SELECT pg_advisory_xact_lock(hashtext('malrec_account'))")
+        cur.execute("SELECT id, mal_username FROM app_user WHERE mal_user_id = %s", (mal_user_id,))
+        mine = cur.fetchone()
+        cur.execute("SELECT id, mal_user_id FROM app_user WHERE mal_username = %s", (username,))
+        named = cur.fetchone()
+        if mine is None and named is not None and named["mal_user_id"] is None:
+            cur.execute("UPDATE app_user SET mal_user_id = %s WHERE id = %s",
+                        (mal_user_id, named["id"]))
+            mine, named = {"id": named["id"], "mal_username": username}, None
+        if named is not None and (mine is None or named["id"] != mine["id"]):
+            if is_admin_name(username):
+                log.warning("sign-in as admin name %r from MAL user %s, which is not the"
+                            " account holding it: refused", username, mal_user_id)
+                return None
+            cur.execute("UPDATE app_user SET mal_username = mal_username || '#'"
+                        " || coalesce(mal_user_id::text, id::text) WHERE id = %s",
+                        (named["id"],))
+        if mine is None:
+            cur.execute("INSERT INTO app_user (mal_username, mal_user_id) VALUES (%s, %s)"
+                        " RETURNING id", (username, mal_user_id))
+            uid = returned(cur)["id"]
+        else:
+            uid = mine["id"]
+            if mine["mal_username"] != username:
+                cur.execute("UPDATE app_user SET mal_username = %s WHERE id = %s",
+                            (username, uid))
+        leave_sample(cur, username)
+        c.commit()
+    return uid
 
 
 def _auto_approve(uid: int) -> int | None:
@@ -360,11 +483,12 @@ def me(request: Request) -> dict:
 
 @router.post("/auth/logout", dependencies=[Depends(require_csrf)])
 def logout(request: Request) -> JSONResponse:
-    token = request.cookies.get(COOKIE)
-    if token:
-        execute("DELETE FROM mal_session WHERE token_hash=%s", (_hash(token),))
+    for name in {cookie_name(), COOKIE}:
+        token = request.cookies.get(name)
+        if token:
+            execute("DELETE FROM mal_session WHERE token_hash=%s", (_hash(token),))
     resp = JSONResponse({"signed_in": False})
-    resp.delete_cookie(COOKIE, path="/")
+    clear_session_cookies(resp)
     return resp
 
 
@@ -383,7 +507,7 @@ def delete_me(body: DeleteMeIn, s: AnySession) -> JSONResponse:
     erase(s["app_user_id"], s["mal_username"])
     log.info("account %s deleted by its owner", s["app_user_id"])
     resp = JSONResponse({"deleted": True})
-    resp.delete_cookie(COOKIE, path="/")
+    clear_session_cookies(resp)
     return resp
 
 
@@ -573,9 +697,15 @@ class PrefsIn(BaseModel):
 
 FILTER_KEYS = {"media_types": list, "exclude_genres": list, "eps_min": int, "eps_max": int,
                "year_min": int, "year_max": int}
+# what GET /recommendations accepts (api.py); a saved value outside it would
+# fail every list with 422 on every device until the filters are reset
+FILTER_RANGE = {"eps_min": (0, 10000), "eps_max": (0, 10000),
+                "year_min": (1900, 2100), "year_max": (1900, 2100)}
 
 
 def _clean_filters(f: dict) -> dict:
+    """Numbers outside FILTER_RANGE are dropped (a year typed halfway, "95"),
+    not saved."""
     out: dict = {}
     for k, typ in FILTER_KEYS.items():
         v = f.get(k)
@@ -587,9 +717,12 @@ def _clean_filters(f: dict) -> dict:
             out[k] = [str(x)[:40] for x in v]
         else:
             try:
-                out[k] = int(v)
+                n = int(v)
             except (TypeError, ValueError) as e:
                 raise HTTPException(422, f"filters.{k} must be a number") from e
+            lo, hi = FILTER_RANGE[k]
+            if lo <= n <= hi:
+                out[k] = n
     return out
 
 
