@@ -40,6 +40,10 @@ Metrics, per user (paired between runs):
   hit10        share of the top 10 they went on to like
   bad10        share of the top 10 they rated a point under their mean or
                dropped
+  r50new / r50old
+               r50 for the liked titles at most a year old at the cutoff and
+               for the older ones (described: recall alone rewards a list
+               for drifting to the new season)
   disc_* / gems_*
                the same four for the Discover and Hidden Gems lists (Discover
                without the Safe Bets list, as production builds it; Hidden Gems
@@ -59,6 +63,8 @@ on more splits than it wins, fails the run (exit 1).
   python -m experiments.bench --snapshot        freeze the data (once)
   python -m experiments.bench                   run, compare with baseline.json
   python -m experiments.bench --save-baseline   run and make it the baseline
+  python -m experiments.bench --freeze          the live tables as the first frozen
+                                                run read them (an experiment's arms)
 """
 from __future__ import annotations
 
@@ -106,7 +112,9 @@ ALPHA = 0.05
 HIGHER = {"rho": True, "rmse": False, "r50": True, "ips50": True, "hit10": True,
           "bad10": False, "agegap": False, "disc_r50": True, "disc_ips50": True,
           "disc_hit10": True, "disc_bad10": False, "disc_agegap": False, "gems_r50": True,
-          "gems_ips50": True, "gems_hit10": True, "gems_bad10": False, "gems_agegap": False}
+          "gems_ips50": True, "gems_hit10": True, "gems_bad10": False, "gems_agegap": False,
+          "r50new": True, "r50old": True, "disc_r50new": True, "disc_r50old": True,
+          "gems_r50new": True, "gems_r50old": True}
 CFG = settings()
 
 
@@ -205,6 +213,23 @@ def load_snapshot():
 
 # ------------------------------------------------------------ population --
 
+# --freeze: the live tables a run reads (franchise, series, members, relations)
+# as the first frozen run read them, so the arms of one experiment see the
+# same data even when a sync changes it between them; delete it to start over
+FROZEN = DATA / "live.pkl"
+LIVE: dict | None = None
+
+
+def frozen(key: str, read):
+    """read(), or with --freeze what it returned on the first frozen run."""
+    if LIVE is None:
+        return read()
+    if key not in LIVE:
+        LIVE[key] = read()
+        FROZEN.write_bytes(pickle.dumps(LIVE))
+    return LIVE[key]
+
+
 # set by run(): a hash of the live series and franchise tables (groupings)
 GROUPS = ""
 # set by run(): the snapshot's day and every title's rank by age-fair member
@@ -219,7 +244,8 @@ def popularity_columns(store, day: dt.date) -> None:
     live table (ten days on, a few percent more members for new titles), the
     ranks are taken as of the snapshot's day."""
     from malrec.db import query
-    rows = query("SELECT mal_id, mal_num_list_users, start_date FROM anime")
+    rows = frozen("members", lambda: query(
+        "SELECT mal_id, mal_num_list_users, start_date FROM anime"))
     for r in rows:
         row = store.rows.get(r["mal_id"])
         if row is not None:
@@ -240,8 +266,10 @@ def groupings(store) -> str:
     change to that code is what a run should measure. Overwrites the
     snapshot store's franchise ids; returns a hash of both tables."""
     from malrec.db import query
-    fr = {r["mal_id"]: r["franchise_id"] for r in query("SELECT mal_id, franchise_id FROM franchise")}
-    se = {r["mal_id"]: r["series_id"] for r in query("SELECT mal_id, series_id FROM series")}
+    fr = {r["mal_id"]: r["franchise_id"] for r in frozen("franchise", lambda: query(
+        "SELECT mal_id, franchise_id FROM franchise"))}
+    se = {r["mal_id"]: r["series_id"] for r in frozen("series", lambda: query(
+        "SELECT mal_id, series_id FROM series"))}
     for m, row in store.rows.items():
         row["franchise_id"] = fr.get(m, m)
     return hashlib.sha256(repr((sorted(fr.items()), sorted(se.items()))).encode()).hexdigest()[:8]
@@ -437,6 +465,22 @@ def age_metrics(top: list[int], ages, prefix: str = "") -> dict:
             f"{prefix}old20": float(np.mean([x >= 2 for x in b]))}
 
 
+def age_recall(top: list[int], liked: set[int], store, ref_year: int, prefix: str = "") -> dict:
+    """recall@50 apart for the liked titles at most a year old at the cutoff
+    (r50new, rank.AGE_EDGES' first bucket) and the older ones (r50old): what
+    people rate next is mostly what just aired, so recall alone rewards a
+    list for drifting to the new season."""
+    def bucket(m: int) -> int | None:
+        y = (store.rows.get(m) or {}).get("season_year")
+        return None if y is None else rank.age_bucket(ref_year - y)
+    out = {}
+    for name, part in (("new", {x for x in liked if bucket(x) == 0}),
+                       ("old", {x for x in liked if (bucket(x) or 0) >= 1})):
+        if len(part) >= 2:
+            out[f"{prefix}r50{name}"] = len(set(top[:50]) & part) / len(part)
+    return out
+
+
 def repeats(top: list[int], store, prefix: str = "") -> dict:
     """Share of the top 20 whose franchise already appeared higher up: 0
     with one title per franchise (rank.rerank); what a looser collapse
@@ -533,9 +577,9 @@ def run(max_eval: int) -> dict:
     pool_all = eligible(store, derived)
     gems_all = eligible(store, derived, SPECS["hidden_gems"].min_scorers)
     # like the series and franchises, from the live relation table
-    rel = discovery_pool.relations(
+    rel = frozen("relations", lambda: discovery_pool.relations(
         {m for m, r in store.rows.items() if r.get("format_class") == "main"},
-        set(pool_all) | set(gems_all))
+        set(pool_all) | set(gems_all)))
     global PROP
     _, ma, _ = entries.columns(A)
     PROP = (np.bincount(ma.astype(np.int64)) + 1.0) / (len(A) + 2.0)
@@ -619,6 +663,8 @@ def run(max_eval: int) -> dict:
                 if t:
                     m[f"{prefix}tl20{k}"] = len(set(ids[:20]) & t) / len(t)
         m["gems_sb20"] = len(set(gem_ids[:20]) & set(top[:20])) / 20
+        for prefix in ("", "disc_", "gems_"):
+            m |= age_recall(lists[prefix], liked, store, cutoff.year, prefix)
         return m, top[:20]
 
     for budget in BUDGETS:
@@ -783,6 +829,8 @@ def main() -> int:
     ap.add_argument("--snapshot", action="store_true", help="freeze the data (once)")
     ap.add_argument("--save-baseline", action="store_true")
     ap.add_argument("--max-eval", type=int, default=300)
+    ap.add_argument("--freeze", action="store_true",
+                    help="read the live tables as the first frozen run did (data/live.pkl)")
     ap.add_argument("--compare", nargs=2, metavar=("NEW", "BASE"),
                     help="compare two saved runs (latest.json, baseline.json) without running")
     a = ap.parse_args()
@@ -795,6 +843,10 @@ def main() -> int:
     if not (DATA / "entries.npz").exists():
         print("no snapshot yet: python -m experiments.bench --snapshot")
         return 2
+    if a.freeze:
+        global LIVE
+        LIVE = pickle.loads(FROZEN.read_bytes()) if FROZEN.exists() else {}
+        print(f"live tables frozen: {sorted(LIVE) or 'from this run'}", flush=True)
     new = run(a.max_eval)
     LATEST.write_text(json.dumps(new, indent=1))
     old = json.loads(BASELINE.read_text()) if BASELINE.exists() else None

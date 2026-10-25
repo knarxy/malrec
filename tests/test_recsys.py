@@ -376,7 +376,10 @@ def test_blend_options_follow_config(monkeypatch):
     monkeypatch.setattr(settings(), "blend_size_n0", 150.0)
     monkeypatch.setattr(settings(), "blend_lam_max", 0.5)
     monkeypatch.setattr(settings(), "blend_lam_min", 0.3)
-    assert blend_opts() == {"size_n0": 150.0, "lam_max": 0.5, "lam_min": 0.3, "holdout": "newest"}
+    monkeypatch.setattr(settings(), "blend_holdout", "newest")
+    monkeypatch.setattr(settings(), "blend_criterion", "mse")
+    assert blend_opts() == {"size_n0": 150.0, "lam_max": 0.5, "lam_min": 0.3, "holdout": "newest",
+                            "criterion": "mse"}
 
 
 def test_ranking_share_can_follow_list_size_instead_of_the_blend(monkeypatch):
@@ -457,6 +460,7 @@ def test_risk_penalty_hits_only_population_optimism_and_follows_trust(monkeypatc
     from malrec.recsys.scorer import HybridScorer
     cfg = settings()
     monkeypatch.setattr(cfg, "disagreement_penalty", 1.0)
+    monkeypatch.setattr(cfg, "disagreement_scale", "raw")
     monkeypatch.setattr(cfg, "unfamiliar_genre_penalty", 0.0)
     monkeypatch.setattr(cfg, "long_series_penalty", 0.0)
     monkeypatch.setattr(cfg, "acclaim_penalty", 0.0)
@@ -476,6 +480,135 @@ def test_risk_penalty_hits_only_population_optimism_and_follows_trust(monkeypatc
     assert np.allclose(s.risk_penalty([1, 2]), [0.6, 0.0]), "half the trust, half the penalty"
     monkeypatch.setattr(cfg, "disagreement_penalty", 0.0)
     assert not s.risk_penalty([1, 2]).any()
+
+
+def _disagree_scorer(rho: float):
+    """A scorer whose two predictions on 500 reference titles spread 1.3 and
+    0.5 points around 7.0 and 7.2, correlated `rho`; titles 1-3 are asked."""
+    from types import SimpleNamespace
+
+    from malrec.recsys.scorer import HybridScorer
+    rng = np.random.default_rng(0)
+    x, y = rng.standard_normal(500), rng.standard_normal(500)
+    x, y = (x - x.mean()) / x.std(), y - y.mean()
+    y -= (y @ x) / (x @ x) * x                      # orthogonal to x
+    y /= y.std()
+    ref = {100 + k: (7.0 + 1.3 * x[k], 7.2 + 0.5 * (rho * x[k] + (1 - rho ** 2) ** 0.5 * y[k]))
+           for k in range(500)}
+    asked = {1: (7.0 + 1.3 * 2, 7.2 + 0.5 * 2),       # both two spreads above: agree
+             2: (7.0 + 1.3 * 2, 7.2),                 # population high, personal average
+             3: (7.0 + 1.3 * 2, 7.2 + 0.5 * rho * 2)}  # personal where it usually is
+    preds = ref | asked
+    store = SimpleNamespace(rows={m: {"format_class": "main", "mal_num_scoring_users": 10_000 - m}
+                                  for m in ref})
+
+    class UM:
+        mode, inner, lam = "sized", object(), 0.5
+
+        def predict_parts(self, ids):
+            return (np.array([preds[m][0] for m in ids]), np.array([preds[m][1] for m in ids]))
+    UM.store = store
+    s = HybridScorer.__new__(HybridScorer)
+    s.um, s.calibration, s._scores = UM(), (1.0, 0.0), {}
+    return s
+
+
+@pytest.mark.parametrize("rho", [1.0, 0.5])
+def test_disagreement_on_each_models_own_spread(monkeypatch, rho):
+    """P1-10: point for point, the ridge's narrow spread makes every title the
+    population rates high a disagreement; "z" compares each in its own
+    spread, "resid" against where the personal model usually is."""
+    from malrec.config import settings
+    cfg = settings()
+    for k in ("unfamiliar_genre_penalty", "long_series_penalty", "acclaim_penalty"):
+        monkeypatch.setattr(cfg, k, 0.0)
+    monkeypatch.setattr(cfg, "disagreement_penalty", 1.0)
+    monkeypatch.setattr(cfg, "blend_lam_max", 0.5)
+    s = _disagree_scorer(rho)
+    monkeypatch.setattr(cfg, "disagreement_scale", "raw")
+    raw = s.risk_parts([1, 2, 3])["disagree"]
+    assert raw[0] == pytest.approx(1.4) and raw[1] == pytest.approx(2.4)
+    monkeypatch.setattr(cfg, "disagreement_scale", "z")
+    z = s.risk_parts([1, 2, 3])["disagree"]
+    assert z[0] == pytest.approx(0.0, abs=1e-9), "both two spreads above their mean: no disagreement"
+    assert z[1] == pytest.approx(2 * 1.3, rel=1e-6), "two population spreads, in its points"
+    monkeypatch.setattr(cfg, "disagreement_scale", "resid")
+    r = s.risk_parts([1, 2, 3])["disagree"]
+    assert r[2] == pytest.approx(0.0, abs=1e-9), "where the personal model usually is"
+    assert r[1] == pytest.approx(rho * 2 * 1.3, rel=1e-6)
+    if rho < 1:
+        assert z[2] > 0.5, "z still reads the usual regression to the mean as disagreement"
+
+
+def test_disagreement_reference_ignores_the_asked_ids_and_rated_titles(monkeypatch):
+    from malrec.config import settings
+    monkeypatch.setattr(settings(), "disagreement_scale", "z")
+    s = _disagree_scorer(1.0)
+    one = s.disagreement(*s.um.predict_parts([2]), "z")
+    s2 = _disagree_scorer(1.0)
+    many = s2.disagreement(*s2.um.predict_parts([1, 2, 3]), "z")
+    assert one[0] == pytest.approx(many[1]), "one title or many, the same reference"
+    s3 = _disagree_scorer(1.0)
+    s3._scores = {m: 8.0 for m in range(100, 600)}       # every reference title rated
+    assert not s3.disagreement(*s3.um.predict_parts([2]), "z").any(), "no reference, no penalty"
+
+
+def _lambda_choice(monkeypatch, criterion: str, truth_sd: float = 1.2,
+                   holdout: str = "newest") -> float:
+    """hybrid._choose_lambda on 1000 dated ratings whose newest fifth the
+    personal side orders exactly but shrunk and 1.5 points too low, and the
+    stack gets right on average with noise."""
+    import datetime as dt
+
+    from malrec.recsys import hybrid
+    rng = np.random.default_rng(1)
+    t0 = dt.datetime(2020, 1, 1, tzinfo=dt.UTC)
+    y = 7.5 + truth_sd * rng.standard_normal(1000)
+    scored = [hybrid.Example(k, float(y[k]), 1.0, t0 + dt.timedelta(days=k)) for k in range(1000)]
+    noise = 0.8 * rng.standard_normal(1000)
+
+    class Fit:
+        def __init__(self, mode):
+            self.mode = mode
+
+        def predict(self, items):
+            v = np.array([y[m] for m in items])
+            if self.mode == "stack":
+                return 7.5 + noise[items]
+            return 6.0 + 0.3 * (v - 7.5)
+    monkeypatch.setattr(hybrid, "fit_user", lambda *a, mode, **kw: Fit(mode))
+    return hybrid._choose_lambda(None, None, None, scored, [], "personal", None, 40.0, 40,
+                                 False, holdout, criterion)
+
+
+def test_blend_share_chosen_by_order_not_level(monkeypatch):
+    """P1-11: squared error rewards the stack for its level; the order is
+    the personal side's."""
+    assert _lambda_choice(monkeypatch, "mse") <= 0.5
+    assert _lambda_choice(monkeypatch, "corr") == 1.0
+    assert _lambda_choice(monkeypatch, "corr", truth_sd=0.0) == pytest.approx(1000 / 1040), \
+        "flat ratings say nothing about the order: the size rule"
+    assert _lambda_choice(monkeypatch, "mse", holdout="folds") <= 0.5
+    assert _lambda_choice(monkeypatch, "corr", holdout="folds") == 1.0
+
+
+def test_blend_splits_hold_each_rating_out_once():
+    import datetime as dt
+
+    from malrec.recsys import hybrid
+    t0 = dt.datetime(2020, 1, 1, tzinfo=dt.UTC)
+    scored = [hybrid.Example(k, 7.0, 1.0, t0 + dt.timedelta(days=k)) for k in range(103)]
+    implicit = [hybrid.Example(5, 6.0, 0.5, t0), hybrid.Example(500, 6.0, 0.5, t0)]
+    folds = hybrid._blend_splits(scored, implicit, "folds")
+    assert len(folds) == hybrid.BLEND_FOLDS
+    held = [e.mal_id for _, _, va in folds for e in va]
+    assert sorted(held) == list(range(103)), "every rating validated exactly once"
+    for tr, imp, va in folds:
+        assert not {e.mal_id for e in tr} & {e.mal_id for e in va}
+        assert all(e.mal_id not in {v.mal_id for v in va} for e in imp)
+    (tr, imp, va), = hybrid._blend_splits(scored, implicit, "newest")
+    assert [e.mal_id for e in va] == list(range(82, 103)), "the newest fifth"
+    assert {e.mal_id for e in imp} == {5, 500}, "implicit rows from before it stay"
 
 
 def test_risk_penalty_for_unfamiliar_genres_and_long_series(monkeypatch):

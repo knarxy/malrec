@@ -76,9 +76,12 @@ reset:
 -include .make.local
 DEV     ?= user@your-server
 DEV_DIR ?= /opt/malrec
+# the repository itself (a directory, or a file in a worktree), the local
+# make and publish settings and audit reports stay here
 RSYNC_EXCLUDES := --exclude .venv/ --exclude app/node_modules/ --exclude app/dist/ \
 	--exclude __pycache__/ --exclude .pytest_cache/ --exclude .ruff_cache/ \
-	--exclude '*.tsbuildinfo' --exclude .env --exclude malrec.dump
+	--exclude '*.tsbuildinfo' --exclude .env --exclude malrec.dump \
+	--exclude .git --exclude .make.local --exclude .publish.local --exclude /audit/
 
 .PHONY: dev-sync dev-up dev-lab dev-test bench bench-baseline bench-snapshot dev-ps dev-logs
 

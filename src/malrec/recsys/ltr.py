@@ -86,12 +86,14 @@ FINGERPRINT_SETTINGS = (
     "model_mode", "implicit_weight", "implicit_offsets", "not_interested_offset",
     "not_interested_weight", "not_interested_foldin", "relevance_weight",
     "relevance_weight_personal", "safe_bets_key_risk", "order_ranker_ips",
-    "series_weight_power", "blend_lam_min", "blend_holdout")
+    "series_weight_power", "blend_lam_min", "blend_holdout", "blend_criterion",
+    "disagreement_scale")
 # Settings added after rankers were stored, with the value that leaves the
 # key as it was: at that value they stay out of the fingerprint, so adding one
 # does not retire every stored ranker.
 FINGERPRINT_NEUTRAL = {"series_weight_power": 0.0, "blend_lam_min": 0.0,
-                       "blend_holdout": "newest"}
+                       "blend_holdout": "newest", "blend_criterion": "mse",
+                       "disagreement_scale": "raw"}
 
 
 def fingerprint() -> str:

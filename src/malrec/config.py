@@ -129,8 +129,19 @@ class Settings(BaseSettings):
     # 2026-10-22, results_blendchoice): a floor of 0.3 is the one variant with
     # no measured loss (400 entries: rho +.002, recall@50 +.001); a fixed 0.5
     # adds bad titles to the top 10, a random fifth costs Discover recall.
+    # "folds": each of five random fifths in turn. And what it is chosen by:
+    # "mse" the smallest squared error, the level included; "corr" the order
+    # only (audit 2026-10-23, P1-11). On 596 held-out lists of 375+ ratings
+    # against their future ratings (2026-10-25, results_blendcrit): every
+    # rule within .0006 rho of today's, none near the share best in
+    # hindsight (+.0065) - one newest fifth is noise: without the floor 28 %
+    # chose 0, with five folds by correlation 5 %. Folds by correlation, the
+    # floor kept: rho +.0004, more long lists at their own share (0.5: 34 %
+    # -> 41 %); the lists within noise on the benchmark, together with the
+    # disagreement change (results_model_fixes_2026-10-25.txt).
     blend_lam_min: float = 0.3
-    blend_holdout: str = "newest"
+    blend_holdout: str = "folds"
+    blend_criterion: str = "corr"
     # Centre of the size-weighted handover from the population stack to the
     # personal model (50/50 at this many ratings, logistic with scale 15),
     # and a ceiling on the personal share. experiments/exp_handover.py
@@ -165,8 +176,22 @@ class Settings(BaseSettings):
     # experiments/exp_toplist.py, two user splits: reference profile top-10
     # hit rate .169 -> .244, recall@50 .400 -> .427, long / unfamiliar titles
     # in the top 10 ~.15 -> ~0; held-out users within noise (bad picks at 400
-    # entries .015 -> .010). 0 = off.
-    disagreement_penalty: float = 0.25
+    # entries .015 -> .010). 0 = off. Tuned at 0.25 on the raw scale below;
+    # at 0.5 on "resid" (2026-10-25) the reference profile keeps what it got
+    # from it.
+    disagreement_penalty: float = 0.5
+    # How the two predictions are compared for it (scorer.risk_parts): "raw"
+    # point for point - the personal ridge spreads its predictions about
+    # 0.5 points, the population layer 1.3, so every title the population
+    # rates high looked like a disagreement (audit 2026-10-23, P1-10); "z"
+    # each in its own spread over reference titles; "resid" against what the
+    # personal model says on average at that population z, so only a real
+    # disagreement counts. Production-pool benchmark (2026-10-25,
+    # results_model_fixes_2026-10-25.txt): z, resid and resid at 0.5 all
+    # within noise on every gated metric; resid at 0.5 bad@10 at 400 entries
+    # -.0027, the reference profile's hit@10 as with raw (resid at 0.25:
+    # -.025, two splits).
+    disagreement_scale: str = "resid"
     unfamiliar_genre_penalty: float = 0.3
     long_series_penalty: float = 0.3
     # Evidence check (exp_toplist.py round 7, two user splits): points off per
@@ -212,6 +237,11 @@ class Settings(BaseSettings):
     # 0.5 (exp_blend.py, 2026-10-11): Discover recall@50 +.015/+.015/+.024 at
     # 25/150/400 entries, reference profile .038 -> .091; Hidden Gems recall@50
     # +.008/+.015 and hit@10 +.023/+.044 at 150/400; Safe Bets untouched.
+    # 0.75 (production-pool benchmark, 2026-10-25, audit B3): Discover
+    # recall@50 +.012 to +.014 and hit@10 +.027 to +.040, all of it from
+    # titles at most a year old (their recall +.020 to +.025) while the older
+    # liked titles' fell (-.008 at 400 entries) and the top 20 got ten points
+    # newer - the drift the age balance is there against. Not taken.
     discover_ranker_weight: float = 0.0
     gems_ranker_weight: float = 0.0
     # Train the learned orders as they are served (recsys/ltr.py train,

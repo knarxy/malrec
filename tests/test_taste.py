@@ -136,6 +136,36 @@ def test_evidence_names_only_attributes_the_ratings_clearly_back():
     assert taste.evidence(new, [], few, ["Drama", "Comedy"]) == []
 
 
+def test_evidence_keeps_what_survives_the_lists_many_tests(monkeypatch):
+    """P1-12: a studio five series past the z bar (2.1, p .10 on t with 4
+    degrees of freedom) among a list's other tests is no longer a reason on
+    cards; the genre rated 9 across eight series still is."""
+    titles, es = {}, []
+    for m in range(1, 9):
+        titles[m] = title(m, ["Drama"], studio=f"D{m}")
+        es.append(entry(m, 9))
+    for k in range(40):
+        titles[100 + k] = title(100 + k, ["Comedy"], studio=f"S{k % 8}")
+        es.append(entry(100 + k, 6 + k % 3))
+    for k, s in enumerate([9, 8, 8, 7, 9]):
+        titles[200 + k] = title(200 + k, ["Comedy"], studio="SX")
+        es.append(entry(200 + k, s))
+
+    def clear():
+        g = taste.attribute_groups(es, titles, {}, {}, ["Drama", "Comedy"])
+        return g["genre"]["Drama"]["clear"], g["studio"]["SX"]["clear"]
+    monkeypatch.setattr(taste, "EVIDENCE_FDR", 1.0)            # no correction: as before
+    assert clear() == (True, True)
+    monkeypatch.setattr(taste, "EVIDENCE_FDR", 0.2)
+    assert clear() == (True, False)
+
+
+def test_benjamini_hochberg_steps_up():
+    assert taste.benjamini_hochberg([0.001, 0.04, 0.03, 0.5], 0.2) == [True, True, True, False]
+    assert taste.benjamini_hochberg([0.3, 0.6], 0.2) == [False, False]
+    assert taste.benjamini_hochberg([], 0.2) == []
+
+
 def test_evidence_labels_read_like_the_drivers():
     assert taste.evidence_label("era", "2015") == "2015–2019"
     assert taste.evidence_label("format", "tv") == "a TV series"

@@ -413,7 +413,8 @@ def blend_opts() -> dict:
     place, so serving, evaluation and the gate always mix them the same way."""
     cfg = settings()
     return {"size_n0": cfg.blend_size_n0, "lam_max": cfg.blend_lam_max,
-            "lam_min": cfg.blend_lam_min, "holdout": cfg.blend_holdout}
+            "lam_min": cfg.blend_lam_min, "holdout": cfg.blend_holdout,
+            "criterion": cfg.blend_criterion}
 
 
 def blend_mode(n_scored: int) -> str:

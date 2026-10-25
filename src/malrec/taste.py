@@ -28,6 +28,16 @@ Z = 2.0                     # and a difference this many standard errors wide
 THEME_MIN_SERIES = 8        # themes: hundreds of tags are tested, so stricter
 THEME_Z = 2.5
 SD_FLOOR = 0.5              # a group whose series all got one score is not certain
+# The evidence lines on cards (attribute_groups) test every genre, theme,
+# studio, format, era, length and source of a list - 150 a list on average,
+# 200 on a long one - and kept every one past the z bar above: with the
+# series' scores shuffled, 7 a list still passed, a fifth of all claims and
+# half of them on lists under 50 rated series (audit 2026-10-23, P1-12;
+# experiments/exp_evidence_fdr.py, 2,000 sampled lists). Benjamini-Hochberg
+# at this rate over all of a list's tests, on p from Student's t, leaves 0.6
+# by chance (2 % of the claims; 8 % at 50-149 rated series, 27 % below 50)
+# and keeps as many real ones; cards with a line 86 % -> 77 %.
+EVIDENCE_FDR = 0.2
 MIN_COMPARED = 10           # titles with a MAL score before the scale is compared
 SCALE_SLIGHT, SCALE_STRONG = 0.25, 0.75
 POPULAR = 20_000            # disagreements: titles at least this many rated on MAL
@@ -69,9 +79,13 @@ def era_of(year: int) -> int:
 
 
 def _groups(by_series: dict[int, float], members: dict[str, set[int]], mu: float,
-            min_series: int, z_min: float) -> list[dict]:
+            min_series: int, z_min: float, with_p: bool = False) -> list[dict]:
     """Groups (a genre, tag, studio, era) with their series-level mean, lift
-    over `mu` and its z; `clear` when it passes min_series and z_min."""
+    over `mu` and its z; `clear` when it passes min_series and z_min.
+    `with_p`: also the two-sided p of that z on Student's t with n - 1
+    degrees of freedom (a group has a handful of series: the normal's tails
+    are far too thin for it)."""
+    from scipy.stats import t as student_t
     out = []
     for k, ss in members.items():
         vals = [by_series[s] for s in ss if s in by_series]
@@ -81,9 +95,21 @@ def _groups(by_series: dict[int, float], members: dict[str, set[int]], mu: float
         m = sum(vals) / n
         sd = math.sqrt(sum((x - m) ** 2 for x in vals) / (n - 1)) if n > 1 else 0.0
         z = (m - mu) / (max(sd, SD_FLOOR) / math.sqrt(n))
-        out.append({"name": k, "series": n, "mean": round(m, 2), "lift": round(m - mu, 2),
-                    "z": round(z, 1), "clear": abs(z) >= z_min})
+        g = {"name": k, "series": n, "mean": round(m, 2), "lift": round(m - mu, 2),
+             "z": round(z, 1), "clear": abs(z) >= z_min}
+        if with_p:
+            g["p"] = float(2 * student_t.sf(abs(z), n - 1)) if n > 1 else 1.0
+        out.append(g)
     return sorted(out, key=lambda g: -g["lift"])
+
+
+def benjamini_hochberg(p: list[float], q: float) -> list[bool]:
+    """Which of these p-values Benjamini-Hochberg's step-up procedure rejects
+    at false discovery rate q."""
+    order = sorted(range(len(p)), key=lambda k: p[k])
+    last = max((i for i, k in enumerate(order) if p[k] <= q * (i + 1) / len(p)), default=-1)
+    keep = set(order[:last + 1])
+    return [k in keep for k in range(len(p))]
 
 
 def _pick(clear: list[dict]) -> tuple[list[dict], list[dict]]:
@@ -320,8 +346,10 @@ def attribute_groups(entries: list[dict], titles: dict[int, dict], tags: dict[in
                      series: dict[int, int], genre_names: Iterable[str] = ()) -> dict:
     """The user's series-level mean per value of every attribute a title has
     (its genres, themes, studios, format, era, length, source), with the
-    profile page's rule for `clear`. Every group with two or more series is
-    kept, so an explanation can also be checked against a weak one."""
+    profile page's rule for `clear` - and, since a long list runs a couple
+    of hundred of these tests, Benjamini-Hochberg over all of them at
+    EVIDENCE_FDR. Every group with two or more series is kept, so an
+    explanation can also be checked against a weak one."""
     genre_names = {g.lower() for g in genre_names}
     entries = [e for e in entries if e["mal_id"] in titles]
     sid = {e["mal_id"]: series.get(e["mal_id"], e["mal_id"]) for e in entries}
@@ -334,16 +362,23 @@ def attribute_groups(entries: list[dict], titles: dict[int, dict], tags: dict[in
     vals = {e["mal_id"]: attribute_values(titles[e["mal_id"]], tags.get(e["mal_id"], ()),
                                           genre_names) for e in rated}
     out: dict = {"mu": round(mu, 3), "rated_series": len(by_series)}
+    tested: list[dict] = []          # every group that could be called clear
     for kind in ATTRIBUTES:
         min_k, z = ((THEME_MIN_SERIES, THEME_Z) if kind == "theme" else (MIN_SERIES, Z))
         g: dict[str, set[int]] = defaultdict(set)
         for e in rated:
             for k in vals[e["mal_id"]][kind]:
                 g[k].add(sid[e["mal_id"]])
-        groups = _groups(by_series, g, mu, 2, z)
+        groups = _groups(by_series, g, mu, 2, z, with_p=True)
         for x in groups:
-            x["clear"] = x["clear"] and x["series"] >= min_k and len(by_series) >= MIN_RATED_SERIES
+            testable = x["series"] >= min_k and len(by_series) >= MIN_RATED_SERIES
+            x["clear"] = x["clear"] and testable
+            if testable:
+                tested.append(x)
         out[kind] = {x["name"]: x for x in groups}
+    if tested:
+        for x, ok in zip(tested, benjamini_hochberg([x["p"] for x in tested], EVIDENCE_FDR)):
+            x["clear"] = x["clear"] and ok
     return out
 
 

@@ -663,6 +663,17 @@ it was: a fixed 0.5 rho +.002, recall@50 +.001, bad@10 +.005-; a floor of
 instead of the newest rho +.002, Discover recall@50 -.004-. **Shipped: the
 floor** (`blend_lam_min` 0.3).
 
+Follow-up (2026-10-25, audit P1-11, `results_blendcrit_2026-10-25.txt`):
+the choice measured on its own, 596 held-out lists of 375+ ratings scored
+on their future ratings. Choosing by correlation instead of squared error
+(the error also scores the level, which the stacker's intercept carries)
+changes nothing by itself; what made lists choose 0 is that one fifth is
+too few ratings - by squared error on it 28 % chose 0 without the floor,
+on five random fifths by correlation 5 %, at the same accuracy (rho
++.0004) and with more long lists at their own share. **Shipped: five
+folds by correlation, the floor kept** (`blend_holdout` folds,
+`blend_criterion` corr).
+
 `results_fresh_2026-10-22.txt`, with the floor, the share of titles at most
 a year old in the age aim scaled by `age_fresh_weight`:
 

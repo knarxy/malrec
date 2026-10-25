@@ -4,9 +4,10 @@
 # Custom format, compressed: ~340 MB at 2026-10 sizes. Seven days are kept.
 # Each dump is read back (pg_restore --list) before older ones are rotated
 # out, so a broken dump never replaces a good one. The dumps are NOT
-# encrypted and stay on this host: the directory is root-only, and the MAL
-# tokens inside are sealed with TOKEN_KEY - which lives in .env, not in the
-# dumps; keep a copy of it apart, or a restore elsewhere signs everyone out.
+# encrypted: the directory is root-only, an encrypted copy off the machine is
+# up to the operator's own backup, and the MAL tokens inside are sealed with
+# TOKEN_KEY - which lives in .env, not in the dumps; keep a copy of it apart,
+# or a restore elsewhere signs everyone out.
 # Skipped when the disk has less than MIN_FREE_GB free.
 #
 # Restore (stop what writes to the database first):

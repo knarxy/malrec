@@ -247,11 +247,11 @@ def fit_user(pop: PopulationModel, stacker: Ridge, store: ItemStore,
              implicit_in_foldin: bool = False,
              listed: dict[int, float] | None = None,
              size_n: int | None = None, lam_max: float = 1.0, lam_min: float = 0.0,
-             holdout: str = "newest") -> UserModel:
+             holdout: str = "newest", criterion: str = "mse") -> UserModel:
     """Fit one user's model. `alpha=None` picks ridge penalties by weighted CV.
     `lam_max` caps the personal model's share in the "sized" and "blend" modes;
-    in "blend" `lam_min` floors the chosen share and `holdout` says which
-    ratings it is chosen on (_choose_lambda)."""
+    in "blend" `lam_min` floors the chosen share, `holdout` says which ratings
+    it is chosen on and `criterion` by what (_choose_lambda)."""
     if mode not in MODES:
         raise ValueError(f"mode must be one of {MODES}")
     implicit = implicit or []
@@ -285,7 +285,7 @@ def fit_user(pop: PopulationModel, stacker: Ridge, store: ItemStore,
                                alpha=alpha, implicit_in_foldin=implicit_in_foldin,
                                listed=listed)
         chosen = _choose_lambda(pop, stacker, store, scored, implicit, blend_of, alpha,
-                                blend_k, blend_min_n, implicit_in_foldin, holdout)
+                                blend_k, blend_min_n, implicit_in_foldin, holdout, criterion)
         model.lam = min(max(chosen, lam_min), lam_max)
         return model
 
@@ -335,7 +335,8 @@ def settings_level_trend() -> str:
 
 
 def _choose_lambda(pop, stacker, store, scored, implicit, blend_of, alpha,
-                   k, min_n, implicit_in_foldin, holdout: str = "newest") -> float:
+                   k, min_n, implicit_in_foldin, holdout: str = "newest",
+                   criterion: str = "mse") -> float:
     """How much to trust the personal-side model over the population stack.
 
     With enough history this is decided on the user's own newest ratings: fit
@@ -344,37 +345,84 @@ def _choose_lambda(pop, stacker, store, scored, implicit, blend_of, alpha,
     population average when its own model is better. Thin lists use n/(n+k).
     holdout="random" tests on a stable random fifth instead: the newest can
     be a different kind of list (one season's shows) from the rest.
+    holdout="folds": on each of five stable random fifths in turn, fitted on
+    the other four - one fifth is too few ratings to choose on: by squared
+    error on the newest fifth alone 28 % of long lists chose 0 (2026-10-25,
+    results_blendcrit_2026-10-25.txt).
+
+    criterion="mse": the mix with the smallest squared error (over all
+    folds). That also scores the level, and the stacker's intercept carries
+    the population's drift toward the newest ratings, which the personal
+    model has no term for (audit 2026-10-23, P1-11). "corr": the mix most
+    correlated with the ratings (per fold, averaged by its size) - the
+    smallest error once a line is fitted through it, which is what serving
+    does (the calibration) - so only the order counts.
     """
     n = len(scored)
     if n < min_n:
         return n / (n + k)
-    cut = int(n * 0.8)
-    if holdout == "random":
-        ordered = sorted(scored, key=lambda e: unit_hash("blend", e.mal_id))
-        tr, va = ordered[:cut], ordered[cut:]
-        held = {e.mal_id for e in va}
-        imp = [e for e in implicit if e.mal_id not in held]
-    else:
-        ordered = sorted(scored, key=lambda e: (e.at is None, e.at))
-        tr, va = ordered[:cut], ordered[cut:]
-        first_val = va[0].at
-        imp = [e for e in implicit if e.at is None or first_val is None or e.at < first_val]
-    inner = fit_user(pop, stacker, store, tr, imp, mode=blend_of, alpha=alpha,
-                     implicit_in_foldin=implicit_in_foldin)
-    stk = fit_user(pop, stacker, store, tr, imp, mode="stack",
-                   implicit_in_foldin=implicit_in_foldin)
-    items = [e.mal_id for e in va]
-    truth = np.array([e.score for e in va])
-    a, b = inner.predict(items), stk.predict(items)
-    ok = ~(np.isnan(a) | np.isnan(b))
-    if ok.sum() < 5:
+    parts = []                      # (personal, stack, truth) per validation set
+    for tr, imp, va in _blend_splits(scored, implicit, holdout):
+        inner = fit_user(pop, stacker, store, tr, imp, mode=blend_of, alpha=alpha,
+                         implicit_in_foldin=implicit_in_foldin)
+        stk = fit_user(pop, stacker, store, tr, imp, mode="stack",
+                       implicit_in_foldin=implicit_in_foldin)
+        items = [e.mal_id for e in va]
+        a, b = inner.predict(items), stk.predict(items)
+        ok = ~(np.isnan(a) | np.isnan(b))
+        parts.append((a[ok], b[ok], np.array([e.score for e in va])[ok]))
+    if sum(len(y) for _, _, y in parts) < 5:
         return n / (n + k)
+    if criterion == "corr":
+        chosen, best_r = None, -float("inf")
+        for lam in np.linspace(0, 1, 11):
+            rs, ws = [], []
+            for a, b, y in parts:
+                mix = lam * a + (1 - lam) * b
+                if len(y) >= 5 and mix.std() > 1e-9 and y.std() > 1e-9:
+                    rs.append(float(np.corrcoef(mix, y)[0, 1]))
+                    ws.append(len(y))
+            if not rs:
+                continue
+            r = float(np.average(rs, weights=ws))
+            if r > best_r + 1e-9:
+                chosen, best_r = float(lam), r
+        return chosen if chosen is not None else n / (n + k)
     best, best_err = 1.0, float("inf")
     for lam in np.linspace(0, 1, 11):
-        err = float(np.mean((lam * a[ok] + (1 - lam) * b[ok] - truth[ok]) ** 2))
+        err = float(np.mean(np.concatenate([(lam * a + (1 - lam) * b - y) ** 2
+                                            for a, b, y in parts])))
         if err < best_err - 1e-9:
             best, best_err = float(lam), err
     return best
+
+
+BLEND_FOLDS = 5
+
+
+def _blend_splits(scored: list[Example], implicit: list[Example], holdout: str
+                  ) -> list[tuple[list[Example], list[Example], list[Example]]]:
+    """(training ratings, implicit rows, validation ratings) for
+    _choose_lambda: the newest fifth, a stable random fifth, or each of
+    BLEND_FOLDS stable random fifths ("folds"). Implicit rows of a held-out
+    title - or, for the newest, from its time on - stay out of the fit."""
+    n = len(scored)
+    cut = int(n * 0.8)
+    if holdout in ("random", "folds"):
+        ordered = sorted(scored, key=lambda e: unit_hash("blend", e.mal_id))
+        bounds = ([(n * f // BLEND_FOLDS, n * (f + 1) // BLEND_FOLDS) for f in range(BLEND_FOLDS)]
+                  if holdout == "folds" else [(cut, n)])
+        out = []
+        for lo, hi in bounds:
+            held = {e.mal_id for e in ordered[lo:hi]}
+            out.append((ordered[:lo] + ordered[hi:],
+                        [e for e in implicit if e.mal_id not in held], ordered[lo:hi]))
+        return out
+    ordered = sorted(scored, key=lambda e: (e.at is None, e.at))
+    first_val = ordered[cut].at
+    return [(ordered[:cut],
+             [e for e in implicit if e.at is None or first_val is None or e.at < first_val],
+             ordered[cut:])]
 
 
 # ------------------------------------------------------------ stacker fit --

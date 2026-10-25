@@ -9,6 +9,7 @@ co-ratings rather than a hand-curated recommendation list).
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -47,6 +48,33 @@ def is_long_series(row: dict, year: int | None = None) -> bool:
 
 # Stack inputs that say nothing about this particular user.
 _STACK_CONSENSUS = {"bias", "mal_c", "al_c", "pop", "drop", "polar"}
+
+# Titles the two predictions' spreads are measured on for the disagreement
+# risk (HybridScorer.disagreement): the most-scored main titles not rated by
+# the user, at most this many.
+DISAGREE_REF = 500
+
+
+@dataclass(frozen=True)
+class DisagreeRef:
+    m_st: float
+    s_st: float
+    m_pe: float
+    s_pe: float
+    rho: float
+
+
+def reference_titles(store) -> list[int]:
+    """Main-format titles by MAL scorers, most first (cached on the store);
+    the first DISAGREE_REF + a long list's rated titles are enough."""
+    ref = getattr(store, "_disagree_titles", None)
+    if ref is None:
+        rows = store.rows
+        ref = sorted((m for m, r in rows.items() if r.get("format_class") == "main"),
+                     key=lambda m: -(rows[m].get("mal_num_scoring_users") or 0))
+        ref = ref[:DISAGREE_REF * 8]
+        store._disagree_titles = ref
+    return ref
 
 
 def _stack_label(name: str, value: float) -> str | None:
@@ -144,7 +172,8 @@ class HybridScorer:
         slope = float(self.calibration[0])
         if cfg.disagreement_penalty > 0:
             st, pe = self.um.predict_parts(ids)
-            gap = np.nan_to_num(np.maximum(st - pe, 0.0), nan=0.0)
+            gap = np.nan_to_num(np.maximum(self.disagreement(st, pe, cfg.disagreement_scale),
+                                           0.0), nan=0.0)
             out["disagree"] = trust * cfg.disagreement_penalty * slope * gap
         if cfg.unfamiliar_genre_penalty > 0 and familiar is not None:
             out["unfamiliar"] = trust * cfg.unfamiliar_genre_penalty * np.array([
@@ -157,6 +186,44 @@ class HybridScorer:
             fade = e0 / (e0 + self.um.fold.evidence(ids)) if e0 > 0 else 1.0
             out["acclaim"] = trust * cfg.acclaim_penalty * slope * lift * fade
         return out
+
+    def disagreement(self, st: np.ndarray, pe: np.ndarray, scale: str) -> np.ndarray:
+        """How much more optimistic the population layer is than the personal
+        model, in the population's points (risk_parts keeps the positive part).
+          raw    st - pe
+          z      each in its own spread over reference titles (DisagreeRef):
+                 (z(st) - z(pe)) * sd(st) - the ridge's predictions spread a
+                 third as wide, so raw calls every title the population rates
+                 high a disagreement (audit 2026-10-23, P1-10)
+          resid  against what the personal model says on average at that
+                 population z: (rho z(st) - z(pe)) * sd(st)"""
+        if scale == "raw":
+            return st - pe
+        ref = self.disagree_ref()
+        if ref is None:
+            return np.zeros(len(st))
+        zs, zp = (st - ref.m_st) / ref.s_st, (pe - ref.m_pe) / ref.s_pe
+        if scale == "resid":
+            zs = ref.rho * zs
+        return (zs - zp) * ref.s_st
+
+    def disagree_ref(self) -> DisagreeRef | None:
+        """Both predictions on the DISAGREE_REF most-scored titles the user
+        has not rated (cached): the same for every call, whatever ids it gets -
+        the "Why this?" panel asks for one title, a list build for thousands.
+        None without a personal model."""
+        if getattr(self, "_disagree_ref", False) is False:
+            self._disagree_ref = None
+            rated = getattr(self, "_scores", {})
+            ids = [m for m in reference_titles(self.um.store) if m not in rated]
+            st, pe = self.um.predict_parts(ids[:DISAGREE_REF])
+            ok = ~(np.isnan(st) | np.isnan(pe))
+            if ok.sum() >= 20 and st[ok].std() > 1e-6 and pe[ok].std() > 1e-6:
+                st, pe = st[ok], pe[ok]
+                self._disagree_ref = DisagreeRef(
+                    float(st.mean()), float(st.std()), float(pe.mean()), float(pe.std()),
+                    float(np.corrcoef(st, pe)[0, 1]))
+        return self._disagree_ref
 
     def acclaim_lift(self, ids: list[int]) -> np.ndarray:
         """Per item, the part of the personal model's prediction above the

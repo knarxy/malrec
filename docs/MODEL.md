@@ -281,7 +281,13 @@ Bets' learned order, as served), Hidden Gems' its pool (below). Each is
 stored per population model and tab
 (`malrec ranker train --surface discover`, ~35 minutes each; without
 `--surface` every enabled tab is trained) and falls back to the hand key
-when missing. A ranker records the settings that shape the key it learned
+when missing. A stronger share for these two (0.75, audit B3, 2026-10-25)
+wins every gated metric - Discover recall@50 +.012 to +.014, hit@10 +.027 to
++.040 - but all of it on titles at most a year old (their recall +.020 to
++.025), while the older liked titles' falls (-.008 at 400 entries) and the
+top 20 gets ten points newer: the drift the age balance is there against,
+so it stays at 0.5 (`results_model_fixes_2026-10-25.txt`). A ranker records
+the settings that shape the key it learned
 from (`ltr.FINGERPRINT_SETTINGS`: the model, blend and risk dials); after a
 change to any of them it no longer counts as current, and the tab falls back
 to the hand key until `malrec ranker train` has run again. The fallback is
@@ -444,6 +450,20 @@ length rule applies at every list size and also counts a series that has
 been airing for three years or more (MAL gives those 0 episodes; Detective
 Conan and Crayon Shin-chan were thin lists' Hidden Gems): long titles in
 thin lists' top 10 .13 -> .09, hit rate and recall unchanged.
+
+**Disagreement on each model's own spread** (2026-10-25, audit P1-10). The
+penalty compared the two predictions point for point, but the personal
+ridge spreads its predictions about 0.5 points and the population layer
+1.3, so every title the population rated high looked like a disagreement.
+It now asks how far the personal model is below where it usually is for a
+title the population places that high: both are put in their own spread
+over the 500 most-scored titles the user has not rated, and the personal
+side is compared with its average at that population z
+(`disagreement_scale` "resid"; "z" compares the two z-values directly).
+Production-pool benchmark, 300 users a size: z, resid and resid at 0.5 all
+within noise on every gated metric; at 0.5 (`disagreement_penalty`, 0.25 on
+the old scale) the reference profile keeps what the raw penalty gave it and
+bad picks at 400 entries move -.0027 (`results_model_fixes_2026-10-25.txt`).
 
 **Evidence check** (`exp_toplist.py --round 7`). A high personal-model score
 is not evidence on its own: the content ridge carries acclaim columns (MAL
@@ -746,9 +766,14 @@ personal side ("your ratings say") lists what the user's own ratings clearly
 say about the title's genres, themes, studio, format, era, length and source
 (`taste.evidence_for`, the profile page's rule: series-level means, enough
 series, a clear difference), each with its distance from the user's average
-and the number of series behind it - not the personal model's largest
-terms, of which only 15 % were backed by the user's ratings and 13 % said
-the opposite (`exp_evidence.py`). When everything clear is against the
+and the number of series behind it. A list runs about 150 of these tests (200
+on a long one), so a difference also has to survive Benjamini-Hochberg at
+0.2 over all of them, on p-values from Student's t: with the scores shuffled
+among a list's series, 7 attributes a list still came out clear, a fifth of
+all claims and half of them below 50 rated series; now 0.6 (2 %; 27 % below
+50), with as many real ones kept (`results_evidence_fdr_2026-10-24.txt`).
+They replace the personal model's largest terms, of which only 15 % were
+backed by the user's ratings and 13 % said the opposite (`exp_evidence.py`). When everything clear is against the
 title, the panel says that it is recommended for what similar viewers say.
 How well known a title is stays out of both sides. A tag on a card or in
 the panel opens the catalogue's titles with it (`GET /tag/{tag}`), the ones
@@ -823,7 +848,7 @@ environment variable. The values that matter:
 | `min_scoring_users` | 2000 | floor of the candidate pool where a surface sets none of its own; Safe Bets and Discover fix 2,000 in `surfaces.SPECS` |
 | `blend_size_n0` / `blend_lam_max` | 150 / 0.5 | where the personal model takes over, and how far (`exp_handover.py`) |
 | `ranking_share_n0` | 80 | list size the ranking dials follow; 0 = the blend weight |
-| `disagreement_penalty` / `unfamiliar_genre_penalty` / `long_series_penalty` | 0.25 / 0.3 / 0.3 | risk term in the order key (`exp_toplist.py`) |
+| `disagreement_penalty` / `disagreement_scale` / `unfamiliar_genre_penalty` / `long_series_penalty` | 0.5 / resid / 0.3 / 0.3 | risk term in the order key (`exp_toplist.py`; the disagreement on each model's own spread, `results_model_fixes_2026-10-25.txt`) |
 | `acclaim_penalty` / `acclaim_evidence_e0` | 0.6 / 0.1 | evidence check: lift from acclaim alone, fading with co-rating evidence (`exp_toplist.py` round 7) |
 | `safe_bets_memory_cap` / `safe_bets_floor` | 0.15 / -99 (off) | Safe Bets guards |
 | `safe_bets_memory_mix` | 0.0 (0.5 in compose) | Safe Bets' share of the every-rating-equal model |
@@ -831,7 +856,7 @@ environment variable. The values that matter:
 | `discover_ranker_weight` / `gems_ranker_weight` | 0.0 (0.5 in compose) | Discover's and Hidden Gems' own learned orders |
 | `age_calibration` / `calibration_block` | 0 / 0 (1 / 20 in compose) | the three tabs held to the user's age mix, ordered within blocks of 20 (2026-10-13) |
 | `age_fresh_weight` | 0.5 | the aim's weight on titles at most a year old: a seasonal watcher's tabs lean toward the back catalogue, This Season lists the new (`results_fresh_2026-10-22.txt`); acts only with `age_calibration` > 0 |
-| `chosen_blend_min` / `blend_lam_min` / `blend_holdout` | 300 / 0.3 / newest | from this many ratings the personal share is chosen on the user's newest fifth, never below 0.3 (`results_blendchoice_2026-10-22.txt`; on model 16, without the app users' own lists, three long lists still choose 0-0.2) |
+| `chosen_blend_min` / `blend_lam_min` / `blend_holdout` / `blend_criterion` | 300 / 0.3 / folds / corr | from this many ratings the personal share is chosen on five random fifths of the user's ratings by how well the mix orders them, never below 0.3 (`results_blendchoice_2026-10-22.txt`; `results_blendcrit_2026-10-25.txt`: on the newest fifth by squared error 28 % of long lists chose 0 without the floor, on five folds by correlation 5 %, rho +.0004) |
 | `safe_bets_key_risk` | 1.0 | share of the risk term in Safe Bets' hand key (0 = left to the ranker; measured worse) |
 | `order_ranker_ips` | 0.0 | popularity correction of the rankers' training labels (tested, not shipped) |
 | `series_weight_power` | 0.0 | each rating counts 1 / n^power as taste evidence, n = the user's entries in its series; 0.5 and 1 cost Discover and Hidden Gems accuracy on long lists (`results_series_2026-10-15.txt`) |
@@ -915,8 +940,9 @@ writes the findings to `audit/`, which is not tracked.
 The MAL jobs share a lock, so they never run at once. AniList data is otherwise
 fetched once per anime, on demand; these two passes are what keep it current.
 
-The dumps are not encrypted and stay on the same host; only the MAL tokens
-inside are sealed, with `TOKEN_KEY` from `.env`, which the dumps do not
+The dumps themselves are not encrypted; an encrypted copy off the machine is
+up to the operator's own backup. Only the MAL tokens inside are sealed, with
+`TOKEN_KEY` from `.env`, which the dumps do not
 contain - keep a copy of it elsewhere, or a restore on a new host signs
 everyone out. Restore a dump with:
 

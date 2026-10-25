@@ -1,0 +1,76 @@
+# python -m experiments.exp_evidence_fdr, dev, 2026-10-24: 2,000 sampled lists (cf_rating, >= 30
+# ratings), 5 permutations each; the app accounts' stored lists (totals only).
+# Chosen (taste.EVIDENCE_FDR): bh.20t - the most real claims among the rules that keep chance at or
+# under 10 % of the claims from 50 rated series on; no rule gets there below 50 (bh.20t 27 %, today 52 %).
+2000 lists, 1031850 ratings, 24763 titles [6s]
+
+app accounts (14), their stored lists: cards with an evidence line, lines per card
+   now       0.86   2.46   (2520 cards)
+   z2.5      0.79   2.04   (2520 cards)
+   z3        0.65   1.45   (2520 cards)
+   holm      0.50   1.06   (2520 cards)
+   bh.05     0.69   1.66   (2520 cards)
+   bh.10     0.78   2.04   (2520 cards)
+   bh.20     0.82   2.32   (2520 cards)
+   holm.t    0.38   0.84   (2520 cards)
+   bh.05t    0.53   1.25   (2520 cards)
+   bh.10t    0.61   1.54   (2520 cards)
+   bh.20t    0.77   2.07   (2520 cards)
+
+per user: tests, clear (real), clear by chance (null), est. FDR = null / real, real - null; split: replicated share, lift on the other half [269s]
+
+== rated series 15-49 (154 lists, 30.4 tests each)
+   rule     clear  chance    FDR   real   repl   lift
+   now       2.90    1.52   0.52   1.38   0.71   0.26
+   z2.5      1.73    0.91   0.52   0.82   0.78   0.40
+   z3        1.04    0.49   0.47   0.55   0.71   0.39
+   holm      0.92    0.42   0.46   0.50   0.74   0.41
+   bh.05     1.21    0.50   0.41   0.71   0.74   0.41
+   bh.10     1.58    0.69   0.44   0.89   0.76   0.40
+   bh.20     2.21    0.97   0.44   1.25   0.72   0.32
+   holm.t    0.23    0.06   0.27   0.17   0.82   0.68
+   bh.05t    0.32    0.07   0.23   0.25   0.71   0.45
+   bh.10t    0.59    0.14   0.24   0.45   0.76   0.56
+   bh.20t    1.14    0.31   0.27   0.83   0.73   0.43
+
+== rated series 50-149 (572 lists, 82.3 tests each)
+   rule     clear  chance    FDR   real   repl   lift
+   now      11.35    3.98   0.35   7.38   0.77   0.41
+   z2.5      8.52    2.58   0.30   5.94   0.79   0.45
+   z3        5.20    1.34   0.26   3.86   0.82   0.50
+   holm      3.39    0.80   0.24   2.59   0.83   0.52
+   bh.05     6.16    1.07   0.17   5.09   0.81   0.50
+   bh.10     8.16    1.44   0.18   6.72   0.80   0.47
+   bh.20    10.08    2.10   0.21   7.99   0.79   0.45
+   holm.t    0.94    0.09   0.09   0.85   0.86   0.61
+   bh.05t    2.08    0.14   0.07   1.94   0.87   0.60
+   bh.10t    3.78    0.26   0.07   3.52   0.86   0.58
+   bh.20t    6.58    0.51   0.08   6.06   0.83   0.52
+
+== rated series 150+ (1272 lists, 200.3 tests each)
+   rule     clear  chance    FDR   real   repl   lift
+   now      46.68    9.34   0.20  37.34   0.88   0.58
+   z2.5     38.65    5.81   0.15  32.84   0.90   0.62
+   z3       26.94    2.81   0.10  24.14   0.92   0.69
+   holm     16.73    1.18   0.07  15.55   0.93   0.77
+   bh.05    35.04    1.69   0.05  33.36   0.91   0.67
+   bh.10    41.18    2.41   0.06  38.77   0.90   0.63
+   bh.20    45.64    3.68   0.08  41.96   0.89   0.59
+   holm.t    9.64    0.12   0.01   9.52   0.98   0.86
+   bh.05t   24.13    0.19   0.01  23.94   0.95   0.76
+   bh.10t   32.19    0.33   0.01  31.85   0.94   0.70
+   bh.20t   40.91    0.67   0.02  40.24   0.91   0.64
+
+== rated series all (1998 lists, 153.4 tests each)
+   rule     clear  chance    FDR   real   repl   lift
+   now      33.19    7.20   0.22  25.99   0.87   0.57
+   z2.5     27.18    4.51   0.17  22.67   0.89   0.61
+   z3       18.72    2.21   0.12  16.51   0.91   0.68
+   holm     11.69    1.01   0.09  10.68   0.92   0.75
+   bh.05    24.17    1.42   0.06  22.75   0.91   0.66
+   bh.10    28.68    2.00   0.07  26.68   0.89   0.62
+   bh.20    32.11    3.02   0.09  29.09   0.88   0.58
+   holm.t    6.42    0.10   0.02   6.32   0.97   0.85
+   bh.05t   15.98    0.17   0.01  15.82   0.95   0.76
+   bh.10t   21.62    0.30   0.01  21.32   0.93   0.70
+   bh.20t   28.01    0.60   0.02  27.42   0.91   0.63
