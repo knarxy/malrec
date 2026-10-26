@@ -162,7 +162,7 @@ def explain(mal_id: int, v: Approved, user: str | None = None, surface: str = "d
     if cand is not None and surface in SPECS:
         rel = float(relevance_bonus(_Share(cand["personal_share"]),
                                     np.array([cand["relevance_z"]]))[0])
-        nov = (SPECS[surface].novelty_weight * float(cand["novelty_scale"])
+        nov = (SPECS[surface].novelty * float(cand["novelty_scale"])
                * float(cand["novelty"]))
         bonus, pop_b = float(cand["bonus"] or 0.0), float(cand["pop_bonus"] or 0.0)
         risk = float(cand["risk"] or 0.0)

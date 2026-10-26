@@ -123,20 +123,21 @@ def test_a_session_from_before_the_host_prefix_is_moved_over(accounts, monkeypat
     ids, _ = accounts
     monkeypatch.setattr(settings(), "session_cookie_secure", True)
     old, new = secrets.token_urlsafe(16), secrets.token_urlsafe(16)
-    for tok, made in ((old, auth.PLAIN_COOKIE_BEFORE - dt.timedelta(days=1)),
-                      (new, auth.PLAIN_COOKIE_BEFORE + dt.timedelta(minutes=1))):
+    now = dt.datetime.now(dt.UTC)
+    # relative to now: fixed dates made this test fail once "now - 2 days"
+    # passed the newer session's date
+    for tok, made in ((old, now - dt.timedelta(days=3)), (new, now - dt.timedelta(days=1))):
         execute("INSERT INTO mal_session (token_hash, app_user_id, mal_user_id, access_token,"
                 " refresh_token, expires_at, created_at) VALUES (%s,%s,1,'a','r',%s,%s)",
                 (auth._hash(tok), ids["user"], dt.datetime.now(dt.UTC) + dt.timedelta(days=1),
                  made))
-    monkeypatch.setattr(auth, "PLAIN_COOKIE_BEFORE", dt.datetime.now(dt.UTC) + dt.timedelta(days=30))
+    monkeypatch.setattr(auth, "PLAIN_COOKIE_BEFORE", now + dt.timedelta(days=30))
     c = TestClient(app, base_url="https://testserver")
     c.cookies.set(auth.COOKIE, old)
     r = c.get("/auth/me")
     assert r.json()["signed_in"] is True
     assert "__Host-malrec_session=" in r.headers.get("set-cookie", "")
-    monkeypatch.setattr(auth, "PLAIN_COOKIE_BEFORE",
-                        dt.datetime.now(dt.UTC) - dt.timedelta(days=2))
+    monkeypatch.setattr(auth, "PLAIN_COOKIE_BEFORE", now - dt.timedelta(days=2))
     c = TestClient(app, base_url="https://testserver")
     c.cookies.set(auth.COOKIE, new)
     assert c.get("/auth/me").json() == {"signed_in": False}

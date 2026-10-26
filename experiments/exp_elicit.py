@@ -14,11 +14,19 @@ list:
               informative  spread of centred ratings among people who rated it
                         (a title everyone loves tells us little)
             re-scored after every answer, as the relevance changes
+  seen      P(seen) alone: popularity times co-occurrence relevance, no
+            informativeness - the titles this user most likely watched
+  franchise popular, at most one title per franchise (asked or known)
+  genre     popular, the next card from the least-asked main genre among
+            the 30 most popular left
 A card for a title in their history with a score is answered with that score;
 anything else counts as "haven't seen" (no information).
 
 Reported after 5 / 10 / 15 ratings: rho on future ratings, recall@50 (plain
-and IPS) of liked future titles, and cards shown per rating obtained.
+and IPS) of liked future titles, and cards shown per rating obtained. Data:
+the benchmark's snapshot, population model and held-out users (bench.py);
+the model is fitted as served (service.blend_opts), each strategy paired
+with "popular" on the same users.
 """
 from __future__ import annotations
 
@@ -28,18 +36,19 @@ from collections import defaultdict
 
 import numpy as np
 
-from experiments.exp_retrieval import load_entries, pool_ids
+from experiments import bench
+from experiments.exp_retrieval import pool_ids
 from malrec.config import settings
 from malrec.eval import spearman
 from malrec.rank import relevance_bonus
-from malrec.recsys.cf import CFParams, PopulationModel
-from malrec.recsys.hybrid import Example, fit_stacker, fit_user, recency_weight, split_user
-from malrec.recsys.items import ItemStore
+from malrec.recsys.hybrid import Example, fit_user, recency_weight, split_user
+from malrec.recsys.service import blend_opts
 
 CFG = settings()
 KS = (0, 5, 10, 15)
 MAX_CARDS = 80
 ASK_POOL = 1500          # candidate cards: the most popular titles
+STRATEGIES = ("popular", "smart", "seen", "franchise", "genre")
 
 
 class _Share:
@@ -56,7 +65,7 @@ def z(x):
 def evaluate(pop, stacker, store, known, cutoff, pool, test_items, truth, targets, prop):
     scored = [Example(m, s, recency_weight(a, cutoff), a) for m, s, a in known if s > 0]
     listed = {m: recency_weight(a, cutoff) for m, _, a in known}
-    um = fit_user(pop, stacker, store, scored, [], mode="sized", listed=listed)
+    um = fit_user(pop, stacker, store, scored, [], mode="sized", listed=listed, **blend_opts())
     p = um.predict(test_items)
     ok = ~np.isnan(p)
     rho = spearman(p[ok], truth[ok]) if ok.sum() >= 5 and truth[ok].std() > 0 else None
@@ -78,12 +87,25 @@ def run_round(strategy, pop, store, known, answers, ask, prop, info, k_max):
             break
         if strategy == "popular":
             m = cand[0]
+        elif strategy == "franchise":
+            seen_fr = {(store.rows.get(x) or {}).get("franchise_id") or x
+                       for x in [y[0] for y in known + got] + list(asked)}
+            m = next((c for c in cand if ((store.rows.get(c) or {}).get("franchise_id") or c)
+                      not in seen_fr), cand[0])
+        elif strategy == "genre":
+            asked_g = defaultdict(int)
+            for x in asked:
+                asked_g[((store.rows.get(x) or {}).get("mal_genres") or ["-"])[0]] += 1
+            m = min(cand[:30], key=lambda c: (asked_g[((store.rows.get(c) or {})
+                                                        .get("mal_genres") or ["-"])[0]],
+                                              cand.index(c)))
         else:
             listed = {x[0]: 1.0 for x in known + got}
             fold = pop.fold_in({x[0]: x[1] for x in known + got if x[1] > 0}, listed=listed)
             rel = fold.signals(cand)["rel"]
             seen = np.array([prop.get(c, 1e-4) for c in cand]) * np.exp(z(rel))
-            score = seen * np.array([info.get(c, 0.0) for c in cand])
+            score = seen if strategy == "seen" else seen * np.array([info.get(c, 0.0)
+                                                                     for c in cand])
             m = cand[int(np.argmax(score))]
         asked.add(m)
         cards += 1
@@ -96,43 +118,34 @@ def run_round(strategy, pop, store, known, answers, ask, prop, info, k_max):
 def main(max_eval: int, seed: int):
     t0 = time.time()
     CFG.relevance_weight_personal = 0.5
-    rng = np.random.default_rng(seed)
-    entries = load_entries()
-    users = sorted(u for u, es in entries.items() if sum(e["score"] > 0 for e in es) >= 15)
-    rng.shuffle(users)
+    entries, static = bench.load_snapshot()
+    store = static["store"]
+    bench.GROUPS = bench.groupings(store)       # the live franchises, as the benchmark
+    brng = np.random.default_rng(bench.SEED)
+    users = entries.users_with_scored(15)
+    brng.shuffle(users)
     nA, nB = int(len(users) * 0.72), int(len(users) * 0.13)
     A, B, C = users[:nA], users[nA:nA + nB], users[nA + nB:]
-    ua, ia, ra, oa, oi = [], [], [], [], []
-    for u in A:
-        for e in entries[u]:
-            oa.append(u); oi.append(e["mal_id"])
-            if e["score"] > 0:
-                ua.append(u); ia.append(e["mal_id"]); ra.append(float(e["score"]))
-    pop = PopulationModel(CFParams()).fit(np.array(ua), np.array(ia), np.array(ra))
-    pop.fit_occurrence(np.array(oa), np.array(oi))
-    pop.fit_ease(np.array(oa), np.array(oi))
-    store = ItemStore.load()
-    stacker = fit_stacker(pop, {u: [(e["mal_id"], float(e["score"]), e["at"])
-                                    for e in entries[u] if e["score"] > 0] for u in B},
-                          store, seed=seed)
+    (pop, stacker), how = bench.population(entries, store, A, B)
+    print(f"population model {how} [{time.time() - t0:.0f}s]", flush=True)
+    rng = np.random.default_rng(seed)
     # popularity (share of lists) and informativeness (sd of user-centred ratings)
-    lists = defaultdict(set)
-    for u_, m_ in zip(oa, oi):
-        lists[m_].add(u_)
-    prop = {m: (len(s) + 1) / (len(A) + 2) for m, s in lists.items()}
-    umean = defaultdict(list)
-    for u_, s_ in zip(ua, ra):
-        umean[u_].append(s_)
-    umean = {u_: float(np.mean(v)) for u_, v in umean.items()}
-    dev = defaultdict(list)
-    for u_, m_, s_ in zip(ua, ia, ra):
-        dev[m_].append(s_ - umean[u_])
-    info = {m: float(np.std(v)) for m, v in dev.items() if len(v) >= 30}
+    ua, ia, ra = entries.columns(A)
+    prop = dict(enumerate(((np.bincount(ia.astype(np.int64)) + 1.0) / (len(A) + 2)).tolist()))
+    r = ra > 0
+    ua, ia, ra = ua[r].astype(np.int64), ia[r].astype(np.int64), ra[r].astype(float)
+    sums, cnt = np.bincount(ua, ra), np.bincount(ua)
+    dev = ra - (sums / np.maximum(cnt, 1))[ua]
+    n_i = np.bincount(ia)
+    m1, m2 = np.bincount(ia, dev), np.bincount(ia, dev ** 2)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        sd_i = np.sqrt(np.maximum(m2 / n_i - (m1 / n_i) ** 2, 0.0))
+    info = {int(m): float(sd_i[m]) for m in np.nonzero(n_i >= 30)[0]}
     pool_all = pool_ids(store)
     ask = sorted((m for m in pool_all if m in info), key=lambda m: -prop.get(m, 0))[:ASK_POOL]
     print(f"{len(users)} users; {len(ask)} candidate cards [{time.time() - t0:.0f}s]", flush=True)
 
-    R = defaultdict(lambda: defaultdict(list))
+    R: dict = defaultdict(dict)                 # (strategy, k) -> user -> metrics
     n_users = 0
     for u in C:
         if n_users >= max_eval:
@@ -156,29 +169,37 @@ def main(max_eval: int, seed: int):
         pool = [m for m in pool_all if m not in {e["mal_id"] for e in es} - test_ids]
         items = [m for m, _, _ in test_s]
         truth = np.array([s for _, s, _ in test_s])
-        for strat in ("popular", "smart"):
+        for strat in STRATEGIES:
             got, cards_at = run_round(strat, pop, store, known, answers, ask, prop, info, max(KS))
             for k in KS:
-                if k and len(got) < k:
+                if (k and len(got) < k) or (not k and strat != STRATEGIES[0]):
                     continue
                 rho, rec, ips = evaluate(pop, stacker, store, known + got[:k], cutoff, pool,
                                          items, truth, targets, prop)
-                key = f"{strat} k={k}" if k else "no round"
-                if rho is not None:
-                    R[key]["rho"].append(rho)
-                R[key]["rec"].append(rec); R[key]["ips"].append(ips)
-                if k:
-                    R[key]["cards"].append(cards_at[k])
-            R[f"{strat} reached 15"]["n"].append(1.0 if len(got) >= 15 else 0.0)
-    print(f"\n{n_users} users [{time.time() - t0:.0f}s]")
-    print(f"{'':<18}{'rho':>7}{'recall@50':>11}{'IPS':>7}{'cards':>7}{'users':>7}")
-    for name, v in R.items():
-        if "reached" in name:
-            print(f"{name:<18}{'':>32}{np.mean(v['n']):7.0%}")
-            continue
-        cards = f"{np.mean(v['cards']):7.1f}" if v["cards"] else f"{'':>7}"
-        print(f"{name:<18}{np.mean(v['rho']):7.3f}{np.mean(v['rec']):11.3f}"
-              f"{np.mean(v['ips']):7.3f}{cards}{len(v['rec']):7d}")
+                R[(strat, k)][u] = {"rho": rho, "rec": rec, "ips": ips,
+                                    "cards": cards_at[k] if k else None}
+            R[(strat, "reached")][u] = {"n": 1.0 if len(got) >= max(KS) else 0.0}
+    print(f"\n{n_users} users [{time.time() - t0:.0f}s]; change vs popular at the same k,"
+          " paired, +-2 SE")
+    print(f"{'':<16}" + "".join(f"{m:>22}" for m in ("rho", "recall@50", "IPS", "cards")))
+    for k in KS:
+        for strat in STRATEGIES if k else STRATEGIES[:1]:
+            res, base = R[(strat, k)], R[(STRATEGIES[0], k)]
+            line = f"{strat + (f' k={k}' if k else ' none'):<16}"
+            for m in ("rho", "rec", "ips", "cards"):
+                us = [x for x in res if res[x][m] is not None and x in base
+                      and base[x][m] is not None]
+                if not us:
+                    line += f"{'':>22}"
+                    continue
+                v = np.array([res[x][m] for x in us], dtype=float)
+                d = v - np.array([base[x][m] for x in us], dtype=float)
+                se = 2 * d.std(ddof=1) / np.sqrt(len(d)) if len(d) > 1 else 0.0
+                line += f"{v.mean():8.3f}{d.mean():+7.3f}({se:.3f})"
+            print(line)
+    for strat in STRATEGIES:
+        print(f"{strat} reaches {max(KS)} ratings within {MAX_CARDS} cards for"
+              f" {np.mean([v['n'] for v in R[(strat, 'reached')].values()]):.0%} of the users")
 
 
 if __name__ == "__main__":

@@ -25,10 +25,14 @@ none says more than today):
              instead of the normal: a group has 5 to 8 series, where the
              normal's tails are far too thin
 
-  docker compose --profile lab run --rm -T lab python -m experiments.exp_evidence_fdr
+  docker compose --profile lab run --rm -T lab python -m experiments.exp_evidence_fdr [--profile]
+
+--profile: the profile page's family instead (taste.breakdown: genres,
+themes, eras and the first studio), and the app accounts' claims on it.
 """
 from __future__ import annotations
 
+import argparse
 import math
 import random
 import sys
@@ -101,14 +105,47 @@ def clear(ts: list[dict], rule: str) -> list[dict]:
     return [ts[k] for k in sorted(keep) if today(ts[k])]
 
 
+PROFILE = {"on": False}           # --profile: the profile page's family
+
+
 def members_of(rated: list[dict], vals: dict[int, dict], sid: dict[int, int]
                ) -> dict[str, dict[str, set[int]]]:
-    out: dict[str, dict[str, set[int]]] = {k: defaultdict(set) for k in taste.ATTRIBUTES}
+    kinds = ("genre", "theme", "era", "studio") if PROFILE["on"] else taste.ATTRIBUTES
+    out: dict[str, dict[str, set[int]]] = {k: defaultdict(set) for k in kinds}
     for e in rated:
-        for kind in taste.ATTRIBUTES:
-            for v in vals[e["mal_id"]][kind]:
+        for kind in kinds:
+            vs = vals[e["mal_id"]][kind]
+            for v in (vs[:1] if PROFILE["on"] and kind == "studio" else vs):
                 out[kind][v].add(sid[e["mal_id"]])
     return out
+
+
+def app_profile(series: dict[int, int], genre_names: set[str]) -> None:
+    """What each rule leaves on the approved accounts' profile pages: the
+    clear groups (all four cards together) per account. Totals only."""
+    users = [r["id"] for r in query("SELECT id FROM app_user WHERE status = 'approved'")]
+    tot = {rule: [0, 0] for rule in RULES}            # claims, accounts with any
+    for uid in users:
+        es = [e for e in query(taste.ENTRY_SQL, (uid,)) if (e["score"] or 0) > 0]
+        titles, tags = taste.catalogue([e["mal_id"] for e in es])
+        es = [e for e in es if e["mal_id"] in titles]
+        sid = {e["mal_id"]: series.get(e["mal_id"], e["mal_id"]) for e in es}
+        per: dict[int, list[int]] = defaultdict(list)
+        for e in es:
+            per[sid[e["mal_id"]]].append(e["score"])
+        by_series = {s: sum(v) / len(v) for s, v in per.items()}
+        vals = {m: taste.attribute_values(t, tags.get(m, ()), genre_names)
+                for m, t in titles.items()}
+        ts = tests(by_series, members_of(es, vals, sid))
+        for rule in RULES:
+            n = len(clear(ts, rule))
+            tot[rule][0] += n
+            tot[rule][1] += n > 0
+    print(f"\napp accounts ({len(users)}), profile page: clear groups per account,"
+          " accounts with any")
+    for rule in RULES:
+        print(f"   {rule:<7}{tot[rule][0] / max(len(users), 1):7.2f}"
+              f"{tot[rule][1] / max(len(users), 1):7.2f}")
 
 
 def app_cards(series: dict[int, int], genre_names: set[str]) -> None:
@@ -208,7 +245,7 @@ def main() -> int:
                     g["rep_same"] += lift > 0
                     g["rep_lift"] += lift
 
-    app_cards(series, genre_names)
+    (app_profile if PROFILE["on"] else app_cards)(series, genre_names)
     names = [f"{lo}-{hi}" if hi < 10 ** 9 else f"{lo}+" for lo, hi in BUCKETS] + ["all"]
     print(f"\nper user: tests, clear (real), clear by chance (null), est. FDR = null / real,"
           f" real - null; split: replicated share, lift on the other half [{time.time() - t0:.0f}s]")
@@ -229,4 +266,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--profile", action="store_true")
+    PROFILE["on"] = ap.parse_args().profile
     sys.exit(main())

@@ -993,6 +993,47 @@ def test_popularity_corrected_labels_favour_the_rare_hit():
     assert ips[1] == ltr.IPS_STEPS                   # weight 1, gain 1
 
 
+def test_age_balance_per_tab(monkeypatch):
+    from malrec.config import settings
+    from malrec.recsys import ltr
+    cfg = settings()
+    monkeypatch.setattr(cfg, "ranker_age_balance", 1.0)
+    monkeypatch.setattr(cfg, "gems_age_balance", -1.0)
+    monkeypatch.setattr(cfg, "safe_bets_age_balance", 0.0)
+    assert [ltr.age_balance(s) for s in ("safe_bets", "discover", "hidden_gems")] == [0.0, 1.0, 1.0]
+    monkeypatch.setattr(cfg, "gems_age_balance", 0.0)
+    monkeypatch.setattr(cfg, "safe_bets_age_balance", 0.5)
+    assert [ltr.age_balance(s) for s in ("safe_bets", "discover", "hidden_gems")] == [0.5, 1.0, 0.0]
+    fp = ltr.fingerprint()
+    monkeypatch.setattr(cfg, "gems_age_balance", -1.0)
+    monkeypatch.setattr(cfg, "safe_bets_age_balance", 0.0)
+    assert ltr.fingerprint() != fp, "a tab's balance retires its stored rankers"
+
+
+def test_age_balanced_labels_give_the_habit_its_weight():
+    """A user who watched half new, half old titles, whose liked future
+    titles are three new ones and one old one: the old one counts more, the
+    new ones less, unliked titles not at all."""
+    from types import SimpleNamespace
+
+    from malrec.recsys import ltr
+    share = np.zeros(5)
+    share[0], share[3] = 0.5, 0.5                    # 0-1 years, 10-19 years
+    ages = ltr.AgeTaste(share, np.zeros(5), 2026)
+    store = SimpleNamespace(rows={1: {"season_year": 2026}, 2: {"season_year": 2025},
+                                  3: {"season_year": 2026}, 4: {"season_year": 2012},
+                                  5: {"season_year": 2026}, 6: {}})
+    test = {1: 8, 2: 9, 3: 8, 4: 8, 5: 4, 6: 9}      # mean 7: 5 is not liked, 6 has no year
+    w = ltr.age_weights(test, 7.0, ages, store, 1.0)
+    assert set(w) == {1, 2, 3, 4}
+    assert w[1] == pytest.approx(0.5 / 0.75) and w[4] == pytest.approx(0.5 / 0.25)
+    half = ltr.age_weights(test, 7.0, ages, store, 0.5)
+    assert half[4] == pytest.approx((0.5 / 0.25) ** 0.5)
+    assert ltr.age_weights(test, 7.0, ltr.AgeTaste(np.zeros(5), np.zeros(5), 2026), store, 1.0) == {}
+    labels = ltr._labels([1, 4, 5], test, 7.0, w)
+    assert labels[2] == 0 and labels[0] < labels[1]
+
+
 def test_key_risk_share_leaves_the_parts_to_the_learned_order(monkeypatch):
     from malrec import rank
 

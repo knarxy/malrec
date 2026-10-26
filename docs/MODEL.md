@@ -286,7 +286,16 @@ wins every gated metric - Discover recall@50 +.012 to +.014, hit@10 +.027 to
 +.040 - but all of it on titles at most a year old (their recall +.020 to
 +.025), while the older liked titles' falls (-.008 at 400 entries) and the
 top 20 gets ten points newer: the drift the age balance is there against,
-so it stays at 0.5 (`results_model_fixes_2026-10-25.txt`). A ranker records
+so not on plain labels (`results_model_fixes_2026-10-25.txt`). Since the
+same day both rankers learn on **age-balanced labels**
+(`ranker_age_balance` 1.0): a liked future title counts by the user's habit
+share of its age over its share of their liked future titles, the habit the
+served age balance aims at. With them Discover runs at 0.75: recall@50
++.006 / +.006 / +.003 at 25 / 150 / 400 entries, hit@10 +.012 / +.010 /
++.015, the older liked titles' recall +.006 / +.009 / +.008, the top 20
+closer to the user's age habit; Hidden Gems stays at 0.5 (at 0.75 its bad
+picks at 400 entries nearly doubled) and gains on older titles
+(`results_agebalance_2026-10-25.txt`). A ranker records
 the settings that shape the key it learned
 from (`ltr.FINGERPRINT_SETTINGS`: the model, blend and risk dials); after a
 change to any of them it no longer counts as current, and the tab falls back
@@ -853,7 +862,7 @@ environment variable. The values that matter:
 | `safe_bets_memory_cap` / `safe_bets_floor` | 0.15 / -99 (off) | Safe Bets guards |
 | `safe_bets_memory_mix` | 0.0 (0.5 in compose) | Safe Bets' share of the every-rating-equal model |
 | `order_ranker_weight` | 0.0 (0.5 in compose) | Safe Bets' learned order; needs `malrec ranker train` |
-| `discover_ranker_weight` / `gems_ranker_weight` | 0.0 (0.5 in compose) | Discover's and Hidden Gems' own learned orders |
+| `discover_ranker_weight` / `gems_ranker_weight` / `ranker_age_balance` | 0.0 (0.75 / 0.5 in compose) / 1.0 | Discover's and Hidden Gems' own learned orders, trained on age-balanced labels (`results_agebalance_2026-10-25.txt`) |
 | `age_calibration` / `calibration_block` | 0 / 0 (1 / 20 in compose) | the three tabs held to the user's age mix, ordered within blocks of 20 (2026-10-13) |
 | `age_fresh_weight` | 0.5 | the aim's weight on titles at most a year old: a seasonal watcher's tabs lean toward the back catalogue, This Season lists the new (`results_fresh_2026-10-22.txt`); acts only with `age_calibration` > 0 |
 | `chosen_blend_min` / `blend_lam_min` / `blend_holdout` / `blend_criterion` | 300 / 0.3 / folds / corr | from this many ratings the personal share is chosen on five random fifths of the user's ratings by how well the mix orders them, never below 0.3 (`results_blendchoice_2026-10-22.txt`; `results_blendcrit_2026-10-25.txt`: on the newest fifth by squared error 28 % of long lists chose 0 without the floor, on five folds by correlation 5 %, rho +.0004) |

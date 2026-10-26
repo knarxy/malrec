@@ -1,0 +1,29 @@
+# python -m experiments.exp_elicit --max-eval 300, dev, 2026-10-26 (benchmark snapshot and population model).
+# Verdict: popular stays - seen / smart cost recall@50 .03-.04 (decided) for noise on rho; one per franchise and
+# genres in turn are no better and need more cards.
+population model cached [3s]
+18264 users; 1500 candidate cards [4s]
+
+300 users [764s]; change vs popular at the same k, paired, +-2 SE
+                                   rho             recall@50                   IPS                 cards
+popular none       0.512 +0.000(0.000)   0.125 +0.000(0.000)   0.081 +0.000(0.000)                      
+popular k=5        0.511 +0.000(0.000)   0.181 +0.000(0.000)   0.084 +0.000(0.000)  12.200 +0.000(0.000)
+smart k=5          0.514 +0.004(0.005)   0.149 -0.030(0.012)   0.088 +0.004(0.008)  13.007 +1.021(1.468)
+seen k=5           0.514 +0.005(0.004)   0.149 -0.031(0.011)   0.088 +0.004(0.007)  12.883 +0.897(1.403)
+franchise k=5      0.510 -0.001(0.002)   0.181 +0.000(0.002)   0.084 +0.000(0.001)  12.685 +0.485(0.386)
+genre k=5          0.512 +0.001(0.003)   0.177 -0.004(0.006)   0.082 -0.002(0.004)  13.044 +0.844(0.640)
+popular k=10       0.520 +0.000(0.000)   0.198 +0.000(0.000)   0.089 +0.000(0.000)  23.738 +0.000(0.000)
+smart k=10         0.523 +0.003(0.005)   0.154 -0.043(0.014)   0.089 +0.000(0.009)  22.585 -0.528(1.982)
+seen k=10          0.521 +0.001(0.005)   0.153 -0.044(0.014)   0.089 +0.000(0.009)  22.725 -0.389(2.017)
+franchise k=10     0.523 +0.000(0.003)   0.197 -0.001(0.003)   0.087 -0.001(0.003)  24.687 +1.047(0.590)
+genre k=10         0.519 -0.000(0.003)   0.189 -0.009(0.007)   0.088 -0.001(0.005)  24.817 +1.223(0.864)
+popular k=15       0.531 +0.000(0.000)   0.201 +0.000(0.000)   0.091 +0.000(0.000)  33.642 +0.000(0.000)
+smart k=15         0.530 -0.005(0.007)   0.162 -0.034(0.013)   0.097 +0.008(0.009)  31.311 -1.345(2.307)
+seen k=15          0.532 -0.004(0.006)   0.161 -0.036(0.014)   0.098 +0.009(0.009)  32.080 -0.637(2.338)
+franchise k=15     0.534 +0.001(0.002)   0.193 +0.000(0.003)   0.083 -0.000(0.002)  33.629 +1.094(0.577)
+genre k=15         0.533 +0.000(0.003)   0.191 -0.006(0.006)   0.088 -0.000(0.004)  32.835 +1.033(0.809)
+popular reaches 15 ratings within 80 cards for 85% of the users
+smart reaches 15 ratings within 80 cards for 87% of the users
+seen reaches 15 ratings within 80 cards for 87% of the users
+franchise reaches 15 ratings within 80 cards for 82% of the users
+genre reaches 15 ratings within 80 cards for 83% of the users

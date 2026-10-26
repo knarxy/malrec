@@ -81,9 +81,10 @@ services:
       # Safe Bets' learned order, this share of it (on dev; recsys/ltr.py,
       # needs `malrec ranker train` for the active population model)
       ORDER_RANKER_WEIGHT: ${ORDER_RANKER_WEIGHT:-0.5}
-      # Discover's and Hidden Gems' own learned orders, the same share
-      # (experiments/exp_blend.py, 2026-10-11)
-      DISCOVER_RANKER_WEIGHT: ${DISCOVER_RANKER_WEIGHT:-0.5}
+      # Discover's and Hidden Gems' own learned orders (exp_blend.py,
+      # 2026-10-11); Discover's at 0.75 since its ranker learns on age-balanced
+      # labels (config.ranker_age_balance, 2026-10-25)
+      DISCOVER_RANKER_WEIGHT: ${DISCOVER_RANKER_WEIGHT:-0.75}
       GEMS_RANKER_WEIGHT: ${GEMS_RANKER_WEIGHT:-0.5}
       # the three tabs follow the user's own age mix (how old titles were when
       # they watched them), ordered within blocks of 20 (exp_blend.py,
@@ -178,6 +179,9 @@ services:
       OMP_NUM_THREADS: ${LAB_THREADS:-4}
       OPENBLAS_NUM_THREADS: ${LAB_THREADS:-4}
       MKL_NUM_THREADS: ${LAB_THREADS:-4}
+      # the same set order every run, so a tie can never break differently
+      # from one benchmark run of the same code to the next
+      PYTHONHASHSEED: "0"
     volumes:
       # The tree is read-only and only experiments/ (results, the benchmark's
       # data) can be written: the host runs scripts, compose files, .env and

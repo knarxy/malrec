@@ -1,0 +1,16 @@
+# python -m experiments.exp_titletrust, dev, 2026-10-26: the served personal share times a multiplier per tercile of a title's
+# MAL scorers (pop) or co-rating evidence (ev), fitted on half of the held-out users, scored on the other half.
+# Verdict: +.0002 to +.0011 rho, within noise; the per-user best in hindsight stays out of reach. Not built.
+population model fitted [532s]
+
+== 150-374: fitted on 255 users, scored on 245; served lam rho 0.5610 (mean lam 0.44)
+   pop  terciles at [4.88, 5.49], multipliers (1.0, 0.75, 0.5): rho 0.5621 (+0.0011 +-0.0019)
+   ev   terciles at [0.15, 0.45], multipliers (1.0, 0.5, 0.75): rho 0.5616 (+0.0006 +-0.0018)
+   per-user lam best in hindsight: 0.5860 (+0.0250); best fixed lam on the fitting half: 0.4
+
+== 375+: fitted on 264 users, scored on 236; served lam rho 0.6300 (mean lam 0.40)
+   pop  terciles at [4.25, 5.05], multipliers (1.0, 1.0, 0.75): rho 0.6304 (+0.0004 +-0.0006)
+   ev   terciles at [0.17, 0.51], multipliers (1.0, 0.75, 1.0): rho 0.6302 (+0.0002 +-0.0005)
+   per-user lam best in hindsight: 0.6374 (+0.0074); best fixed lam on the fitting half: 0.4
+
+[2173s]

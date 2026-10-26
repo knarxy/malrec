@@ -160,6 +160,29 @@ def test_evidence_keeps_what_survives_the_lists_many_tests(monkeypatch):
     assert clear() == (True, False)
 
 
+def test_profile_cards_survive_the_pages_other_tests(monkeypatch):
+    """The profile's studio card leaves out the same borderline studio the
+    evidence lines do; the clear genre stays, and no p reaches the page."""
+    titles, es = {}, []
+    for m in range(1, 9):
+        titles[m] = title(m, ["Drama"], studio=f"D{m}")
+        es.append(entry(m, 9))
+    for k in range(40):
+        titles[100 + k] = title(100 + k, ["Comedy"], studio=f"S{k % 8}")
+        es.append(entry(100 + k, 6 + k % 3))
+    for k, s in enumerate([9, 8, 8, 7, 9]):
+        titles[200 + k] = title(200 + k, ["Comedy"], studio="SX")
+        es.append(entry(200 + k, s))
+    monkeypatch.setattr(taste, "EVIDENCE_FDR", 1.0)            # no correction: as before
+    out = run(es, titles)
+    assert [g["name"] for g in out["studios"]["clear"]] == ["SX"]
+    monkeypatch.setattr(taste, "EVIDENCE_FDR", 0.2)
+    out = run(es, titles)
+    assert out["studios"]["clear"] == [] and "headline" not in out["studios"]
+    assert "Drama" in [g["name"] for g in out["genres"]["clear"]]
+    assert all("p" not in g for g in out["genres"]["clear"] + out["eras"]["rows"])
+
+
 def test_benjamini_hochberg_steps_up():
     assert taste.benjamini_hochberg([0.001, 0.04, 0.03, 0.5], 0.2) == [True, True, True, False]
     assert taste.benjamini_hochberg([0.3, 0.6], 0.2) == [False, False]

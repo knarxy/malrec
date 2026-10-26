@@ -26,16 +26,21 @@ and, for information, the share of titles at most a year old) is compared
 per user with `bench/baseline.json`. The pool is the one production shows
 (`recsys/pool.py`: no unmet prerequisites, no Up Next continuations) and the
 list is the list at the cutoff, so a later drop can reach the top 10. Only
-the primary metrics (rho; recall@50 and hit@10 of each tab; Safe Bets'
-bad@10) decide, as one family under Holm's correction at 0.05; the rest is
+the primary metrics (rho; recall@50 and hit@10 of each tab, and each tab's
+recall@50 of the older liked titles - recall alone rewards a drift to the new
+season; Safe Bets' bad@10) decide, as one family under Holm's correction at
+0.05; the rest is
 described, and for the reference profile only rho losing on more splits
 than it wins fails the run. Settings that differ from the baseline's are
 named; `--compare NEW BASE` re-reads two saved runs. About 25 minutes with
 cached models; the population
 model is refitted (≈6 minutes) only when its code changes, a learned order
 (≈25-35 minutes per tab) when its code or settings do. Two runs on the same
-code agree to the last digit. `make bench-baseline` records a new baseline
-once a change is accepted.
+code and frozen tables agree to the last digit (checked 2026-10-25; the lab
+also fixes `PYTHONHASHSEED`, so set order cannot break a tie differently). `make
+bench-baseline` records a new baseline once a change is accepted. `--freeze`
+keeps an experiment's arms on the same live tables (series, franchises,
+member counts, relations; `bench/data/live.pkl`, delete it to start over).
 
 `exp_blend.py` runs the benchmark once per arm, each arm a set of setting
 overrides (`all:discover_ranker_weight=0.5:0.5`), and prints every metric

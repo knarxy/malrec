@@ -74,6 +74,15 @@ class SurfaceSpec:
     description: str
     formats: list[str] = field(default_factory=lambda: list(MAIN))
 
+    @property
+    def novelty(self) -> float:
+        """The weight the rerank gives novelty; Hidden Gems' from config
+        (gems_novelty_weight, the benchmark's arms)."""
+        if self.name == "hidden_gems":
+            from .config import settings
+            return settings().gems_novelty_weight
+        return self.novelty_weight
+
 
 SPECS = {
     "discover": SurfaceSpec(
@@ -254,7 +263,7 @@ def _this_season(user_id: int, model: Model, spec: SurfaceSpec, limit: int
         return [], [], []
     pool = score_candidates(user_id, model, rows, shortlist=limit * 4)
     seen: list[Candidate] = []
-    return pool, rerank(pool, spec.novelty_weight, spec.diversity_weight, limit,
+    return pool, rerank(pool, spec.novelty, spec.diversity_weight, limit,
                         considered=seen, profile=genre_profile(user_id)), seen
 
 
@@ -316,7 +325,7 @@ def _hidden_gems(user_id: int, model: Model, spec: SurfaceSpec, limit: int
     pool = score_candidates(user_id, model, rows, shortlist=settings().shortlist_size,
                             learned=context_for(user_id, model, "hidden_gems"))
     seen: list[Candidate] = []
-    return pool, rerank(pool, spec.novelty_weight, spec.diversity_weight, limit,
+    return pool, rerank(pool, spec.novelty, spec.diversity_weight, limit,
                         considered=seen, profile=genre_profile(user_id),
                         ages=user_age_mix(user_id)), seen
 
@@ -491,7 +500,7 @@ def build_surface(user_id: int, surface: str = "discover", limit: int = 50,
             # least about their own mean, whatever the ordering bonuses say
             mean_shown = float(model.calibrate(np.array([model.baseline]))[0])
             pool = [c for c in pool if c.predicted >= mean_shown + floor]
-        cands = rerank(pool, spec.novelty_weight, spec.diversity_weight, limit,
+        cands = rerank(pool, spec.novelty, spec.diversity_weight, limit,
                        considered=seen, profile=genre_profile(user_id),
                        ages=user_age_mix(user_id))
 
@@ -729,7 +738,7 @@ def read_ranked(user_id: int, surface: str, limit: int = 30, offset: int = 0,
         # same novelty scale and cut-off as the build, so an unfiltered read
         # reproduces the stored list exactly
         scale = rows[0]["novelty_scale"] if rows else 1.0
-        ranked = rerank(cands, spec.novelty_weight * scale, spec.diversity_weight,
+        ranked = rerank(cands, spec.novelty * scale, spec.diversity_weight,
                         limit=max(offset + limit, rows[0]["build_limit"]), scale_novelty=False,
                         profile=genre_profile(user_id, filters.exclude_genres), ages=ages)
         ordered = [(by_id[c.mal_id], c.final) for c in ranked]

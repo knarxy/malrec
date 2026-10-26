@@ -210,6 +210,10 @@ class Settings(BaseSettings):
     safe_bets_popularity: float = 0.5
     # Safe Bets' order blends in a model with every rating weighted equally
     # (0 = off); displayed scores are unaffected. See experiments/exp_tabs.py.
+    # Remeasured with the learned order (2026-10-26, results_round3): off,
+    # Safe Bets loses the older liked titles (their recall -.008 at 400
+    # entries, a gated loss; the reference profile's recall@50 -.021, 4 of 8
+    # splits) - it is what keeps the long-run taste in the tab. 0.5 in compose.
     safe_bets_memory_mix: float = 0.0
     # Safe Bets guards (experiments/exp_toplist.py rounds 5-6): the
     # long-memory adjustment is clipped to +-cap points (0 = no cap), and
@@ -241,9 +245,31 @@ class Settings(BaseSettings):
     # recall@50 +.012 to +.014 and hit@10 +.027 to +.040, all of it from
     # titles at most a year old (their recall +.020 to +.025) while the older
     # liked titles' fell (-.008 at 400 entries) and the top 20 got ten points
-    # newer - the drift the age balance is there against. Not taken.
+    # newer - the drift the age balance is there against. Not taken on plain
+    # labels; with age-balanced ones (below) Discover runs at 0.75 (compose).
     discover_ranker_weight: float = 0.0
     gems_ranker_weight: float = 0.0
+    # Discover's and Hidden Gems' rankers trained on age-balanced labels
+    # (recsys/ltr.py age_weights): a liked title counts (habit share of its
+    # age / its share of the liked future titles) ** this; 0 = plain labels.
+    # Production-pool benchmark (2026-10-25, results_agebalance_2026-10-25.txt),
+    # 1.0 with Discover at 0.75 and Hidden Gems at 0.5: Discover recall@50
+    # +.006 / +.006 / +.003 at 25 / 150 / 400 entries, hit@10 +.012 / +.010 /
+    # +.015, the older liked titles' recall +.006 / +.009 / +.008, the top 20
+    # closer to the user's age habit (age gap -.009 / -.018 / -.028); Hidden
+    # Gems' older titles +.004 / +.005 at 150 / 400. At 0.5 the gain was
+    # larger but nearly all on titles at most a year old; at 1.0 with
+    # Discover at 0.5 total recall fell. Hidden Gems at 0.75 nearly doubled
+    # its bad picks at 400 entries.
+    ranker_age_balance: float = 1.0
+    # The same for Hidden Gems alone (negative: as ranker_age_balance) and for
+    # Safe Bets (0: plain labels). The balance follows each user's own habit:
+    # someone who rarely watches older titles gets little weight on them.
+    # Measured (2026-10-26, results_round3): Safe Bets at 1.0 lost recall and
+    # hit@10 at every size for older titles - Discover took the new ones it
+    # gave up; Hidden Gems on plain labels lost its older titles at 400.
+    gems_age_balance: float = -1.0
+    safe_bets_age_balance: float = 0.0
     # Train the learned orders as they are served (recsys/ltr.py train,
     # as_served): each query on the pool production shows (recsys/pool.py)
     # and the list as it stood at the cutoff, Discover's against Safe Bets'
@@ -261,6 +287,12 @@ class Settings(BaseSettings):
     # results_gems_2026-10-20.txt); production does not read it.
     gems_popularity: str = "grown"
     gems_skip_safe_bets: int = 0
+    # Hidden Gems' novelty weight in the rerank (surfaces.SurfaceSpec.novelty;
+    # Discover's is 1.0): set before the tab had a learned order, which the
+    # rerank applies after. 1.5 and 1.0 measured (2026-10-26, results_round3):
+    # within noise on every gated metric (1.0: hit@10 at 400 entries +.007,
+    # not decided), so it stays.
+    gems_novelty_weight: float = 2.2
     # Share of the risk term in Safe Bets' hand-built key; the learned order
     # reads the risk parts as features whatever this is. 0 (risk left to the
     # ranker alone) cost recall@50 -.008 at 400 entries (exp_blend.py,

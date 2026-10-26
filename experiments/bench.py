@@ -58,7 +58,10 @@ by chance about once in two. "better"/"WORSE" is a change that survives the
 correction; "better?"/"worse?" one beyond two standard errors that does not,
 or any change of a metric that is only described; otherwise "noise" (or
 "same" when nothing moved). A WORSE, or a reference profile whose rho loses
-on more splits than it wins, fails the run (exit 1).
+on more splits than it wins, fails the run (exit 1). Each tab's recall of
+the older liked titles (r50old) is in the family too: recall alone rewards
+a list for drifting to the new season - a learned order at weight 0.75
+passed every other primary metric that way (2026-10-25).
 
   python -m experiments.bench --snapshot        freeze the data (once)
   python -m experiments.bench                   run, compare with baseline.json
@@ -107,7 +110,8 @@ LIMIT = 60
 STATUS = ("watching", "completed", "on_hold", "dropped", "plan_to_watch")
 # what the gate decides on (per sampled group): the shown score's order, and
 # each tab's recall and top-10 hits, plus Safe Bets' misses
-PRIMARY = ("rho", "r50", "hit10", "bad10", "disc_r50", "disc_hit10", "gems_r50", "gems_hit10")
+PRIMARY = ("rho", "r50", "hit10", "bad10", "disc_r50", "disc_hit10", "gems_r50", "gems_hit10",
+           "r50old", "disc_r50old", "gems_r50old")
 ALPHA = 0.05
 HIGHER = {"rho": True, "rmse": False, "r50": True, "ips50": True, "hit10": True,
           "bad10": False, "agegap": False, "disc_r50": True, "disc_ips50": True,
@@ -426,7 +430,7 @@ def ranked(scorer, rows, li, familiar, store, surface: str = "safe_bets",
     if surface == "safe_bets" and floor > -10:
         mean_shown = float(scorer.calibrate(np.array([scorer.baseline]))[0])
         pool = [c for c in pool if c.predicted >= mean_shown + floor]
-    top = rank.rerank(pool, spec.novelty_weight, spec.diversity_weight, LIMIT,
+    top = rank.rerank(pool, spec.novelty, spec.diversity_weight, LIMIT,
                       considered=[], profile=profile_of(li, store), ages=ages)
     return pool, top
 

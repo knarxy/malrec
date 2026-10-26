@@ -1,0 +1,460 @@
+# Round 3 (2026-10-26), production-pool benchmark (bench.py --freeze), snapshot 2026-10-10, 300 users a
+# size + the reference profile's 8 splits, paired against newbase = the shipped configuration (Discover's
+# and Hidden Gems' rankers on age-balanced labels, Discover at 0.75), Holm over the primary metrics.
+#
+#   memmix0    the long-memory model off (safe_bets_memory_mix 0): FAIL - Safe Bets' older liked titles
+#              -.008 at 400 entries (decided), reference profile recall@50 -.021 (4 of 8 splits). Kept.
+#   gemsnov15  Hidden Gems' novelty weight 1.5 (from 2.2): within noise. Kept at 2.2.
+#   gemsnov10  1.0: within noise (hit@10 at 400 entries +.007, not decided). Kept at 2.2.
+#   sbbal_gems0  Safe Bets on age-balanced labels (1.0) and Hidden Gems on plain ones, one arm (Safe Bets
+#              does not depend on Hidden Gems, nor Hidden Gems on either other tab; Discover follows Safe
+#              Bets): FAIL - Safe Bets recall@50 -.007 / -.007 / -.008 and hit@10 -.011 / -.018 / -.025
+#              (decided) for older titles +.006 / +.013 / +.012; Discover gains the new titles Safe Bets
+#              gives up (+.004 to +.006 recall, hit@10 +.012 to +.017) and loses older ones (-.009): a
+#              shift between tabs. Hidden Gems on plain labels: +.002 recall at 25 entries (not decided),
+#              older titles -.005 at 400 (decided). Neither shipped.
+
+########## memmix0 vs newbase
+== sampled 25 (300 users)
+   metric        now     base   change    ±2se  verdict
+   rho        0.5055   0.5055  +0.0000  0.0000  same
+   rmse       1.4044   1.4044  +0.0000  0.0000  same  (described)
+   r50        0.1708   0.1720  -0.0011  0.0028  noise
+   ips50      0.0806   0.0800  +0.0006  0.0027  noise  (described)
+   hit10      0.1990   0.2007  -0.0017  0.0042  noise
+   bad10      0.0273   0.0280  -0.0007  0.0013  noise
+   agegap     0.1941   0.1938  +0.0004  0.0024  noise  (described)
+   disc_r50   0.0540   0.0525  +0.0015  0.0022  noise
+   disc_ips50   0.0409   0.0403  +0.0006  0.0018  noise  (described)
+   disc_hit10   0.0477   0.0470  +0.0007  0.0040  noise
+   disc_bad10   0.0180   0.0203  -0.0023  0.0024  noise  (described)
+   disc_agegap   0.2115   0.2142  -0.0026  0.0030  noise  (described)
+   gems_r50   0.0214   0.0214  +0.0000  0.0000  same
+   gems_ips50   0.0295   0.0295  +0.0000  0.0000  same  (described)
+   gems_hit10   0.0293   0.0293  +0.0000  0.0000  same
+   gems_bad10   0.0150   0.0150  +0.0000  0.0000  same  (described)
+   gems_agegap   0.2255   0.2255  +0.0000  0.0000  same  (described)
+   r50new     0.1528   0.1548  -0.0020  0.0033  noise  (described)
+   r50old     0.1814   0.1851  -0.0036  0.0039  noise
+   disc_r50new   0.0486   0.0481  +0.0005  0.0050  noise  (described)
+   disc_r50old   0.0525   0.0515  +0.0009  0.0018  noise
+   gems_r50new   0.0217   0.0217  +0.0000  0.0000  same  (described)
+   gems_r50old   0.0218   0.0218  +0.0000  0.0000  same
+   overlap     0.061    0.063
+   pop#      131.000  124.000
+== sampled 150 (300 users)
+   metric        now     base   change    ±2se  verdict
+   rho        0.5602   0.5602  +0.0000  0.0000  same
+   rmse       1.2734   1.2734  +0.0000  0.0000  same  (described)
+   r50        0.1927   0.1937  -0.0010  0.0028  noise
+   ips50      0.0903   0.0888  +0.0015  0.0033  noise  (described)
+   hit10      0.2763   0.2743  +0.0020  0.0052  noise
+   bad10      0.0263   0.0247  +0.0017  0.0018  noise
+   agegap     0.1386   0.1382  +0.0004  0.0030  noise  (described)
+   disc_r50   0.0635   0.0631  +0.0005  0.0018  noise
+   disc_ips50   0.0486   0.0479  +0.0007  0.0017  noise  (described)
+   disc_hit10   0.0747   0.0730  +0.0017  0.0047  noise
+   disc_bad10   0.0213   0.0203  +0.0010  0.0037  noise  (described)
+   disc_agegap   0.1333   0.1330  +0.0003  0.0032  noise  (described)
+   gems_r50   0.0366   0.0366  +0.0000  0.0000  same
+   gems_ips50   0.0447   0.0447  +0.0000  0.0000  same  (described)
+   gems_hit10   0.0580   0.0580  +0.0000  0.0000  same
+   gems_bad10   0.0143   0.0143  +0.0000  0.0000  same  (described)
+   gems_agegap   0.1621   0.1621  +0.0000  0.0000  same  (described)
+   r50new     0.1706   0.1703  +0.0003  0.0034  noise  (described)
+   r50old     0.2043   0.2081  -0.0038  0.0037  worse?
+   disc_r50new   0.0643   0.0651  -0.0008  0.0023  noise  (described)
+   disc_r50old   0.0539   0.0521  +0.0018  0.0031  noise
+   gems_r50new   0.0356   0.0356  +0.0000  0.0000  same  (described)
+   gems_r50old   0.0365   0.0365  +0.0000  0.0000  same
+   overlap     0.059    0.057
+   pop#      180.000  175.000
+== sampled 400 (300 users)
+   metric        now     base   change    ±2se  verdict
+   rho        0.5942   0.5942  +0.0000  0.0000  same
+   rmse       1.1882   1.1882  +0.0000  0.0000  same  (described)
+   r50        0.1777   0.1786  -0.0009  0.0018  noise
+   ips50      0.0812   0.0808  +0.0004  0.0012  noise  (described)
+   hit10      0.3620   0.3643  -0.0023  0.0062  noise
+   bad10      0.0253   0.0247  +0.0007  0.0023  noise
+   agegap     0.1369   0.1336  +0.0033  0.0031  worse?  (described)
+   disc_r50   0.0652   0.0654  -0.0002  0.0017  noise
+   disc_ips50   0.0461   0.0473  -0.0012  0.0011  worse?  (described)
+   disc_hit10   0.1147   0.1217  -0.0070  0.0065  worse?
+   disc_bad10   0.0313   0.0310  +0.0003  0.0040  noise  (described)
+   disc_agegap   0.1279   0.1296  -0.0017  0.0035  noise  (described)
+   gems_r50   0.0389   0.0389  +0.0000  0.0000  same
+   gems_ips50   0.0446   0.0446  +0.0000  0.0000  same  (described)
+   gems_hit10   0.1020   0.1020  +0.0000  0.0000  same
+   gems_bad10   0.0167   0.0167  +0.0000  0.0000  same  (described)
+   gems_agegap   0.1486   0.1486  +0.0000  0.0000  same  (described)
+   r50new     0.1717   0.1692  +0.0025  0.0029  noise  (described)
+   r50old     0.1919   0.1999  -0.0080  0.0044  WORSE
+   disc_r50new   0.0651   0.0682  -0.0030  0.0026  worse?  (described)
+   disc_r50old   0.0576   0.0506  +0.0070  0.0049  better?
+   gems_r50new   0.0408   0.0408  +0.0000  0.0000  same  (described)
+   gems_r50old   0.0341   0.0341  +0.0000  0.0000  same
+   overlap     0.063    0.062
+   pop#      232.500  229.000
+== reference (8 splits)
+   metric        now     base   change    ±2se  verdict
+   rho        0.7546   0.7546  +0.0000  0.0000  same
+   rmse       0.8094   0.8094  +0.0000  0.0000  same
+   r50        0.3610   0.3823  -0.0213  0.0323  1 better / 4 worse splits
+   ips50      0.2731   0.2888  -0.0157  0.0273  2 better / 5 worse splits
+   hit10      0.3750   0.3750  +0.0000  0.0378  1 better / 1 worse splits
+   bad10      0.0000   0.0000  +0.0000  0.0000  same
+   agegap     0.2485   0.2473  +0.0013  0.0255  2 better / 2 worse splits
+   disc_r50   0.1216   0.0718  +0.0498  0.0344  5 better / 0 worse splits
+   disc_ips50   0.1096   0.0730  +0.0366  0.0251  6 better / 1 worse splits
+   disc_hit10   0.0750   0.0250  +0.0500  0.0378  4 better / 0 worse splits
+   disc_bad10   0.0125   0.0000  +0.0125  0.0250  0 better / 1 worse splits
+   disc_agegap   0.1224   0.1214  +0.0010  0.0259  2 better / 3 worse splits
+   gems_r50   0.0000   0.0000  +0.0000  0.0000  same
+   gems_ips50   0.0000   0.0000  +0.0000  0.0000  same
+   gems_hit10   0.0000   0.0000  +0.0000  0.0000  same
+   gems_bad10   0.0000   0.0000  +0.0000  0.0000  same
+   gems_agegap   0.0828   0.0828  +0.0000  0.0000  same
+   r50new     0.2083   0.2083  +0.0000  0.0000  same
+   r50old     0.3849   0.4097  -0.0249  0.0374  1 better / 4 worse splits
+   disc_r50new   0.0000   0.0000  +0.0000  0.0000  same
+   disc_r50old   0.1405   0.0830  +0.0575  0.0396  5 better / 0 worse splits
+   gems_r50new   0.0000   0.0000  +0.0000  0.0000  same
+   gems_r50old   0.0000   0.0000  +0.0000  0.0000  same
+   pop#       60.000   60.000
+gate: 21 primary comparisons, Holm at 0.05: 1 decided
+note: ranking settings {'safe_bets_memory_mix': 0.0, 'safe_bets_key_risk': 1.0, 'order_ranker_ips': 0.0, 'discover_ranker_weight': 0.75, 'gems_ranker_weight': 0.5, 'age_calibration': 1.0, 'calibration_block': 20, 'series_weight_power': 0.0, 'gems_popularity': 'grown', 'gems_skip_safe_bets': 0}, baseline {'safe_bets_memory_mix': 0.5, 'safe_bets_key_risk': 1.0, 'order_ranker_ips': 0.0, 'discover_ranker_weight': 0.75, 'gems_ranker_weight': 0.5, 'age_calibration': 1.0, 'calibration_block': 20, 'series_weight_power': 0.0, 'gems_popularity': 'grown', 'gems_skip_safe_bets': 0}
+FAIL  [1272s, peak 1083 MB]
+
+########## gemsnov15 vs newbase
+== sampled 25 (300 users)
+   metric        now     base   change    ±2se  verdict
+   rho        0.5055   0.5055  +0.0000  0.0000  same
+   rmse       1.4044   1.4044  +0.0000  0.0000  same  (described)
+   r50        0.1720   0.1720  +0.0000  0.0000  same
+   ips50      0.0800   0.0800  +0.0000  0.0000  same  (described)
+   hit10      0.2007   0.2007  +0.0000  0.0000  same
+   bad10      0.0280   0.0280  +0.0000  0.0000  same
+   agegap     0.1938   0.1938  +0.0000  0.0000  same  (described)
+   disc_r50   0.0525   0.0525  +0.0000  0.0000  same
+   disc_ips50   0.0403   0.0403  +0.0000  0.0000  same  (described)
+   disc_hit10   0.0470   0.0470  +0.0000  0.0000  same
+   disc_bad10   0.0203   0.0203  +0.0000  0.0000  same  (described)
+   disc_agegap   0.2142   0.2142  +0.0000  0.0000  same  (described)
+   gems_r50   0.0218   0.0214  +0.0004  0.0009  noise
+   gems_ips50   0.0289   0.0295  -0.0006  0.0013  noise  (described)
+   gems_hit10   0.0280   0.0293  -0.0013  0.0016  noise
+   gems_bad10   0.0153   0.0150  +0.0003  0.0012  noise  (described)
+   gems_agegap   0.2263   0.2255  +0.0008  0.0025  noise  (described)
+   r50new     0.1548   0.1548  +0.0000  0.0000  same  (described)
+   r50old     0.1851   0.1851  +0.0000  0.0000  same
+   disc_r50new   0.0481   0.0481  +0.0000  0.0000  same  (described)
+   disc_r50old   0.0515   0.0515  +0.0000  0.0000  same
+   gems_r50new   0.0208   0.0217  -0.0009  0.0015  noise  (described)
+   gems_r50old   0.0232   0.0218  +0.0015  0.0019  noise
+   overlap     0.063    0.063
+   pop#      124.000  124.000
+== sampled 150 (300 users)
+   metric        now     base   change    ±2se  verdict
+   rho        0.5602   0.5602  +0.0000  0.0000  same
+   rmse       1.2734   1.2734  +0.0000  0.0000  same  (described)
+   r50        0.1937   0.1937  +0.0000  0.0000  same
+   ips50      0.0888   0.0888  +0.0000  0.0000  same  (described)
+   hit10      0.2743   0.2743  +0.0000  0.0000  same
+   bad10      0.0247   0.0247  +0.0000  0.0000  same
+   agegap     0.1382   0.1382  +0.0000  0.0000  same  (described)
+   disc_r50   0.0631   0.0631  +0.0000  0.0000  same
+   disc_ips50   0.0479   0.0479  +0.0000  0.0000  same  (described)
+   disc_hit10   0.0730   0.0730  +0.0000  0.0000  same
+   disc_bad10   0.0203   0.0203  +0.0000  0.0000  same  (described)
+   disc_agegap   0.1330   0.1330  +0.0000  0.0000  same  (described)
+   gems_r50   0.0365   0.0366  -0.0001  0.0009  noise
+   gems_ips50   0.0441   0.0447  -0.0006  0.0013  noise  (described)
+   gems_hit10   0.0583   0.0580  +0.0003  0.0024  noise
+   gems_bad10   0.0147   0.0143  +0.0003  0.0018  noise  (described)
+   gems_agegap   0.1604   0.1621  -0.0018  0.0027  noise  (described)
+   r50new     0.1703   0.1703  +0.0000  0.0000  same  (described)
+   r50old     0.2081   0.2081  +0.0000  0.0000  same
+   disc_r50new   0.0651   0.0651  +0.0000  0.0000  same  (described)
+   disc_r50old   0.0521   0.0521  +0.0000  0.0000  same
+   gems_r50new   0.0352   0.0356  -0.0005  0.0010  noise  (described)
+   gems_r50old   0.0369   0.0365  +0.0004  0.0018  noise
+   overlap     0.057    0.057
+   pop#      175.000  175.000
+== sampled 400 (300 users)
+   metric        now     base   change    ±2se  verdict
+   rho        0.5942   0.5942  +0.0000  0.0000  same
+   rmse       1.1882   1.1882  +0.0000  0.0000  same  (described)
+   r50        0.1786   0.1786  +0.0000  0.0000  same
+   ips50      0.0808   0.0808  +0.0000  0.0000  same  (described)
+   hit10      0.3643   0.3643  +0.0000  0.0000  same
+   bad10      0.0247   0.0247  +0.0000  0.0000  same
+   agegap     0.1336   0.1336  +0.0000  0.0000  same  (described)
+   disc_r50   0.0654   0.0654  +0.0000  0.0000  same
+   disc_ips50   0.0473   0.0473  +0.0000  0.0000  same  (described)
+   disc_hit10   0.1217   0.1217  +0.0000  0.0000  same
+   disc_bad10   0.0310   0.0310  +0.0000  0.0000  same  (described)
+   disc_agegap   0.1296   0.1296  +0.0000  0.0000  same  (described)
+   gems_r50   0.0391   0.0389  +0.0002  0.0009  noise
+   gems_ips50   0.0442   0.0446  -0.0003  0.0014  noise  (described)
+   gems_hit10   0.1047   0.1020  +0.0027  0.0035  noise
+   gems_bad10   0.0173   0.0167  +0.0007  0.0019  noise  (described)
+   gems_agegap   0.1473   0.1486  -0.0013  0.0029  noise  (described)
+   r50new     0.1692   0.1692  +0.0000  0.0000  same  (described)
+   r50old     0.1999   0.1999  +0.0000  0.0000  same
+   disc_r50new   0.0682   0.0682  +0.0000  0.0000  same  (described)
+   disc_r50old   0.0506   0.0506  +0.0000  0.0000  same
+   gems_r50new   0.0412   0.0408  +0.0004  0.0012  noise  (described)
+   gems_r50old   0.0342   0.0341  +0.0001  0.0016  noise
+   overlap     0.062    0.062
+   pop#      229.000  229.000
+== reference (8 splits)
+   metric        now     base   change    ±2se  verdict
+   rho        0.7546   0.7546  +0.0000  0.0000  same
+   rmse       0.8094   0.8094  +0.0000  0.0000  same
+   r50        0.3823   0.3823  +0.0000  0.0000  same
+   ips50      0.2888   0.2888  +0.0000  0.0000  same
+   hit10      0.3750   0.3750  +0.0000  0.0000  same
+   bad10      0.0000   0.0000  +0.0000  0.0000  same
+   agegap     0.2473   0.2473  +0.0000  0.0000  same
+   disc_r50   0.0718   0.0718  +0.0000  0.0000  same
+   disc_ips50   0.0730   0.0730  +0.0000  0.0000  same
+   disc_hit10   0.0250   0.0250  +0.0000  0.0000  same
+   disc_bad10   0.0000   0.0000  +0.0000  0.0000  same
+   disc_agegap   0.1214   0.1214  +0.0000  0.0000  same
+   gems_r50   0.0000   0.0000  +0.0000  0.0000  same
+   gems_ips50   0.0000   0.0000  +0.0000  0.0000  same
+   gems_hit10   0.0000   0.0000  +0.0000  0.0000  same
+   gems_bad10   0.0000   0.0000  +0.0000  0.0000  same
+   gems_agegap   0.0819   0.0828  -0.0009  0.0321  2 better / 3 worse splits
+   r50new     0.2083   0.2083  +0.0000  0.0000  same
+   r50old     0.4097   0.4097  +0.0000  0.0000  same
+   disc_r50new   0.0000   0.0000  +0.0000  0.0000  same
+   disc_r50old   0.0830   0.0830  +0.0000  0.0000  same
+   gems_r50new   0.0000   0.0000  +0.0000  0.0000  same
+   gems_r50old   0.0000   0.0000  +0.0000  0.0000  same
+   pop#       60.000   60.000
+gate: 9 primary comparisons, Holm at 0.05: 0 decided
+PASS  [1605s, peak 1083 MB]
+
+########## gemsnov10 vs newbase
+== sampled 25 (300 users)
+   metric        now     base   change    ±2se  verdict
+   rho        0.5055   0.5055  +0.0000  0.0000  same
+   rmse       1.4044   1.4044  +0.0000  0.0000  same  (described)
+   r50        0.1720   0.1720  +0.0000  0.0000  same
+   ips50      0.0800   0.0800  +0.0000  0.0000  same  (described)
+   hit10      0.2007   0.2007  +0.0000  0.0000  same
+   bad10      0.0280   0.0280  +0.0000  0.0000  same
+   agegap     0.1938   0.1938  +0.0000  0.0000  same  (described)
+   disc_r50   0.0525   0.0525  +0.0000  0.0000  same
+   disc_ips50   0.0403   0.0403  +0.0000  0.0000  same  (described)
+   disc_hit10   0.0470   0.0470  +0.0000  0.0000  same
+   disc_bad10   0.0203   0.0203  +0.0000  0.0000  same  (described)
+   disc_agegap   0.2142   0.2142  +0.0000  0.0000  same  (described)
+   gems_r50   0.0215   0.0214  +0.0001  0.0010  noise
+   gems_ips50   0.0283   0.0295  -0.0012  0.0015  noise  (described)
+   gems_hit10   0.0287   0.0293  -0.0007  0.0019  noise
+   gems_bad10   0.0153   0.0150  +0.0003  0.0015  noise  (described)
+   gems_agegap   0.2261   0.2255  +0.0006  0.0031  noise  (described)
+   r50new     0.1548   0.1548  +0.0000  0.0000  same  (described)
+   r50old     0.1851   0.1851  +0.0000  0.0000  same
+   disc_r50new   0.0481   0.0481  +0.0000  0.0000  same  (described)
+   disc_r50old   0.0515   0.0515  +0.0000  0.0000  same
+   gems_r50new   0.0207   0.0217  -0.0010  0.0015  noise  (described)
+   gems_r50old   0.0229   0.0218  +0.0012  0.0021  noise
+   overlap     0.063    0.063
+   pop#      124.000  124.000
+== sampled 150 (300 users)
+   metric        now     base   change    ±2se  verdict
+   rho        0.5602   0.5602  +0.0000  0.0000  same
+   rmse       1.2734   1.2734  +0.0000  0.0000  same  (described)
+   r50        0.1937   0.1937  +0.0000  0.0000  same
+   ips50      0.0888   0.0888  +0.0000  0.0000  same  (described)
+   hit10      0.2743   0.2743  +0.0000  0.0000  same
+   bad10      0.0247   0.0247  +0.0000  0.0000  same
+   agegap     0.1382   0.1382  +0.0000  0.0000  same  (described)
+   disc_r50   0.0631   0.0631  +0.0000  0.0000  same
+   disc_ips50   0.0479   0.0479  +0.0000  0.0000  same  (described)
+   disc_hit10   0.0730   0.0730  +0.0000  0.0000  same
+   disc_bad10   0.0203   0.0203  +0.0000  0.0000  same  (described)
+   disc_agegap   0.1330   0.1330  +0.0000  0.0000  same  (described)
+   gems_r50   0.0366   0.0366  -0.0000  0.0012  noise
+   gems_ips50   0.0434   0.0447  -0.0013  0.0020  noise  (described)
+   gems_hit10   0.0583   0.0580  +0.0003  0.0035  noise
+   gems_bad10   0.0157   0.0143  +0.0013  0.0025  noise  (described)
+   gems_agegap   0.1613   0.1621  -0.0009  0.0033  noise  (described)
+   r50new     0.1703   0.1703  +0.0000  0.0000  same  (described)
+   r50old     0.2081   0.2081  +0.0000  0.0000  same
+   disc_r50new   0.0651   0.0651  +0.0000  0.0000  same  (described)
+   disc_r50old   0.0521   0.0521  +0.0000  0.0000  same
+   gems_r50new   0.0352   0.0356  -0.0005  0.0015  noise  (described)
+   gems_r50old   0.0366   0.0365  +0.0001  0.0019  noise
+   overlap     0.057    0.057
+   pop#      175.000  175.000
+== sampled 400 (300 users)
+   metric        now     base   change    ±2se  verdict
+   rho        0.5942   0.5942  +0.0000  0.0000  same
+   rmse       1.1882   1.1882  +0.0000  0.0000  same  (described)
+   r50        0.1786   0.1786  +0.0000  0.0000  same
+   ips50      0.0808   0.0808  +0.0000  0.0000  same  (described)
+   hit10      0.3643   0.3643  +0.0000  0.0000  same
+   bad10      0.0247   0.0247  +0.0000  0.0000  same
+   agegap     0.1336   0.1336  +0.0000  0.0000  same  (described)
+   disc_r50   0.0654   0.0654  +0.0000  0.0000  same
+   disc_ips50   0.0473   0.0473  +0.0000  0.0000  same  (described)
+   disc_hit10   0.1217   0.1217  +0.0000  0.0000  same
+   disc_bad10   0.0310   0.0310  +0.0000  0.0000  same  (described)
+   disc_agegap   0.1296   0.1296  +0.0000  0.0000  same  (described)
+   gems_r50   0.0392   0.0389  +0.0003  0.0013  noise
+   gems_ips50   0.0434   0.0446  -0.0011  0.0020  noise  (described)
+   gems_hit10   0.1087   0.1020  +0.0067  0.0051  better?
+   gems_bad10   0.0163   0.0167  -0.0003  0.0024  noise  (described)
+   gems_agegap   0.1476   0.1486  -0.0010  0.0035  noise  (described)
+   r50new     0.1692   0.1692  +0.0000  0.0000  same  (described)
+   r50old     0.1999   0.1999  +0.0000  0.0000  same
+   disc_r50new   0.0682   0.0682  +0.0000  0.0000  same  (described)
+   disc_r50old   0.0506   0.0506  +0.0000  0.0000  same
+   gems_r50new   0.0410   0.0408  +0.0002  0.0014  noise  (described)
+   gems_r50old   0.0348   0.0341  +0.0008  0.0019  noise
+   overlap     0.062    0.062
+   pop#      229.000  229.000
+== reference (8 splits)
+   metric        now     base   change    ±2se  verdict
+   rho        0.7546   0.7546  +0.0000  0.0000  same
+   rmse       0.8094   0.8094  +0.0000  0.0000  same
+   r50        0.3823   0.3823  +0.0000  0.0000  same
+   ips50      0.2888   0.2888  +0.0000  0.0000  same
+   hit10      0.3750   0.3750  +0.0000  0.0000  same
+   bad10      0.0000   0.0000  +0.0000  0.0000  same
+   agegap     0.2473   0.2473  +0.0000  0.0000  same
+   disc_r50   0.0718   0.0718  +0.0000  0.0000  same
+   disc_ips50   0.0730   0.0730  +0.0000  0.0000  same
+   disc_hit10   0.0250   0.0250  +0.0000  0.0000  same
+   disc_bad10   0.0000   0.0000  +0.0000  0.0000  same
+   disc_agegap   0.1214   0.1214  +0.0000  0.0000  same
+   gems_r50   0.0000   0.0000  +0.0000  0.0000  same
+   gems_ips50   0.0000   0.0000  +0.0000  0.0000  same
+   gems_hit10   0.0000   0.0000  +0.0000  0.0000  same
+   gems_bad10   0.0000   0.0000  +0.0000  0.0000  same
+   gems_agegap   0.0714   0.0828  -0.0114  0.0320  4 better / 2 worse splits
+   r50new     0.2083   0.2083  +0.0000  0.0000  same
+   r50old     0.4097   0.4097  +0.0000  0.0000  same
+   disc_r50new   0.0000   0.0000  +0.0000  0.0000  same
+   disc_r50old   0.0830   0.0830  +0.0000  0.0000  same
+   gems_r50new   0.0000   0.0000  +0.0000  0.0000  same
+   gems_r50old   0.0000   0.0000  +0.0000  0.0000  same
+   pop#       60.000   60.000
+gate: 9 primary comparisons, Holm at 0.05: 0 decided
+PASS  [1577s, peak 1083 MB]
+
+########## sbbal_gems0 vs newbase
+== sampled 25 (300 users)
+   metric        now     base   change    ±2se  verdict
+   rho        0.5055   0.5055  +0.0000  0.0000  same
+   rmse       1.4044   1.4044  +0.0000  0.0000  same  (described)
+   r50        0.1655   0.1720  -0.0065  0.0052  worse?
+   ips50      0.0782   0.0800  -0.0018  0.0046  noise  (described)
+   hit10      0.1897   0.2007  -0.0110  0.0069  WORSE
+   bad10      0.0260   0.0280  -0.0020  0.0030  noise
+   agegap     0.2052   0.1938  +0.0114  0.0067  worse?  (described)
+   disc_r50   0.0566   0.0525  +0.0040  0.0032  better?
+   disc_ips50   0.0434   0.0403  +0.0032  0.0025  better?  (described)
+   disc_hit10   0.0593   0.0470  +0.0123  0.0070  better
+   disc_bad10   0.0223   0.0203  +0.0020  0.0041  noise  (described)
+   disc_agegap   0.2011   0.2142  -0.0131  0.0068  better?  (described)
+   gems_r50   0.0231   0.0214  +0.0017  0.0015  better?
+   gems_ips50   0.0320   0.0295  +0.0025  0.0023  better?  (described)
+   gems_hit10   0.0327   0.0293  +0.0033  0.0028  better?
+   gems_bad10   0.0140   0.0150  -0.0010  0.0018  noise  (described)
+   gems_agegap   0.2248   0.2255  -0.0008  0.0040  noise  (described)
+   r50new     0.1300   0.1548  -0.0248  0.0068  worse?  (described)
+   r50old     0.1914   0.1851  +0.0064  0.0060  better?
+   disc_r50new   0.0629   0.0481  +0.0148  0.0063  better?  (described)
+   disc_r50old   0.0467   0.0515  -0.0049  0.0048  worse?
+   gems_r50new   0.0238   0.0217  +0.0021  0.0018  better?  (described)
+   gems_r50old   0.0223   0.0218  +0.0005  0.0019  noise
+   overlap     0.061    0.063
+   pop#      124.000  124.000
+== sampled 150 (300 users)
+   metric        now     base   change    ±2se  verdict
+   rho        0.5602   0.5602  +0.0000  0.0000  same
+   rmse       1.2734   1.2734  +0.0000  0.0000  same  (described)
+   r50        0.1871   0.1937  -0.0066  0.0044  WORSE
+   ips50      0.0874   0.0888  -0.0014  0.0049  noise  (described)
+   hit10      0.2567   0.2743  -0.0177  0.0081  WORSE
+   bad10      0.0243   0.0247  -0.0003  0.0033  noise
+   agegap     0.1362   0.1382  -0.0020  0.0060  noise  (described)
+   disc_r50   0.0693   0.0631  +0.0062  0.0035  better
+   disc_ips50   0.0525   0.0479  +0.0046  0.0031  better?  (described)
+   disc_hit10   0.0890   0.0730  +0.0160  0.0087  better
+   disc_bad10   0.0217   0.0203  +0.0013  0.0041  noise  (described)
+   disc_agegap   0.1315   0.1330  -0.0015  0.0055  noise  (described)
+   gems_r50   0.0360   0.0366  -0.0006  0.0017  noise
+   gems_ips50   0.0449   0.0447  +0.0002  0.0023  noise  (described)
+   gems_hit10   0.0597   0.0580  +0.0017  0.0047  noise
+   gems_bad10   0.0133   0.0143  -0.0010  0.0028  noise  (described)
+   gems_agegap   0.1642   0.1621  +0.0021  0.0047  noise  (described)
+   r50new     0.1439   0.1703  -0.0264  0.0077  worse?  (described)
+   r50old     0.2209   0.2081  +0.0128  0.0050  better
+   disc_r50new   0.0827   0.0651  +0.0176  0.0064  better?  (described)
+   disc_r50old   0.0430   0.0521  -0.0091  0.0050  WORSE
+   gems_r50new   0.0381   0.0356  +0.0024  0.0019  better?  (described)
+   gems_r50old   0.0327   0.0365  -0.0038  0.0028  worse?
+   overlap     0.056    0.057
+   pop#      172.000  175.000
+== sampled 400 (300 users)
+   metric        now     base   change    ±2se  verdict
+   rho        0.5942   0.5942  +0.0000  0.0000  same
+   rmse       1.1882   1.1882  +0.0000  0.0000  same  (described)
+   r50        0.1709   0.1786  -0.0078  0.0029  WORSE
+   ips50      0.0761   0.0808  -0.0047  0.0018  worse?  (described)
+   hit10      0.3397   0.3643  -0.0247  0.0114  WORSE
+   bad10      0.0227   0.0247  -0.0020  0.0034  noise
+   agegap     0.1301   0.1336  -0.0035  0.0064  noise  (described)
+   disc_r50   0.0712   0.0654  +0.0058  0.0027  better
+   disc_ips50   0.0507   0.0473  +0.0033  0.0018  better?  (described)
+   disc_hit10   0.1383   0.1217  +0.0167  0.0110  better
+   disc_bad10   0.0300   0.0310  -0.0010  0.0048  noise  (described)
+   disc_agegap   0.1364   0.1296  +0.0068  0.0065  worse?  (described)
+   gems_r50   0.0379   0.0389  -0.0009  0.0013  noise
+   gems_ips50   0.0439   0.0446  -0.0007  0.0019  noise  (described)
+   gems_hit10   0.1070   0.1020  +0.0050  0.0058  noise
+   gems_bad10   0.0147   0.0167  -0.0020  0.0033  noise  (described)
+   gems_agegap   0.1549   0.1486  +0.0062  0.0055  worse?  (described)
+   r50new     0.1441   0.1692  -0.0251  0.0060  worse?  (described)
+   r50old     0.2118   0.1999  +0.0119  0.0066  better
+   disc_r50new   0.0882   0.0682  +0.0201  0.0064  better?  (described)
+   disc_r50old   0.0419   0.0506  -0.0087  0.0045  WORSE
+   gems_r50new   0.0431   0.0408  +0.0023  0.0016  better?  (described)
+   gems_r50old   0.0291   0.0341  -0.0050  0.0023  WORSE
+   overlap     0.058    0.062
+   pop#      225.000  229.000
+== reference (8 splits)
+   metric        now     base   change    ±2se  verdict
+   rho        0.7546   0.7546  +0.0000  0.0000  same
+   rmse       0.8094   0.8094  +0.0000  0.0000  same
+   r50        0.4330   0.3823  +0.0508  0.0580  5 better / 2 worse splits
+   ips50      0.3251   0.2888  +0.0363  0.0447  5 better / 3 worse splits
+   hit10      0.3625   0.3750  -0.0125  0.0453  1 better / 2 worse splits
+   bad10      0.0000   0.0000  +0.0000  0.0000  same
+   agegap     0.2313   0.2473  -0.0160  0.0203  3 better / 2 worse splits
+   disc_r50   0.0642   0.0718  -0.0076  0.0225  1 better / 2 worse splits
+   disc_ips50   0.0675   0.0730  -0.0055  0.0158  1 better / 2 worse splits
+   disc_hit10   0.0125   0.0250  -0.0125  0.0250  0 better / 1 worse splits
+   disc_bad10   0.0000   0.0000  +0.0000  0.0000  same
+   disc_agegap   0.0976   0.1214  -0.0238  0.0404  5 better / 2 worse splits
+   gems_r50   0.0000   0.0000  +0.0000  0.0000  same
+   gems_ips50   0.0000   0.0000  +0.0000  0.0000  same
+   gems_hit10   0.0000   0.0000  +0.0000  0.0000  same
+   gems_bad10   0.0000   0.0000  +0.0000  0.0000  same
+   gems_agegap   0.1218   0.0828  +0.0391  0.0259  0 better / 5 worse splits
+   r50new     0.2083   0.2083  +0.0000  0.0000  same
+   r50old     0.4681   0.4097  +0.0583  0.0665  5 better / 2 worse splits
+   disc_r50new   0.0000   0.0000  +0.0000  0.0000  same
+   disc_r50old   0.0743   0.0830  -0.0086  0.0257  1 better / 2 worse splits
+   gems_r50new   0.0000   0.0000  +0.0000  0.0000  same
+   gems_r50old   0.0000   0.0000  +0.0000  0.0000  same
+   pop#       69.000   60.000
+gate: 30 primary comparisons, Holm at 0.05: 15 decided
+FAIL  [7343s, peak 2054 MB]

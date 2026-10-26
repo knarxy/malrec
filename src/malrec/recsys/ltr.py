@@ -68,6 +68,14 @@ LGBM: dict[str, Any] = {
 IPS_CLIP = (0.25, 4.0)
 IPS_STEPS = 4
 IPS_MAX_LABEL = 48
+# Age-balanced labels (ranker_age_balance > 0) for the tabs below: what people
+# rate next is mostly what just aired, so plain labels teach "new" - at weight
+# 0.75 Discover's learned order gained recall only on titles at most a year
+# old and lost it on the older ones (2026-10-25). A liked title counts (the
+# user's habit share of its age bucket / that bucket's share of their liked
+# future titles) ** balance, clipped to AGE_CLIP: the habit the served age
+# balance aims at (rank.age_mix), in the labels. Per tab: age_balance().
+AGE_CLIP = (0.25, 4.0)
 # the tabs that can carry a learned order, with the setting that turns each on
 SURFACES = {"safe_bets": "order_ranker_weight", "discover": "discover_ranker_weight",
             "hidden_gems": "gems_ranker_weight"}
@@ -87,13 +95,14 @@ FINGERPRINT_SETTINGS = (
     "not_interested_weight", "not_interested_foldin", "relevance_weight",
     "relevance_weight_personal", "safe_bets_key_risk", "order_ranker_ips",
     "series_weight_power", "blend_lam_min", "blend_holdout", "blend_criterion",
-    "disagreement_scale")
+    "disagreement_scale", "ranker_age_balance", "safe_bets_age_balance", "gems_age_balance")
 # Settings added after rankers were stored, with the value that leaves the
 # key as it was: at that value they stay out of the fingerprint, so adding one
 # does not retire every stored ranker.
 FINGERPRINT_NEUTRAL = {"series_weight_power": 0.0, "blend_lam_min": 0.0,
                        "blend_holdout": "newest", "blend_criterion": "mse",
-                       "disagreement_scale": "raw"}
+                       "disagreement_scale": "raw", "ranker_age_balance": 0.0,
+                       "safe_bets_age_balance": 0.0, "gems_age_balance": -1.0}
 
 
 def fingerprint() -> str:
@@ -341,6 +350,40 @@ def _labels(sid: list[int], test: dict[int, float], mean: float,
                      for v, m in zip(lv, sid)], dtype=np.int32)
 
 
+def age_balance(surface: str) -> float:
+    """A tab's ranker_age_balance: Discover's the setting itself, Hidden
+    Gems' gems_age_balance unless that is negative, Safe Bets'
+    safe_bets_age_balance."""
+    cfg = settings()
+    if surface == "safe_bets":
+        return cfg.safe_bets_age_balance
+    if surface == "hidden_gems" and cfg.gems_age_balance >= 0:
+        return cfg.gems_age_balance
+    return cfg.ranker_age_balance
+
+
+def age_weights(test: dict[int, float], mean: float, ages: AgeTaste | None, store: ItemStore,
+                power: float) -> dict[int, float]:
+    """Per liked future title (rated at least max(mean, 7)): (the habit share
+    of its age bucket at the cutoff / the share of the liked future titles in
+    that bucket) ** power, clipped to AGE_CLIP. Empty without a dated habit."""
+    from ..rank import age_bucket
+    if ages is None or not ages.share.sum():
+        return {}
+
+    def bucket(m: int) -> int | None:
+        y = (store.rows.get(m) or {}).get("season_year")
+        return None if y is None else age_bucket(ages.ref_year - y)
+    liked = {m: b for m, s in test.items() if s >= max(mean, 7.0)
+             if (b := bucket(m)) is not None}
+    if not liked:
+        return {}
+    share = np.bincount(list(liked.values()), minlength=len(ages.share)) / len(liked)
+    w = {b: float(np.clip((ages.share[b] / share[b]) ** power, *AGE_CLIP))
+         for b in set(liked.values())}
+    return {m: w[b] for m, b in liked.items()}
+
+
 def inverse_propensity(pop: PopulationModel, pool: list[int], power: float) -> dict[int, float]:
     """(propensity / median) ** -power per pool title, clipped to IPS_CLIP;
     propensity = the share of the population's raters who rated it."""
@@ -382,6 +425,7 @@ def train(pop: PopulationModel, stacker, store: ItemStore, pool: list[int],
     names = names or FEATURES
     key = surface_key(surface)
     ipw = inverse_propensity(pop, pool, cfg.order_ranker_ips) if cfg.order_ranker_ips > 0 else None
+    age_p = age_balance(surface)
     Xs, ys, groups, qusers = [], [], [], []
     shared_rng = np.random.default_rng(seed + 11)
     for u in sorted(users):
@@ -431,7 +475,13 @@ def train(pop: PopulationModel, stacker, store: ItemStore, pool: list[int],
             order = shortlist(terms)
             X = features(scorer, terms, order, ids, fam, genre_mix(li, store), len(sc), store,
                          taste, names, ages)
-            y = _labels([ids[k] for k in order], {m: s for m, s, _ in test_s}, mean, ipw)
+            test = {m: s for m, s, _ in test_s}
+            weights = ipw
+            if age_p > 0:
+                aw = age_weights(test, mean, ages, store, age_p)
+                weights = {m: (ipw or {}).get(m, 1.0) * aw.get(m, 1.0)
+                           for m in (ids[k] for k in order)}
+            y = _labels([ids[k] for k in order], test, mean, weights)
             if y.sum() == 0:
                 continue                    # a query with no positive teaches nothing
             Xs.append(X); ys.append(y); groups.append(len(y)); qusers.append(u)
@@ -451,7 +501,7 @@ def train(pop: PopulationModel, stacker, store: ItemStore, pool: list[int],
     Xt, yt, gt = take(tr)
     Xv, yv, gv = take(va)
     params = dict(LGBM)
-    if ipw is not None:
+    if ipw is not None or age_p > 0:
         params["label_gain"] = [k / IPS_STEPS for k in range(IPS_MAX_LABEL + 1)]
     ranker = lgb.LGBMRanker(**params)
     ranker.fit(Xt, yt, group=gt, eval_set=[(Xv, yv)], eval_group=[gv], eval_at=[10, 50],
@@ -462,7 +512,8 @@ def train(pop: PopulationModel, stacker, store: ItemStore, pool: list[int],
             "positives": int((y > 0).sum()), "trees": int(ranker.best_iteration_ or 0),
             "gain": {n: round(float(v) / tot, 4) for n, v in zip(names, gain)},
             "features": list(names), "settings": fingerprint(), "surface": surface,
-            "ips": cfg.order_ranker_ips, "pool": "production" if relations else "eligible",
+            "ips": cfg.order_ranker_ips, "age_balance": age_p,
+            "pool": "production" if relations else "eligible",
             "seconds": round(time.time() - t0, 1)}
     return OrderRanker(ranker.booster_.model_to_string(num_iteration=ranker.best_iteration_),
                        meta)

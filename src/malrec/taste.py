@@ -5,10 +5,11 @@ it) over the numbers that back it. Only what the list can support is said:
 each series counts once however many seasons were rated (recsys/series.py),
 and a genre, theme, studio or era is named only when enough different series
 back it and its difference from the user's average is clear - at least
-`Z` standard errors. With ~100 rated series only a handful pass, which is the
-point: "you rate Psychological higher" should still hold after the next
-twenty ratings. The thresholds were set on a few thousand sampled lists of
-every size (experiments/exp_profile.py).
+`Z` standard errors, and still so after Benjamini-Hochberg over all of the
+page's tests (EVIDENCE_FDR, p from Student's t). With ~100 rated series only
+a handful pass, which is the point: "you rate Psychological higher" should
+still hold after the next twenty ratings. The thresholds were set on a few
+thousand sampled lists of every size (experiments/exp_profile.py).
 
 `breakdown` is pure (entries plus catalogue lookups in, a dict out), so the
 experiment and the API run the same code; `for_user` loads one app user.
@@ -36,7 +37,9 @@ SD_FLOOR = 0.5              # a group whose series all got one score is not cert
 # experiments/exp_evidence_fdr.py, 2,000 sampled lists). Benjamini-Hochberg
 # at this rate over all of a list's tests, on p from Student's t, leaves 0.6
 # by chance (2 % of the claims; 8 % at 50-149 rated series, 27 % below 50)
-# and keeps as many real ones; cards with a line 86 % -> 77 %.
+# and keeps as many real ones; cards with a line 86 % -> 77 %. The profile
+# page's taste cards (genres, themes, eras, studios) are corrected the same
+# way, over all of their tests together.
 EVIDENCE_FDR = 0.2
 MIN_COMPARED = 10           # titles with a MAL score before the scale is compared
 SCALE_SLIGHT, SCALE_STRONG = 0.25, 0.75
@@ -101,6 +104,15 @@ def _groups(by_series: dict[int, float], members: dict[str, set[int]], mu: float
             g["p"] = float(2 * student_t.sf(abs(z), n - 1)) if n > 1 else 1.0
         out.append(g)
     return sorted(out, key=lambda g: -g["lift"])
+
+
+def _correct(groups: list[dict]) -> None:
+    """One list's tests (from _groups with_p) corrected together: `clear`
+    only where Benjamini-Hochberg at EVIDENCE_FDR keeps it too; the p goes."""
+    for g, ok in zip(groups, benjamini_hochberg([g["p"] for g in groups], EVIDENCE_FDR)):
+        g["clear"] = g["clear"] and ok
+    for g in groups:
+        del g["p"]
 
 
 def benjamini_hochberg(p: list[float], q: float) -> list[bool]:
@@ -198,6 +210,24 @@ def breakdown(entries: list[dict], titles: dict[int, dict], tags: dict[int, list
                 g[k].add(sid[e["mal_id"]])
         return g
 
+    # every group the four taste cards could call clear, tested together:
+    # a difference has to survive the page's other tests too (EVIDENCE_FDR)
+    year = {m: t.get("season_year") for m, t in titles.items()}
+    gs = ts = es = ss = []
+    if enough:
+        gs = _groups(by_series, members(lambda m: [g for g in titles[m].get("mal_genres") or []
+                                                   if g.lower() not in NOT_TASTE]),
+                     mu, MIN_SERIES, Z, with_p=True)
+        ts = _groups(by_series, members(lambda m: [t for t in tags.get(m, ())
+                                                   if t.lower() not in genre_names
+                                                   and t.lower() not in NOT_TASTE]),
+                     mu, THEME_MIN_SERIES, THEME_Z, with_p=True)
+        es = _groups(by_series, members(lambda m: [era_of(y)] if (y := year.get(m)) else []),
+                     mu, MIN_SERIES, Z, with_p=True)
+        ss = _groups(by_series, members(lambda m: (titles[m].get("mal_studios") or [])[:1]),
+                     mu, MIN_SERIES, Z, with_p=True)
+        _correct(gs + ts + es + ss)
+
     # ---- genres
     listed = Counter(g for e in started for g in (titles[e["mal_id"]].get("mal_genres") or [])
                      if g.lower() not in NOT_TASTE)
@@ -207,9 +237,6 @@ def breakdown(entries: list[dict], titles: dict[int, dict], tags: dict[int, list
         genres["headline"] = {"key": "genres.few", "missing": MIN_RATED_SERIES - len(by_series)}
         genres["clear"] = []
     else:
-        gs = _groups(by_series, members(lambda m: [g for g in titles[m].get("mal_genres") or []
-                                                   if g.lower() not in NOT_TASTE]),
-                     mu, MIN_SERIES, Z)
         up, down = _pick([g for g in gs if g["clear"]])
         genres["clear"] = _shown(up, down)
         heavy = {g["name"] for g in top_listed}
@@ -235,10 +262,6 @@ def breakdown(entries: list[dict], titles: dict[int, dict], tags: dict[int, list
     # ---- themes (AniList tags)
     themes: dict = {"clear": []}
     if enough:
-        ts = _groups(by_series, members(lambda m: [t for t in tags.get(m, ())
-                                                   if t.lower() not in genre_names
-                                                   and t.lower() not in NOT_TASTE]),
-                     mu, THEME_MIN_SERIES, THEME_Z)
         up, down = _pick([t for t in ts if t["clear"]])
         themes["clear"] = _shown(up, down)
         if up and down:
@@ -274,11 +297,8 @@ def breakdown(entries: list[dict], titles: dict[int, dict], tags: dict[int, list
     out["disagree"] = dis
 
     # ---- eras: release years, and how old titles were when watched
-    year = {m: t.get("season_year") for m, t in titles.items()}
     eras: dict = {"rows": []}
     if enough:
-        es = _groups(by_series, members(lambda m: [era_of(y)] if (y := year.get(m)) else []),
-                     mu, MIN_SERIES, Z)
         def to(g):                      # the running span ends this year
             return min(g["name"] + ERA_SPAN - 1, today.year)
         eras["rows"] = sorted(({**g, "from": g["name"], "to": to(g)} for g in es),
@@ -304,8 +324,6 @@ def breakdown(entries: list[dict], titles: dict[int, dict], tags: dict[int, list
     # ---- studios (the first listed, the main one)
     studios: dict = {"clear": []}
     if enough:
-        ss = _groups(by_series, members(lambda m: (titles[m].get("mal_studios") or [])[:1]),
-                     mu, MIN_SERIES, Z)
         up, down = _pick([g for g in ss if g["clear"]])
         studios["clear"] = _shown(up, down)
         if len(up) >= 2:
